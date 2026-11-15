@@ -283,7 +283,7 @@ impl OvError {
         self.server_code.as_deref().unwrap_or(self.code.as_str())
     }
 
-    /// Whether this error (or a given code) matches `code`, like the SDK's `isOpenVireoError(e, code)`.
+    /// Whether this error has `code`, like the SDK's `isOpenVireoError(e, code)`.
     pub fn is(&self, code: OvErrorCode) -> bool {
         self.code == code
     }

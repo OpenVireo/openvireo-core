@@ -1,8 +1,7 @@
 [workspace]
 resolver = "2"
-# Every crate under crates/ is a member, so adding a crate never edits this file. The lead adds
-# "bindings/*" and "bins/*" when Wave 1 creates those folders (a glob that matches nothing fails).
-members = ["crates/*", "xtask"]
+# Every crate under crates/, bindings/ and bins/ is a member, so adding a crate never edits this file.
+members = ["crates/*", "bindings/*", "bins/*", "xtask"]
 
 [workspace.package]
 version = "0.0.0"

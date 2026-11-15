@@ -6,6 +6,11 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+// One module per binding command, so W1-BW / W1-BS / W1-BC each own one file.
+mod cpp;
+mod wasm;
+mod xcframework;
+
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
 const IOS_TARGETS: [&str; 3] = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"];
 
@@ -34,9 +39,9 @@ fn main() -> ExitCode {
         Some("vectors") => vectors(),
         Some("size") => size(),
         Some("unlinked") => unlinked(),
-        Some("wasm") => not_yet("wasm", "W1-BW"),
-        Some("xcframework") => not_yet("xcframework", "W1-BS"),
-        Some("cpp") => not_yet("cpp", "W1-BC"),
+        Some("wasm") => wasm::run(&args[1..]),
+        Some("xcframework") => xcframework::run(&args[1..]),
+        Some("cpp") => cpp::run(&args[1..]),
         None | Some("help" | "-h" | "--help") => {
             print!("{HELP}");
             Ok(())
@@ -50,10 +55,6 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
-}
-
-fn not_yet(cmd: &str, owner: &str) -> Result {
-    Err(format!("`{cmd}` is not implemented yet (owned by task {owner})"))
 }
 
 fn root() -> PathBuf {

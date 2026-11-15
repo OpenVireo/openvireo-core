@@ -443,6 +443,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ov"
+version = "0.0.0"
+
+[[package]]
 name = "ov-core"
 version = "0.0.0"
 dependencies = [
@@ -468,6 +472,14 @@ dependencies = [
 
 [[package]]
 name = "ov-error"
+version = "0.0.0"
+
+[[package]]
+name = "ov-ffi-cpp"
+version = "0.0.0"
+
+[[package]]
+name = "ov-ffi-swift"
 version = "0.0.0"
 
 [[package]]
@@ -519,6 +531,10 @@ dependencies = [
 
 [[package]]
 name = "ov-vault"
+version = "0.0.0"
+
+[[package]]
+name = "ov-wasm"
 version = "0.0.0"
 
 [[package]]

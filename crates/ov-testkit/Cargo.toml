@@ -1,0 +1,22 @@
+[package]
+name = "ov-testkit"
+description = "Test helpers for openvireo-core: typed loaders for vectors/, hex helpers, a fixed clock"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# Test-only: `cargo xtask ci` doesn't build it for wasm32 or iOS.
+[package.metadata.ov]
+native-only = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+hex = { workspace = true, features = ["std"] }
+base64.workspace = true
+
+[lints]
+workspace = true

@@ -8,7 +8,24 @@ rust-version.workspace = true
 repository.workspace = true
 publish = false
 
+[lib]
+# staticlib: libovcore.a for the desktop (Corrosion or `cargo xtask cpp`); rlib: Rust tests.
+crate-type = ["staticlib", "rlib"]
+
 [dependencies]
+ov-core = { path = "../../crates/ov-core" }
+ov-crypto = { path = "../../crates/ov-crypto" }
+ov-error = { path = "../../crates/ov-error" }
+async-trait.workspace = true
+cxx.workspace = true
+# `executor` for block_on: the bridge's calls block their (worker) thread, see README.md.
+futures = { workspace = true, features = ["executor"] }
+zeroize.workspace = true
+
+[build-dependencies]
+# OWNER-REQUEST (W1-BC): cxx-build is not on the §2.6 allow-list yet. It must be the same
+# release as `cxx`. Move to `cxx-build.workspace = true` once the lead adds it to the root.
+cxx-build = "=1.0.205"
 
 [lints]
 workspace = true

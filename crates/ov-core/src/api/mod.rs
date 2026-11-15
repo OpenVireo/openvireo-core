@@ -55,7 +55,7 @@ pub use totp::{entry_totp_uri, parse_totp_uri, totp_code, TotpAlgorithm, TotpCod
 pub use types::*;
 pub use vault::{
     AttachmentInfo, CreateMode, EntryExpiry, EntryInput, EntryRecord, EntrySummary, ExportFormat, FieldInput,
-    FieldRecord, GroupInfo, KdbxCredentials, SetFieldsResult, Vault,
+    FieldRecord, GroupInfo, KdbxCredentials, SetFieldsResult, Vault, VersionDifference,
 };
 
 pub use ov_error::{OvError as Error, OvErrorCode as ErrorCode};

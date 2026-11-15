@@ -227,6 +227,17 @@ pub struct SetFieldsResult {
     pub created: bool,
 }
 
+/// How an entry in an old version compares with the vault now ([`Vault::version_difference`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VersionDifference {
+    /// The same as now.
+    Same,
+    /// Changed since (restoring it is an edit).
+    Changed,
+    /// In the Recycle Bin, or deleted for good, since.
+    Deleted,
+}
+
 /// Unencrypted export formats (the web app's ExportDialog).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ExportFormat {
@@ -459,6 +470,20 @@ impl Vault {
 
     /// Deletes a group with everything in it (Recycle Bin rules as [`delete_entry`](Self::delete_entry)).
     pub fn delete_group(&self, group_id: String) -> Result<(), OvError> {
+        todo!()
+    }
+
+    /// How entry `entry_id` of `version` (from
+    /// [`Account::open_vault_version`](crate::api::Account::open_vault_version)) compares with this
+    /// vault (Swift `Database.difference(from:)`).
+    pub fn version_difference(&self, version: Vault, entry_id: String) -> Result<VersionDifference, OvError> {
+        todo!()
+    }
+
+    /// Brings entry `entry_id` back from an old `version`: its content becomes the current version
+    /// (the current one goes to history), or it is re-added at `group_path` if it was deleted
+    /// (Swift `Database.restoreEntry`). Sync afterwards.
+    pub fn restore_entry(&self, version: Vault, entry_id: String, group_path: String) -> Result<(), OvError> {
         todo!()
     }
 

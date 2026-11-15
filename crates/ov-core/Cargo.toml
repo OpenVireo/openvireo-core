@@ -1,0 +1,17 @@
+[package]
+name = "ov-core"
+description = "The openvireo-core facade: accounts, vaults, sharing, share links and sync over a platform Host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ov-error = { path = "../ov-error" }
+async-trait.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true

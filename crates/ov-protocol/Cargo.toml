@@ -1,0 +1,14 @@
+[package]
+name = "ov-protocol"
+description = "Wire types, request builders and response parsers for the OpenVireo auth and sync APIs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true

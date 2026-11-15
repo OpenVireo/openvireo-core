@@ -1,0 +1,12 @@
+[package]
+name = "ov-error"
+description = "OvError: the one error type of openvireo-core, with the SDK's stable wire codes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true

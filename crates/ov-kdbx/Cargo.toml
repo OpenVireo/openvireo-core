@@ -1,0 +1,16 @@
+[package]
+name = "ov-kdbx"
+description = "KDBX 4.x model, reader and writer for OpenVireo vaults"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+uuid.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true

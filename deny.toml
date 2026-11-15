@@ -1,0 +1,50 @@
+# cargo deny check: licences, advisories, bans, sources (rust-core-tasks.md §2.6)
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+  # crypto-bigint 0.5.5 timing issues. It comes in only through elliptic-curve 0.13, a
+  # dependency of opaque-ke 4.0.1 / voprf 0.5. Our suite is ristretto255: group arithmetic
+  # is curve25519-dalek, and the only elliptic-curve code used is hash2curve's
+  # expand_message_xmd (hashing), so no crypto-bigint arithmetic runs on secrets.
+  # The fix needs elliptic-curve 0.14 (opaque-ke 5), which the opaque-ke =4.0.1 pin
+  # rules out. Revisit when opaque-ke is bumped. Accepted by the lead 2026-11-15.
+  { id = "RUSTSEC-2026-0387", reason = "unreachable with ristretto255; needs opaque-ke 5" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  # Native TLS / OpenSSL would break the wasm and iOS targets; reqwest uses rustls.
+  { name = "openssl-sys" },
+  { name = "native-tls" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,6 +1,6 @@
 [package]
 name = "ov-testkit"
-description = "Test helpers for openvireo-core: typed loaders for vectors/, hex helpers, a fixed clock"
+description = "Test helpers for openvireo-core: typed loaders for vectors/, hex helpers, fixed clocks (ov_core::host::Clock)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,6 +13,7 @@ publish = false
 native-only = true
 
 [dependencies]
+ov-core = { path = "../ov-core" }
 serde.workspace = true
 serde_json.workspace = true
 hex = { workspace = true, features = ["std"] }

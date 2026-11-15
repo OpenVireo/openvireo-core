@@ -1,9 +1,7 @@
 //! Deterministic clocks for tests.
 //!
-//! Both types have an inherent `now_unix_ms(&self) -> i64`, the same signature as
-//! `ov_core::host::Clock::now_unix_ms`. ov-testkit doesn't depend on ov-core yet (the two were written in
-//! parallel in Wave 0); the lead adds `impl ov_core::host::Clock for FixedClock` (and `ManualClock`) once
-//! both are on develop.
+//! Both implement [`ov_core::host::Clock`], so a test can pass `Arc::new(FixedClock::…)` as
+//! `Host::clock`. They also keep an inherent `now_unix_ms` for tests that don't import the trait.
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -63,6 +61,18 @@ impl ManualClock {
     }
 }
 
+impl ov_core::host::Clock for FixedClock {
+    fn now_unix_ms(&self) -> i64 {
+        FixedClock::now_unix_ms(self)
+    }
+}
+
+impl ov_core::host::Clock for ManualClock {
+    fn now_unix_ms(&self) -> i64 {
+        ManualClock::now_unix_ms(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +92,14 @@ mod tests {
         assert_eq!(c.advance(-20), -5);
         c.set(42);
         assert_eq!(c.now_unix_ms(), 42);
+    }
+
+    #[test]
+    fn implements_host_clock() {
+        use std::sync::Arc;
+        let clock: Arc<dyn ov_core::host::Clock> = Arc::new(ManualClock::new(5));
+        assert_eq!(clock.now_unix_ms(), 5);
+        let fixed: Arc<dyn ov_core::host::Clock> = Arc::new(FixedClock::at_utc("2026-01-01T00:00:00Z"));
+        assert_eq!(fixed.now_unix_ms(), 1_767_225_600_000);
     }
 }

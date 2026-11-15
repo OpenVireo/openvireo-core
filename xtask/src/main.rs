@@ -6,8 +6,9 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-// One module per binding command, so W1-BW / W1-BS / W1-BC each own one file.
+// One module per task-owned command (W1-BW wasm, W1-BS xcframework, W1-BC cpp, W1-P openapi).
 mod cpp;
+mod openapi;
 mod wasm;
 mod xcframework;
 
@@ -25,6 +26,7 @@ Commands:
   wasm          build the @openvireo/core-wasm package          (W1-BW)
   xcframework   build OpenVireoCore.xcframework                  (W1-BS)
   cpp           build the C++ static libs + headers              (W1-BC)
+  openapi       round-trip every OpenAPI example through ov-protocol (W1-P)
 
 Portable crates (built for wasm32 and iOS by `ci`) are every package under crates/ except
 those that set `[package.metadata.ov] native-only = true` in their Cargo.toml.
@@ -42,6 +44,7 @@ fn main() -> ExitCode {
         Some("wasm") => wasm::run(&args[1..]),
         Some("xcframework") => xcframework::run(&args[1..]),
         Some("cpp") => cpp::run(&args[1..]),
+        Some("openapi") => openapi::run(&args[1..]),
         None | Some("help" | "-h" | "--help") => {
             print!("{HELP}");
             Ok(())

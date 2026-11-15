@@ -182,7 +182,11 @@ fn run(op: u32, inp: &[u8]) -> Result<Zeroizing<Vec<u8>>, Fail> {
         10 => {
             let f = unpack(inp, 2)?;
             let setup = ServerSetup::<Suite>::new(&mut rng(f[0])?);
-            let r = input(ServerRegistration::start(&setup, input(RegistrationRequest::deserialize(f[1]))?, CREDENTIAL_ID))?;
+            let r = input(ServerRegistration::start(
+                &setup,
+                input(RegistrationRequest::deserialize(f[1]))?,
+                CREDENTIAL_ID,
+            ))?;
             Ok(pack(&[&setup.serialize(), &r.message.serialize()]))
         }
         // test server: [sec, record] -> [stored record]

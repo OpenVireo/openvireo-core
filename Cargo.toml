@@ -1,0 +1,78 @@
+[workspace]
+resolver = "2"
+# Every crate under crates/ is a member, so adding a crate never edits this file. The lead adds
+# "bindings/*" and "bins/*" when Wave 1 creates those folders (a glob that matches nothing fails).
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.98.1"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/openvireo/openvireo-core"
+publish = false
+
+# The dependency allow-list (rust-core-tasks.md §2.6), pinned exactly. Crates use
+# `name.workspace = true` (adding features locally as needed). Adding a crate here
+# needs an OWNER-REQUEST to the lead.
+[workspace.dependencies]
+# Crypto. Versions stay on the RustCrypto generation opaque-ke 4.0.1 uses (digest 0.10).
+opaque-ke = { version = "=4.0.1", default-features = false, features = ["argon2", "ristretto255"] }
+argon2 = { version = "=0.5.3", default-features = false, features = ["alloc"] }
+sha2 = { version = "=0.10.9", default-features = false }
+hmac = { version = "=0.12.1", default-features = false }
+hkdf = { version = "=0.12.4", default-features = false }
+chacha20poly1305 = { version = "=0.10.1", default-features = false, features = ["alloc"] }
+chacha20 = { version = "=0.9.1", default-features = false }
+aes = { version = "=0.8.4", default-features = false }
+cbc = { version = "=0.1.2", default-features = false, features = ["alloc"] }
+x25519-dalek = { version = "=2.0.1", default-features = false, features = ["static_secrets", "zeroize"] }
+ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["zeroize"] }
+curve25519-dalek = { version = "=4.1.3", default-features = false, features = ["zeroize"] }
+blake2 = { version = "=0.10.6", default-features = false }
+rand_core = { version = "=0.6.4", default-features = false }
+rand_chacha = { version = "=0.3.1", default-features = false }
+getrandom = { version = "=0.2.17", default-features = false }
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc", "zeroize_derive"] }
+secrecy = { version = "=0.10.3", default-features = false }
+subtle = { version = "=2.6.1", default-features = false }
+
+# Data
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+base64 = "=0.22.1"
+hex = "=0.4.3"
+uuid = { version = "=1.29.2", default-features = false }
+thiserror = "=2.0.21"
+async-trait = "=0.1.92"
+futures = { version = "=0.3.34", default-features = false, features = ["std"] }
+quick-xml = "=0.42.0"
+flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
+keepass = "=0.17.0"
+
+# Bindings
+uniffi = "=0.32.2"
+wasm-bindgen = "=0.2.130"
+wasm-bindgen-futures = "=0.4.80"
+js-sys = "=0.3.107"
+cxx = "=1.0.205"
+
+# bins/ov, tests and tools only
+clap = { version = "=4.6.7", features = ["derive"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros"] }
+proptest = "=1.12.0"
+insta = "=1.49.0"
+libfuzzer-sys = "=0.4.13"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+debug = false
+# No panic = "abort": the bindings catch panics at the FFI edge (rust-core-tasks.md §2.3).
+# A wasm build that wants abort sets it with --config.

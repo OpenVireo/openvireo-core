@@ -16,6 +16,7 @@ Commands:
   ci            fmt, clippy -D warnings, test, cargo deny, vectors, wasm32 + iOS builds, size report
   vectors       verify every checksum listed in vectors/**/SOURCE.md
   size          build the wasm32 cdylibs in release and print raw + gzip sizes
+  unlinked      check that crates with ignored advisories link no code into the wasm cdylibs
   wasm          build the @openvireo/core-wasm package          (W1-BW)
   xcframework   build OpenVireoCore.xcframework                  (W1-BS)
   cpp           build the C++ static libs + headers              (W1-BC)
@@ -32,6 +33,7 @@ fn main() -> ExitCode {
         Some("ci") => ci(),
         Some("vectors") => vectors(),
         Some("size") => size(),
+        Some("unlinked") => unlinked(),
         Some("wasm") => not_yet("wasm", "W1-BW"),
         Some("xcframework") => not_yet("xcframework", "W1-BS"),
         Some("cpp") => not_yet("cpp", "W1-BC"),
@@ -94,6 +96,7 @@ fn ci() -> Result {
         println!("\n==> iOS build: skipped (needs a macOS host)");
     }
 
+    unlinked()?;
     size()?;
     println!("\nxtask ci: all green");
     Ok(())
@@ -206,12 +209,20 @@ fn find_named(dir: &Path, name: &str, out: &mut Vec<PathBuf>) -> Result {
     Ok(())
 }
 
-/// Release-builds every portable cdylib (plus bindings/ov-wasm) for wasm32 and reports sizes.
-fn size() -> Result {
+/// Crates that are in the dependency graph but must never contribute code to a shipped artifact.
+/// Each one backs an advisory ignored in deny.toml; the ignore is only valid while this holds.
+const UNLINKED_CRATES: [(&str, &str); 1] = [
+    // RUSTSEC-2026-0387: crypto-bigint 0.5 via elliptic-curve 0.13 (opaque-ke 4.0.1). The
+    // ristretto255 suite does its arithmetic in curve25519-dalek.
+    ("crypto_bigint", "RUSTSEC-2026-0387"),
+];
+
+/// Portable cdylibs (plus bindings/ov-wasm): what ships as wasm.
+fn wasm_cdylibs() -> Result<Vec<String>> {
     let meta = metadata()?;
     let mut wanted = portable_packages()?;
     wanted.push("ov-wasm".into());
-    let cdylibs: Vec<String> = meta["packages"]
+    Ok(meta["packages"]
         .as_array()
         .into_iter()
         .flatten()
@@ -224,17 +235,65 @@ fn size() -> Result {
                 .any(|t| t["crate_types"].as_array().into_iter().flatten().any(|c| c == "cdylib"))
         })
         .filter_map(|p| p["name"].as_str().map(str::to_string))
-        .collect();
+        .collect())
+}
+
+fn wasm_release_build(step: &str, cdylibs: &[String], extra: &[&str]) -> Result {
+    let mut cmd = cargo();
+    cmd.args(["build", "--locked", "--release", "--target", WASM_TARGET]).args(extra);
+    for p in cdylibs {
+        cmd.args(["-p", p]);
+    }
+    run(step, &mut cmd)
+}
+
+/// Release-builds the wasm cdylibs with symbols kept (same optimisation and LTO as a shipped
+/// build) and fails if any function from an UNLINKED_CRATES crate survived linking.
+fn unlinked() -> Result {
+    let cdylibs = wasm_cdylibs()?;
+    if cdylibs.is_empty() {
+        println!("\n==> unlinked: no wasm cdylibs");
+        return Ok(());
+    }
+    let target_dir = root().join("target").join("symbols");
+    let target_dir = target_dir.to_str().ok_or("non-UTF-8 target dir")?;
+    wasm_release_build(
+        "unlinked: release wasm32 build with symbols",
+        &cdylibs,
+        &["--config", "profile.release.strip=false", "--target-dir", target_dir],
+    )?;
+    let out_dir = Path::new(target_dir).join(WASM_TARGET).join("release");
+    for name in &cdylibs {
+        let file = out_dir.join(format!("{}.wasm", name.replace('-', "_")));
+        let bytes = fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+        // Guard against a silent pass if the name section ever goes missing.
+        if !contains(&bytes, b"core") {
+            return Err(format!("{}: no symbol names found, can't check", file.display()));
+        }
+        for (krate, advisory) in UNLINKED_CRATES {
+            if contains(&bytes, krate.as_bytes()) {
+                return Err(format!(
+                    "{name}.wasm links code from `{krate}`, so the deny.toml ignore of {advisory} no longer holds"
+                ));
+            }
+        }
+        println!("{name}.wasm: no code from {}", UNLINKED_CRATES.map(|(k, _)| k).join(", "));
+    }
+    Ok(())
+}
+
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+/// Release-builds every portable cdylib (plus bindings/ov-wasm) for wasm32 and reports sizes.
+fn size() -> Result {
+    let cdylibs = wasm_cdylibs()?;
     if cdylibs.is_empty() {
         println!("\n==> size: no wasm cdylibs");
         return Ok(());
     }
-    let mut cmd = cargo();
-    cmd.args(["build", "--locked", "--release", "--target", WASM_TARGET]);
-    for p in &cdylibs {
-        cmd.args(["-p", p]);
-    }
-    run("size: release wasm32 build", &mut cmd)?;
+    wasm_release_build("size: release wasm32 build", &cdylibs, &[])?;
 
     let out_dir = root().join("target").join(WASM_TARGET).join("release");
     println!("\n{:<32} {:>12} {:>12}", "wasm size report", "raw bytes", "gzip -9");

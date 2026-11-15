@@ -7,13 +7,14 @@ all-features = true
 version = 2
 yanked = "deny"
 ignore = [
-  # crypto-bigint 0.5.5 timing issues. It comes in only through elliptic-curve 0.13, a
-  # dependency of opaque-ke 4.0.1 / voprf 0.5. Our suite is ristretto255: group arithmetic
-  # is curve25519-dalek, and the only elliptic-curve code used is hash2curve's
-  # expand_message_xmd (hashing), so no crypto-bigint arithmetic runs on secrets.
-  # The fix needs elliptic-curve 0.14 (opaque-ke 5), which the opaque-ke =4.0.1 pin
-  # rules out. Revisit when opaque-ke is bumped. Accepted by the lead 2026-11-15.
-  { id = "RUSTSEC-2026-0387", reason = "unreachable with ristretto255; needs opaque-ke 5" },
+  # crypto-bigint 0.5.5 timing issues (patched only in 0.7.6+). It comes in through
+  # elliptic-curve 0.13, a dependency of opaque-ke 4.0.1 / voprf 0.5. Our suite is ristretto255:
+  # group arithmetic is curve25519-dalek, and the only elliptic-curve code used is hash2curve's
+  # expand_message_xmd (hashing). No crypto-bigint function survives linking, and
+  # `cargo xtask unlinked` (run by `cargo xtask ci`) fails CI if that ever changes.
+  # The real fix is elliptic-curve 0.14, which needs opaque-ke 5 (only 5.0.0-pre.0 exists on
+  # 2026-11-15). Remove this ignore when opaque-ke 5 is stable and adopted.
+  { id = "RUSTSEC-2026-0387", reason = "no crypto-bigint code is linked (checked by cargo xtask unlinked); fix needs opaque-ke 5" },
 ]
 
 [licenses]

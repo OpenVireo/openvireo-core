@@ -53,7 +53,12 @@ mod tests {
     #[test]
     fn prints_install_help_when_missing() {
         let mut err = Vec::new();
-        let code = run(OsString::from("openvireo-connect-definitely-not-installed"), &[], &mut err);
+        // An absolute path that can't exist, so no PATH lookup can find something and replace the
+        // test process.
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ov-connect-test-{}-{nanos}-absent", std::process::id()));
+        assert!(!dir.exists());
+        let code = run(dir.join(CONNECT_BIN).into_os_string(), &[], &mut err);
         assert_eq!(code, 1);
         assert_eq!(String::from_utf8(err).unwrap(), INSTALL_HELP);
     }

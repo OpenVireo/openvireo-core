@@ -1,0 +1,3 @@
+# Golden output and TS-written fixtures are compared byte for byte: never convert line endings.
+golden/** -text
+fixtures/** -text

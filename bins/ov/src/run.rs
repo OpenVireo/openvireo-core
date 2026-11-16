@@ -167,10 +167,17 @@ pub async fn run_command(o: RunOptions) -> Result<i32, String> {
 
 #[cfg(all(test, unix))]
 mod tests {
+    // No test relies on a PATH lookup (the child is /bin/sh by absolute path) or on scheduling: the
+    // hold-back flush is driven through an in-memory pipe and waits for the output it expects.
     use super::*;
 
     #[derive(Clone, Default)]
     struct Buf(Arc<Mutex<Vec<u8>>>);
+    impl Buf {
+        fn text(&self) -> String {
+            String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+        }
+    }
     impl Write for Buf {
         fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
             self.0.lock().unwrap().extend_from_slice(b);
@@ -181,33 +188,64 @@ mod tests {
         }
     }
 
+    fn out_of(b: &Buf) -> Out {
+        Arc::new(Mutex::new(Box::new(b.clone())))
+    }
+
     fn opts(script: &str, secrets: Option<Vec<String>>, out: &Buf, err: &Buf) -> RunOptions {
         RunOptions {
-            command: "sh".into(),
+            command: "/bin/sh".into(),
             args: vec!["-c".into(), script.into()],
-            env: vec![("PATH".into(), std::env::var("PATH").unwrap_or_default()), ("S".into(), "hunter2".into())],
+            env: vec![("S".into(), "hunter2".into())],
             secrets,
-            stdout: Arc::new(Mutex::new(Box::new(out.clone()))),
-            stderr: Arc::new(Mutex::new(Box::new(err.clone()))),
+            stdout: out_of(out),
+            stderr: out_of(err),
             hold: Duration::from_millis(100),
         }
+    }
+
+    /// A path that can't exist: inside a directory that was never created.
+    fn missing_command() -> String {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ov-run-test-{}-{nanos}-absent", std::process::id()));
+        assert!(!dir.exists());
+        dir.join("no-such-command").to_string_lossy().into_owned()
     }
 
     #[tokio::test]
     async fn masks_output_and_returns_the_exit_code() {
         let (out, err) = (Buf::default(), Buf::default());
-        let code = run_command(opts(
-            "printf 'pw=%s\\n' \"$S\"; printf hun >&2; sleep 0.3; printf 'ter2 %s' \"$S\" >&2; exit 3",
-            Some(vec!["hunter2".into()]),
-            &out,
-            &err,
-        ))
-        .await
-        .unwrap();
+        let script = "printf 'pw=%s\\n' \"$S\"; printf 'e %s e' \"$S\" >&2; exit 3";
+        let code = run_command(opts(script, Some(vec!["hunter2".into()]), &out, &err)).await.unwrap();
         assert_eq!(code, 3);
-        assert_eq!(String::from_utf8(out.0.lock().unwrap().clone()).unwrap(), "pw=<concealed by openvireo>\n");
-        // "hun" was released after the hold time, so the split value is not masked (as in the TS).
-        assert_eq!(String::from_utf8(err.0.lock().unwrap().clone()).unwrap(), "hunter2 <concealed by openvireo>");
+        assert_eq!(out.text(), "pw=<concealed by openvireo>\n");
+        assert_eq!(err.text(), "e <concealed by openvireo> e");
+    }
+
+    #[tokio::test]
+    async fn no_masking_still_returns_the_exit_code() {
+        let (out, err) = (Buf::default(), Buf::default());
+        assert_eq!(run_command(opts("exit 7", None, &out, &err)).await.unwrap(), 7);
+    }
+
+    #[tokio::test]
+    async fn releases_a_held_prefix_after_the_hold_time() {
+        let (mut tx, rx) = tokio::io::duplex(64);
+        let got = Buf::default();
+        let pump = tokio::spawn(pump(rx, out_of(&got), vec!["hunter2".into()], Duration::from_millis(20)));
+        use tokio::io::AsyncWriteExt;
+        tx.write_all(b"hun").await.unwrap();
+        // Nothing more arrives, so after the hold time "hun" is written as is.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while got.text() != "hun" {
+            assert!(std::time::Instant::now() < deadline, "held bytes never released: {:?}", got.text());
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        // The rest of the split value is no longer a secret prefix (as in the TS).
+        tx.write_all(b"ter2 hunter2").await.unwrap();
+        drop(tx);
+        pump.await.unwrap();
+        assert_eq!(got.text(), "hunter2 <concealed by openvireo>");
     }
 
     #[tokio::test]
@@ -215,14 +253,15 @@ mod tests {
         let (out, err) = (Buf::default(), Buf::default());
         let code = run_command(opts("echo \"${HOME:-none}\"; kill -TERM $$", Some(vec![]), &out, &err)).await.unwrap();
         assert_eq!(code, 143);
-        assert_eq!(String::from_utf8(out.0.lock().unwrap().clone()).unwrap(), "none\n");
+        assert_eq!(out.text(), "none\n");
     }
 
     #[tokio::test]
     async fn a_missing_command_fails_like_node() {
         let (out, err) = (Buf::default(), Buf::default());
         let mut o = opts("", None, &out, &err);
-        o.command = "ov-test-no-such-command".into();
-        assert_eq!(run_command(o).await.unwrap_err(), "spawn ov-test-no-such-command ENOENT");
+        let missing = missing_command();
+        o.command = missing.clone();
+        assert_eq!(run_command(o).await.unwrap_err(), format!("spawn {missing} ENOENT"));
     }
 }

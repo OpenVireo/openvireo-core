@@ -14,7 +14,7 @@
 //! | [`orgs`] | confirm, promote, flagged vaults | `confirmMember`, `setMemberRole`, `removeMember` |
 //! | [`service_account`] | SA master wrapping, secrets, SA unlock | `createServiceAccount`, `issueServiceAccountSecret`, `service-account.ts` |
 //! | [`unlock`] | sealed keyset resume check | `sealUnlocked`, `resumeUnlocked` |
-//! | [`reference`], [`items`] | `ov://` references, items, templates | `vault/reference.ts`, `vault/items.ts` |
+//! | [`reference`](mod@reference), [`items`] | `ov://` references, items, templates | `vault/reference.ts`, `vault/items.ts` |
 //!
 //! Every key is held in `Zeroizing` and wiped on drop; `Debug` never prints one.
 

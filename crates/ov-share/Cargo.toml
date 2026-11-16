@@ -9,6 +9,20 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+ov-error = { path = "../ov-error" }
+ov-crypto = { path = "../ov-crypto" }
+base64.workspace = true
+hmac.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+unicode-normalization.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+ov-testkit = { path = "../ov-testkit" }
+hex.workspace = true
+proptest.workspace = true
 
 [lints]
 workspace = true

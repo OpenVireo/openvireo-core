@@ -19,7 +19,10 @@ macro_rules! version {
     };
 }
 
+pub mod args;
 pub mod cache;
+pub mod cli;
+pub mod connect;
 pub mod generate;
 pub mod host;
 pub mod http;

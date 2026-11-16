@@ -22,7 +22,11 @@ use ov_vault::{
 use zeroize::Zeroizing;
 
 fn item_ref(group: &[&str], entry: &str) -> ItemReference {
-    ItemReference { vault: "Team Infra".into(), group_path: group.iter().map(|s| s.to_string()).collect(), entry: entry.into() }
+    ItemReference {
+        vault: "Team Infra".into(),
+        group_path: group.iter().map(|s| s.to_string()).collect(),
+        entry: entry.into(),
+    }
 }
 
 fn update(name: &str, value: &str) -> FieldUpdate {
@@ -34,7 +38,10 @@ fn parses_item_references() {
     let r = parse_item_reference("ov://Team%20Infra/GitHub").unwrap();
     assert_eq!((r.vault.as_str(), r.group_path.is_empty(), r.entry.as_str()), ("Team Infra", true, "GitHub"));
     let r = parse_item_reference("ov://v/a/b%2Fc/Entry").unwrap();
-    assert_eq!((r.vault.as_str(), r.group_path.clone(), r.entry.as_str()), ("v", vec!["a".to_owned(), "b/c".to_owned()], "Entry"));
+    assert_eq!(
+        (r.vault.as_str(), r.group_path.clone(), r.entry.as_str()),
+        ("v", vec!["a".to_owned(), "b/c".to_owned()], "Entry")
+    );
     for bad in ["ov://v", "ov://v//e", "https://v/e", "ov://v/%zz"] {
         let e = parse_item_reference(bad).unwrap_err();
         assert!(e.is(OvErrorCode::InvalidReference), "{bad}");
@@ -56,7 +63,9 @@ fn world() -> World {
     let alice = User::new("alice");
     server.register(&alice);
     server.create_org("acme", &alice);
-    let nv = ov_vault::new_vault("Team Infra", &alice.principal(), &alice.keyset, Some(("acme", &server.members["acme"]))).unwrap();
+    let nv =
+        ov_vault::new_vault("Team Infra", &alice.principal(), &alice.keyset, Some(("acme", &server.members["acme"])))
+            .unwrap();
     let created = server.create_vault(&alice.principal(), &nv.request).unwrap();
     let vault = VaultKeys::from_vault(&nv.listing(created), &alice.keyset);
     let (mut db, ck) = ov_kdbx::vault::create_vault_kdbx("Team Infra", &nv.key[..], NOW).unwrap();
@@ -69,10 +78,13 @@ fn world() -> World {
 
     let mut tokens = Vec::new();
     for (name, role) in [("reader", VaultRole::Read), ("writer", VaultRole::Write)] {
-        let sa = new_service_account(ISSUER, &alice.principal(), &alice.keyset, &server.members["acme"], &ServiceAccountSpec {
-            name: name.into(),
-            ..Default::default()
-        })
+        let sa = new_service_account(
+            ISSUER,
+            &alice.principal(),
+            &alice.keyset,
+            &server.members["acme"],
+            &ServiceAccountSpec { name: name.into(), ..Default::default() },
+        )
         .unwrap();
         server.create_sa("acme", &sa.request);
         let g = sa.vault_grant(&vault, role).unwrap();
@@ -122,16 +134,28 @@ fn lists_reads_and_sets_whole_items() {
     let by_id = find_item(&db, &item_ref(&[], &gh.id), ItemValues::All).unwrap();
     assert_eq!(by_id.field("Password"), Some("s3cret"));
 
-    let out = set_item_fields(&mut db, &item_ref(&["New", "Sub"], "Api"), &[update("username", "u"), update("token", "t0k")], CreateMode::CreateIfMissing, NOW + 5).unwrap();
+    let out = set_item_fields(
+        &mut db,
+        &item_ref(&["New", "Sub"], "Api"),
+        &[update("username", "u"), update("token", "t0k")],
+        CreateMode::CreateIfMissing,
+        NOW + 5,
+    )
+    .unwrap();
     let api = find_item(&db, &item_ref(&["New", "Sub"], "Api"), ItemValues::All).unwrap();
     let mut prot = api.protected.clone();
     prot.sort();
-    assert_eq!((out.created, api.field("UserName"), api.field("token"), prot), (true, Some("u"), Some("t0k"), vec!["Password".to_owned(), "token".to_owned()]));
+    assert_eq!(
+        (out.created, api.field("UserName"), api.field("token"), prot),
+        (true, Some("u"), Some("t0k"), vec!["Password".to_owned(), "token".to_owned()])
+    );
     assert_eq!(api.group, ["New", "Sub"]);
 
-    let e = set_item_fields(&mut db, &item_ref(&[], "GitHub"), &[update("x", "1")], CreateMode::CreateOnly, NOW).unwrap_err();
+    let e = set_item_fields(&mut db, &item_ref(&[], "GitHub"), &[update("x", "1")], CreateMode::CreateOnly, NOW)
+        .unwrap_err();
     assert!(e.is(OvErrorCode::Conflict) && e.status == Some(409) && e.message.contains("already exists"));
-    let e = set_item_fields(&mut db, &item_ref(&[], "Missing"), &[update("x", "1")], CreateMode::MustExist, NOW).unwrap_err();
+    let e = set_item_fields(&mut db, &item_ref(&[], "Missing"), &[update("x", "1")], CreateMode::MustExist, NOW)
+        .unwrap_err();
     assert!(e.is(OvErrorCode::EntryNotFound) && e.message.contains("not found"));
 }
 
@@ -155,7 +179,8 @@ fn creates_an_sa_reads_and_writes_by_reference_and_issues_a_second_secret() {
     let (keyring, sa_id) = sa_login(&w.server, &w.write_token);
     // by id and by name
     assert_eq!(&*sa_read(&w.server, &keyring, &format!("ov://{}/GitHub/password", w.vault.id())), "s3cret");
-    let injected = inject("TOKEN=ov://Team%20Infra/GitHub/password\n", |r| Ok(sa_read(&w.server, &keyring, r))).unwrap();
+    let injected =
+        inject("TOKEN=ov://Team%20Infra/GitHub/password\n", |r| Ok(sa_read(&w.server, &keyring, r))).unwrap();
     assert_eq!(&*injected.text, "TOKEN=s3cret\n");
     assert_eq!(injected.secrets.len(), 1);
 
@@ -175,7 +200,9 @@ fn creates_an_sa_reads_and_writes_by_reference_and_issues_a_second_secret() {
     assert_eq!(entry.history.len(), 1);
 
     // a second secret, issued by an admin without the first one
-    let issued = issue_sa_secret(ISSUER, &w.alice.keyset, &w.server.get_sa(&w.alice.principal(), &sa_id), Some("second"), None).unwrap();
+    let issued =
+        issue_sa_secret(ISSUER, &w.alice.keyset, &w.server.get_sa(&w.alice.principal(), &sa_id), Some("second"), None)
+            .unwrap();
     assert_eq!(issued.body.name.as_deref(), Some("second"));
     assert_eq!(issued.body.prefix.len(), 8);
     w.server.issue_secret(&sa_id, &issued.body);
@@ -198,11 +225,17 @@ fn the_master_key_is_sealed_to_every_confirmed_owner_and_admin_and_the_creator()
         member(&inv, OrgRole::Admin, MemberStatus::Invited),
         member(&mem, OrgRole::Member, MemberStatus::Confirmed),
     ];
-    let sa = new_service_account(ISSUER, &alice.principal(), &alice.keyset, &members, &ServiceAccountSpec {
-        name: "ci".into(),
-        expires_at: Some("2030-01-01T00:00:00Z".into()),
-        secret_name: Some("first".into()),
-    })
+    let sa = new_service_account(
+        ISSUER,
+        &alice.principal(),
+        &alice.keyset,
+        &members,
+        &ServiceAccountSpec {
+            name: "ci".into(),
+            expires_at: Some("2030-01-01T00:00:00Z".into()),
+            secret_name: Some("first".into()),
+        },
+    )
     .unwrap();
     let to: Vec<_> = sa.request.master_keys.iter().map(|k| k.principal.clone()).collect();
     assert_eq!(to, [alice.principal(), adm.principal()]);
@@ -212,7 +245,8 @@ fn the_master_key_is_sealed_to_every_confirmed_owner_and_admin_and_the_creator()
     assert!(!format!("{sa:?}").contains(&*sa.token));
 
     // not in the list at all: added anyway
-    let sa2 = new_service_account(ISSUER, &alice.principal(), &alice.keyset, &[], &ServiceAccountSpec::default()).unwrap();
+    let sa2 =
+        new_service_account(ISSUER, &alice.principal(), &alice.keyset, &[], &ServiceAccountSpec::default()).unwrap();
     assert_eq!(sa2.request.master_keys.len(), 1);
     assert_eq!(sa2.request.master_keys[0].principal, alice.principal());
 
@@ -224,7 +258,9 @@ fn the_master_key_is_sealed_to_every_confirmed_owner_and_admin_and_the_creator()
     for u in [&alice, &adm] {
         assert_eq!(*unseal_master(&u.keyset, &server.get_sa(&u.principal(), &sa.sa_id)).unwrap(), *master);
     }
-    assert!(unseal_master(&mem.keyset, &server.get_sa(&mem.principal(), &sa.sa_id)).unwrap_err().is(OvErrorCode::Forbidden));
+    assert!(unseal_master(&mem.keyset, &server.get_sa(&mem.principal(), &sa.sa_id))
+        .unwrap_err()
+        .is(OvErrorCode::Forbidden));
 }
 
 #[test]

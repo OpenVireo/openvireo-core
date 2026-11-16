@@ -9,7 +9,9 @@ use ov_error::OvErrorCode;
 use ov_kdbx::vault::{open_with_key_versions, KeyVersion};
 use ov_protocol::types::{MemberStatus, OrgRole, VaultRole};
 use ov_vault::keys::user_principal;
-use ov_vault::orgs::{confirm_member_request, member_keys, missing_vaults, promotion, set_member_role_request, VaultChoice};
+use ov_vault::orgs::{
+    confirm_member_request, member_keys, missing_vaults, promotion, set_member_role_request, VaultChoice,
+};
 use ov_vault::service_account::{issue_sa_secret, new_service_account, seal_sa_master_keys, ServiceAccountSpec};
 use ov_vault::{grant, new_vault, parse_reference, read_field, Keyring, VaultKeys};
 use zeroize::Zeroizing;
@@ -45,8 +47,12 @@ fn register_vault_share_revoke_and_rotate() {
     server.register(&bob);
 
     let mut vault = create(&mut server, &alice, "Team Infra", None, &[("GitHub", "ci", "s3cret")]);
-    let listed: Vec<_> = server.list_vaults(&alice.principal()).iter().map(|v| VaultKeys::from_vault(v, &alice.keyset).info).collect();
-    assert_eq!(listed.iter().map(|v| (v.name.as_str(), v.role.clone())).collect::<Vec<_>>(), [("Team Infra", VaultRole::Manage)]);
+    let listed: Vec<_> =
+        server.list_vaults(&alice.principal()).iter().map(|v| VaultKeys::from_vault(v, &alice.keyset).info).collect();
+    assert_eq!(
+        listed.iter().map(|v| (v.name.as_str(), v.role.clone())).collect::<Vec<_>>(),
+        [("Team Infra", VaultRole::Manage)]
+    );
     assert_eq!(password(&server, &vault, "ov://Team%20Infra/GitHub/password"), "s3cret");
 
     // a second device of alice's: the same keyset unseals the same key
@@ -144,7 +150,8 @@ fn rotation_keeps_roles_and_needs_every_members_keys() {
         server.grant_access(&alice.principal(), vault.id(), &[g.grant]).unwrap();
     }
     let access = server.list_access(vault.id());
-    let plan = ov_vault::plan_rotation(&vault, &alice.principal(), &access, &[carol.principal(), carol.principal()]).unwrap();
+    let plan =
+        ov_vault::plan_rotation(&vault, &alice.principal(), &access, &[carol.principal(), carol.principal()]).unwrap();
     assert_eq!(plan.removed(), [carol.principal()]);
     let mut kept: Vec<_> = plan.members().iter().map(|m| (m.principal.clone(), m.role.clone())).collect();
     kept.sort_by(|a, b| a.0.cmp(&b.0));
@@ -226,10 +233,13 @@ fn confirm_with_chosen_vaults_then_promote_then_remove_and_rotate() {
     server.create_org("acme", &alice);
     let infra = create(&mut server, &alice, "Infra", Some("acme"), &[("GitHub", "", "s3cret")]);
     let payroll = create(&mut server, &alice, "Payroll", Some("acme"), &[]);
-    let sa = new_service_account(ISSUER, &alice.principal(), &alice.keyset, &server.members["acme"], &ServiceAccountSpec {
-        name: "ci".into(),
-        ..Default::default()
-    })
+    let sa = new_service_account(
+        ISSUER,
+        &alice.principal(),
+        &alice.keyset,
+        &server.members["acme"],
+        &ServiceAccountSpec { name: "ci".into(), ..Default::default() },
+    )
     .unwrap();
     server.create_sa("acme", &sa.request);
 
@@ -250,26 +260,43 @@ fn confirm_with_chosen_vaults_then_promote_then_remove_and_rotate() {
     assert_eq!(req.sa_master_keys, None);
     let grants = req.grants.as_ref().unwrap();
     assert_eq!(grants.len(), 1);
-    assert_eq!((grants[0].vault_id.as_str(), grants[0].role.clone(), grants[0].key_version), (infra.id(), VaultRole::Read, 1));
+    assert_eq!(
+        (grants[0].vault_id.as_str(), grants[0].role.clone(), grants[0].key_version),
+        (infra.id(), VaultRole::Read, 1)
+    );
     let confirmed = server.confirm_member(&alice.principal(), "acme", "bob", &req);
     assert_eq!(confirmed.status, MemberStatus::Confirmed);
-    let bobs: Vec<_> = server.list_vaults(&bob.principal()).iter().map(|v| VaultKeys::from_vault(v, &bob.keyset)).collect();
-    assert_eq!(bobs.iter().map(|v| (v.info.name.as_str(), v.info.role.clone())).collect::<Vec<_>>(), [("Infra", VaultRole::Read)]);
+    let bobs: Vec<_> =
+        server.list_vaults(&bob.principal()).iter().map(|v| VaultKeys::from_vault(v, &bob.keyset)).collect();
+    assert_eq!(
+        bobs.iter().map(|v| (v.info.name.as_str(), v.info.role.clone())).collect::<Vec<_>>(),
+        [("Infra", VaultRole::Read)]
+    );
     assert_eq!(password(&server, &bobs[0], "ov://Infra/GitHub/password"), "s3cret");
     let e = issue_sa_secret(ISSUER, &bob.keyset, &server.get_sa(&bob.principal(), &sa.sa_id), None, None).unwrap_err();
     assert!(e.is(OvErrorCode::Forbidden) && e.status == Some(403));
 
     // promotion: the SA master key, then manage on every org vault alice manages
     let promoted = promotion(&confirmed, &OrgRole::Admin).unwrap().expect("a promotion");
-    let masters = seal_sa_master_keys(&alice.keyset, &server.list_sas(&alice.principal(), "acme"), &promoted.principal, &promoted.public.enc_pk).unwrap();
+    let masters = seal_sa_master_keys(
+        &alice.keyset,
+        &server.list_sas(&alice.principal(), "acme"),
+        &promoted.principal,
+        &promoted.public.enc_pk,
+    )
+    .unwrap();
     assert_eq!(masters.len(), 1);
     server.set_member_role("acme", "bob", &set_member_role_request(OrgRole::Admin, Some(masters)));
     for v in keyring.managed_org_vaults("acme") {
         let g = grant(v, &server.public_principal(&bob.principal()), VaultRole::Manage).unwrap();
         server.grant_access(&alice.principal(), v.id(), &[g.grant]).unwrap();
     }
-    let mut bobs: Vec<_> =
-        server.list_vaults(&bob.principal()).iter().map(|v| VaultKeys::from_vault(v, &bob.keyset).info).map(|i| (i.name, i.role)).collect();
+    let mut bobs: Vec<_> = server
+        .list_vaults(&bob.principal())
+        .iter()
+        .map(|v| VaultKeys::from_vault(v, &bob.keyset).info)
+        .map(|i| (i.name, i.role))
+        .collect();
     bobs.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(bobs, [("Infra".to_owned(), VaultRole::Manage), ("Payroll".to_owned(), VaultRole::Manage)]);
     let issued = issue_sa_secret(ISSUER, &bob.keyset, &server.get_sa(&bob.principal(), &sa.sa_id), None, None).unwrap();
@@ -306,7 +333,14 @@ fn an_admin_is_confirmed_with_every_managed_org_vault_and_the_sa_master_keys() {
     server.create_org("acme", &alice);
     let infra = create(&mut server, &alice, "Infra", Some("acme"), &[]);
     let _personal = create(&mut server, &alice, "Personal", None, &[]);
-    let sa = new_service_account(ISSUER, &alice.principal(), &alice.keyset, &server.members["acme"], &ServiceAccountSpec::default()).unwrap();
+    let sa = new_service_account(
+        ISSUER,
+        &alice.principal(),
+        &alice.keyset,
+        &server.members["acme"],
+        &ServiceAccountSpec::default(),
+    )
+    .unwrap();
     server.create_sa("acme", &sa.request);
     server.members.get_mut("acme").unwrap().push(common::member(&carol, OrgRole::Admin, MemberStatus::Accepted));
 
@@ -314,11 +348,20 @@ fn an_admin_is_confirmed_with_every_managed_org_vault_and_the_sa_master_keys() {
     keyring.ingest_list(&server.list_vaults(&alice.principal()), &alice.keyset);
     let target = member_keys(&server.find_member("acme", "carol")).unwrap();
     assert!(target.manager);
-    let masters = seal_sa_master_keys(&alice.keyset, &server.list_sas(&alice.principal(), "acme"), &target.principal, &target.public.enc_pk).unwrap();
+    let masters = seal_sa_master_keys(
+        &alice.keyset,
+        &server.list_sas(&alice.principal(), "acme"),
+        &target.principal,
+        &target.public.enc_pk,
+    )
+    .unwrap();
     // picked vaults are ignored for an admin: every managed org vault, with manage
     let req = confirm_member_request("acme", &target, &keyring, &[], Some(masters)).unwrap();
     let grants = req.grants.as_ref().unwrap();
-    assert_eq!(grants.iter().map(|g| (g.vault_id.as_str(), g.role.clone())).collect::<Vec<_>>(), [(infra.id(), VaultRole::Manage)]);
+    assert_eq!(
+        grants.iter().map(|g| (g.vault_id.as_str(), g.role.clone())).collect::<Vec<_>>(),
+        [(infra.id(), VaultRole::Manage)]
+    );
     assert_eq!(req.sa_master_keys.as_ref().map(Vec::len), Some(1));
     server.confirm_member(&alice.principal(), "acme", "carol", &req);
     assert!(issue_sa_secret(ISSUER, &carol.keyset, &server.get_sa(&carol.principal(), &sa.sa_id), None, None).is_ok());

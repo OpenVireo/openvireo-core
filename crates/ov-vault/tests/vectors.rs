@@ -75,7 +75,8 @@ fn service_account_vector_unlocks() {
 
     // the admin (the `keyset` vector's principal) unseals the master key
     assert_eq!(sa.master_sealed_to_admin.admin, tv.keyset.principal);
-    let admin = keyset_from_secrets(&hex_array::<32>(&tv.keyset.enc_sk_hex), &hex_array::<32>(&tv.keyset.sign_seed_hex));
+    let admin =
+        keyset_from_secrets(&hex_array::<32>(&tv.keyset.enc_sk_hex), &hex_array::<32>(&tv.keyset.sign_seed_hex));
     let listed = ServiceAccount {
         id: sa.sa_id.clone(),
         org_id: "org".into(),

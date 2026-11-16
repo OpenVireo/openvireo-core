@@ -115,7 +115,10 @@ impl Server {
         let mut access = BTreeMap::new();
         for g in &req.grants {
             assert_eq!(g.key_version, 1);
-            access.insert(g.principal.clone(), AccessRow { role: Some(g.role.clone()), keys: [(1, g.sealed_key.clone())].into() });
+            access.insert(
+                g.principal.clone(),
+                AccessRow { role: Some(g.role.clone()), keys: [(1, g.sealed_key.clone())].into() },
+            );
         }
         self.vaults.insert(
             req.id.clone(),
@@ -245,7 +248,12 @@ impl Server {
 
     pub fn confirm_member(&mut self, caller: &str, org: &str, user: &str, req: &ConfirmMemberRequest) -> Member {
         for g in req.grants.iter().flatten() {
-            let grant = Grant { principal: g.principal.clone(), role: g.role.clone(), key_version: g.key_version, sealed_key: g.sealed_key.clone() };
+            let grant = Grant {
+                principal: g.principal.clone(),
+                role: g.role.clone(),
+                key_version: g.key_version,
+                sealed_key: g.sealed_key.clone(),
+            };
             self.grant_access(caller, &g.vault_id, &[grant]).unwrap();
         }
         self.store_masters(req.sa_master_keys.as_deref().unwrap_or_default());
@@ -314,7 +322,10 @@ impl Server {
     pub fn exchange(&self, req: &ServiceAccountExchangeRequest) -> Result<ServiceAccountExchange, OvError> {
         let sa = self.sas.get(&req.sa_id).ok_or_else(|| err(OvErrorCode::Unauthorized, 401, "unknown SA"))?;
         let secret: [u8; 32] = from_b64u(&req.secret).unwrap().try_into().unwrap();
-        let wrapped = sa.secrets.get(&sa_secret_hash(&secret)).ok_or_else(|| err(OvErrorCode::Unauthorized, 401, "bad secret"))?;
+        let wrapped = sa
+            .secrets
+            .get(&sa_secret_hash(&secret))
+            .ok_or_else(|| err(OvErrorCode::Unauthorized, 401, "bad secret"))?;
         Ok(ServiceAccountExchange {
             access_token: "jwt".into(),
             expires_in: 900,
@@ -365,7 +376,8 @@ pub fn open(server: &Server, vault: &VaultKeys) -> Result<Database, OvError> {
 pub fn rotate(server: &mut Server, me: &User, vault: &mut VaultKeys, remove: &[Principal]) {
     let access = server.list_access(vault.id());
     let plan = plan_rotation(vault, &me.principal(), &access, remove).unwrap();
-    let others: Vec<PublicPrincipal> = plan.principals_needing_keys().iter().map(|p| server.public_principal(p)).collect();
+    let others: Vec<PublicPrincipal> =
+        plan.principals_needing_keys().iter().map(|p| server.public_principal(p)).collect();
     let req = plan.start_request(&me.keyset.public, &others).unwrap();
     server.start_rotation(vault.id(), &req);
     vault.add_key(plan.new_key());

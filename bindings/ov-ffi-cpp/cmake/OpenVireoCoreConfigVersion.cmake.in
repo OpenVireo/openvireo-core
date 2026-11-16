@@ -1,0 +1,23 @@
+# Version check for OpenVireoCore @VERSION@: 0.x releases are compatible only with the same
+# minor version (SemVer beta), 1.x and later with the same major version.
+set(PACKAGE_VERSION "@VERSION@")
+
+if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION)
+  set(PACKAGE_VERSION_COMPATIBLE FALSE)
+elseif("@VERSION@" MATCHES "^0\\.")
+  string(REGEX MATCH "^0\\.[0-9]+" _ovcore_have "${PACKAGE_VERSION}")
+  string(REGEX MATCH "^[0-9]+\\.[0-9]+" _ovcore_want "${PACKAGE_FIND_VERSION}")
+  if(PACKAGE_FIND_VERSION_COUNT LESS 2 OR _ovcore_have STREQUAL _ovcore_want)
+    set(PACKAGE_VERSION_COMPATIBLE TRUE)
+  else()
+    set(PACKAGE_VERSION_COMPATIBLE FALSE)
+  endif()
+elseif(PACKAGE_FIND_VERSION_MAJOR STREQUAL "@VERSION_MAJOR@")
+  set(PACKAGE_VERSION_COMPATIBLE TRUE)
+else()
+  set(PACKAGE_VERSION_COMPATIBLE FALSE)
+endif()
+
+if(PACKAGE_FIND_VERSION STREQUAL PACKAGE_VERSION)
+  set(PACKAGE_VERSION_EXACT TRUE)
+endif()

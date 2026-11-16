@@ -1,0 +1,27 @@
+# OpenVireoCore: openvireo-core for C++ (libovcore + headers), made by `cargo xtask cpp`.
+#
+#   find_package(OpenVireoCore REQUIRED)
+#   target_link_libraries(app PRIVATE OpenVireoCore::ovcore)
+#   #include <ovcore.h>
+#
+# Built for: @TARGET@ (@PROFILE@). Needs C++17.
+
+if(TARGET OpenVireoCore::ovcore)
+  return()
+endif()
+
+get_filename_component(_ovcore_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+
+add_library(OpenVireoCore::ovcore STATIC IMPORTED)
+set_target_properties(OpenVireoCore::ovcore PROPERTIES
+  IMPORTED_LOCATION "${_ovcore_prefix}/lib/@LIB_FILE@"
+  INTERFACE_INCLUDE_DIRECTORIES "${_ovcore_prefix}/include"
+  INTERFACE_COMPILE_FEATURES cxx_std_17
+  # What the Rust standard library and the core need from the system
+  # (`rustc --print native-static-libs` for @TARGET@).
+  INTERFACE_LINK_LIBRARIES "@NATIVE_LIBS@"
+)
+
+set(OpenVireoCore_VERSION "@VERSION@")
+set(OpenVireoCore_TARGET "@TARGET@")
+unset(_ovcore_prefix)

@@ -3,7 +3,7 @@
 //! Conventions (rust-core-tasks.md §2.3):
 //! - Methods are camelCase. Records are plain objects (see `records.rs`); secrets are `Uint8Array`
 //!   and the caller wipes what it receives.
-//! - Every call that takes a [`CancelToken`](ov_core::api::CancelToken) in Rust takes an optional
+//! - Every call that takes a [`ov_core::api::CancelToken`] in Rust takes an optional
 //!   `AbortSignal` last; aborting it cancels the call, which then rejects with `aborted`.
 //! - Async calls return a `Promise`; errors are `OvError`s (thrown, or the promise rejects).
 //! - `u64`/`i64` arguments are JS numbers (integers up to 2^53).

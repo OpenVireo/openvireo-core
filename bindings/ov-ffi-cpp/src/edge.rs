@@ -16,7 +16,7 @@ thread_local! {
 }
 
 /// The error a bridged call returns. cxx throws it in C++ as `rust::Error` with this `Display`
-/// text (`"<wire code>: <message>"`); the whole OvError is kept for [`take_last_error`].
+/// text (`"<wire code>: <message>"`); the whole OvError is kept for `take_last_error`.
 #[derive(Debug)]
 pub struct FfiError(pub OvError);
 

@@ -1,0 +1,18 @@
+[package]
+name = "ov-host"
+description = "The Host traits the core runs on (HTTP, secure store, blob cache, clock, log), re-exported as ov_core::host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ov-error = { path = "../ov-error" }
+ov-http = { path = "../ov-http" }
+async-trait.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true

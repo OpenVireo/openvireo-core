@@ -11,7 +11,7 @@ use ov_core::host as core_host;
 macro_rules! codes {
     ($( $variant:ident, )+) => {
         /// The error code: `ov_error::OvErrorCode` one for one (wire strings via
-        /// [`error_code_wire`](crate::error_code_wire)).
+        /// `error_code_wire`).
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
         pub enum OvErrorCode {
             $(

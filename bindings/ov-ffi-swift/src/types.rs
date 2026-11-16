@@ -1,7 +1,7 @@
 //! The facade's plain records and enums, exposed as they are with `#[uniffi::remote]`: each
 //! declaration below restates an `ov_core` type field for field (the compiler checks they match),
 //! so no conversion code runs and Swift sees the same names. Records that hold a handle or an
-//! `OvError` can't be remote; they have local mirrors in [`crate::wrapped`].
+//! `OvError` can't be remote; they have local mirrors in `wrapped`.
 //!
 //! `SecretBytes` fields are `[u8]` here and `Data` in Swift; the caller wipes what it receives.
 

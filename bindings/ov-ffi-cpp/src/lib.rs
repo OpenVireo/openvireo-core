@@ -8,7 +8,7 @@
 //! - Async calls block the calling thread (see `README.md`): every one takes a [`CancelToken`].
 //! - Every call catches panics at the edge and fails with `OvError { code: internal }`. A failed
 //!   call throws `rust::Error` in C++; `ov::call()` (in `include/ovcore.h`) turns it into an
-//!   `ov::Error` carrying the whole OvError, read from [`ffi::take_last_error`].
+//!   `ov::Error` carrying the whole OvError, read from `ffi::take_last_error`.
 //!
 //! `README.md` lists which facade methods are bridged so far.
 

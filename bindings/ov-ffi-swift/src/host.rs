@@ -1,7 +1,7 @@
 //! The Host traits as UniFFI foreign traits: Swift implements them (URLSession, Keychain, files,
 //! os_log) and passes them to [`Host::new`]. Small adapters turn each into the matching
 //! `ov_core::host` trait. The FFI shapes differ from the core's only where UniFFI needs it:
-//! owned `String` arguments, header pairs as [`HttpHeader`] records, `Arc` instead of `Box` for
+//! owned `String` arguments, header pairs as `HttpHeader` records, `Arc` instead of `Box` for
 //! the returned stream, and plain `Vec<u8>` for secrets (wrapped in `Zeroizing` on the way in).
 
 use std::sync::Arc;

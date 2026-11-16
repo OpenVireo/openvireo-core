@@ -1385,6 +1385,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "ov-error",
+ "ov-host",
  "ov-http",
  "zeroize",
 ]
@@ -1440,6 +1441,16 @@ dependencies = [
  "ov-crypto",
  "ov-error",
  "uniffi",
+ "zeroize",
+]
+
+[[package]]
+name = "ov-host"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "ov-error",
+ "ov-http",
  "zeroize",
 ]
 

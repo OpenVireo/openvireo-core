@@ -1,7 +1,7 @@
 //! Adapters from the C++ Host classes (`include/host.h`) to the core's Host traits.
 //!
 //! The C++ methods are synchronous; each async trait method calls straight through and is ready
-//! on its first poll. C++ exceptions become `OvError`s ([`host_exception`]); transport failures come
+//! on its first poll. C++ exceptions become `OvError`s (`host_exception`); transport failures come
 //! back through `TransportFailure`.
 
 use std::sync::Arc;

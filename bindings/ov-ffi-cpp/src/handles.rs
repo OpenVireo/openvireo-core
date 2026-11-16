@@ -15,7 +15,7 @@ use crate::ffi;
 type R<T> = Result<T, FfiError>;
 
 /// `ov::CancelToken`: cancels the calls it is passed to. See [`core::CancelToken`].
-pub struct CancelToken(core::CancelToken);
+pub struct CancelToken(pub(crate) core::CancelToken);
 
 /// `ov::new_cancel_token()`.
 pub fn new_cancel_token() -> Box<CancelToken> {
@@ -43,7 +43,7 @@ impl CancelToken {
 // ------------------------------------------------------------------------------- Client
 
 /// `ov::Client`: [`core::OvClient`].
-pub struct Client(core::OvClient);
+pub struct Client(pub(crate) core::OvClient);
 
 /// `ov::new_client()`: a client over the C++ Host. Does no I/O.
 pub fn new_client(
@@ -107,7 +107,7 @@ impl Client {
 // ------------------------------------------------------------------------------ Account
 
 /// `ov::Account`: [`core::Account`].
-pub struct Account(core::Account);
+pub struct Account(pub(crate) core::Account);
 
 impl Account {
     /// [`core::Account::server_config`].
@@ -238,7 +238,7 @@ impl LoginStep {
 }
 
 /// `ov::TotpChallenge`: [`core::TotpChallenge`].
-pub struct TotpChallenge(core::TotpChallenge);
+pub struct TotpChallenge(pub(crate) core::TotpChallenge);
 
 impl TotpChallenge {
     /// [`core::TotpChallenge::attempt`].
@@ -250,7 +250,7 @@ impl TotpChallenge {
 // -------------------------------------------------------------------------------- Vault
 
 /// `ov::Vault`: [`core::Vault`].
-pub struct Vault(core::Vault);
+pub struct Vault(pub(crate) core::Vault);
 
 /// `ov::vault_open_local()`: [`core::Vault::open_local`].
 pub fn vault_open_local(kdbx: Vec<u8>, credentials: ffi::KdbxCredentials, cancel: &CancelToken) -> R<Box<Vault>> {
@@ -339,17 +339,24 @@ impl Vault {
         })
     }
 
-    /// [`core::Vault::export_kdbx`] of every group.
-    pub fn export_kdbx(&self, credentials: ffi::KdbxCredentials, cancel: &CancelToken) -> R<Vec<u8>> {
+    /// [`core::Vault::export_kdbx`]; an empty `group_ids` is every group.
+    pub fn export_kdbx(
+        &self,
+        credentials: ffi::KdbxCredentials,
+        group_ids: Vec<String>,
+        cancel: &CancelToken,
+    ) -> R<Vec<u8>> {
         let c = cancel.0.clone();
-        edge_blocking(&cancel.0, || self.0.export_kdbx(convert::kdbx_credentials(credentials), None, c))
+        edge_blocking(&cancel.0, || {
+            self.0.export_kdbx(convert::kdbx_credentials(credentials), crate::records::group_ids(group_ids), c)
+        })
     }
 }
 
 // -------------------------------------------------------------------------- EventStream
 
 /// `ov::EventStream`: [`core::EventStream`].
-pub struct EventStream(core::EventStream);
+pub struct EventStream(pub(crate) core::EventStream);
 
 impl EventStream {
     /// [`core::EventStream::next`]; `kind == Closed` once the stream is closed.

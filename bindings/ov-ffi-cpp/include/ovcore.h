@@ -1,7 +1,8 @@
 // openvireo-core for C++: include this header (installed as <ovcore.h>).
 //
 // - ov::version(), the crypto primitives, ov::new_client() and the handles (ov::Client,
-//   ov::Account, ov::Vault, ov::EventStream, ov::TotpChallenge, ov::LoginStep, ov::CancelToken)
+//   ov::Account, ov::Vault, ov::ServiceAccount, ov::SelfHosted, ov::EventStream, ov::TotpChallenge,
+//   ov::LoginStep, ov::CancelToken)
 //   come from the generated bridge (ov-ffi-cpp/src/lib.rs.h).
 // - The Host interfaces to implement are in ov-ffi-cpp/include/host.h.
 // - Calls that fail throw rust::Error. Wrap them in ov::call() to get an ov::Error that carries

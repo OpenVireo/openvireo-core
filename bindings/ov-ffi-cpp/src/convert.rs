@@ -242,6 +242,19 @@ pub(crate) fn group_info(g: core::GroupInfo) -> ffi::GroupInfo {
     }
 }
 
+pub(crate) fn sync_conflict(c: core::SyncConflict) -> ffi::SyncConflict {
+    ffi::SyncConflict {
+        uuid: c.uuid,
+        kind: match c.kind {
+            core::ConflictKind::EditedOnBoth => ffi::ConflictKind::EditedOnBoth,
+            core::ConflictKind::DeletedHereEditedThere => ffi::ConflictKind::DeletedHereEditedThere,
+            core::ConflictKind::EditedHereDeletedThere => ffi::ConflictKind::EditedHereDeletedThere,
+        },
+        title: c.title,
+        fields: c.fields,
+    }
+}
+
 pub(crate) fn sync_report(r: core::SyncReport) -> ffi::SyncReport {
     ffi::SyncReport {
         outcome: match r.outcome {
@@ -250,20 +263,7 @@ pub(crate) fn sync_report(r: core::SyncReport) -> ffi::SyncReport {
             core::SyncOutcome::Uploaded => ffi::SyncOutcome::Uploaded,
             core::SyncOutcome::Created => ffi::SyncOutcome::Created,
         },
-        conflicts: r
-            .conflicts
-            .into_iter()
-            .map(|c| ffi::SyncConflict {
-                uuid: c.uuid,
-                kind: match c.kind {
-                    core::ConflictKind::EditedOnBoth => ffi::ConflictKind::EditedOnBoth,
-                    core::ConflictKind::DeletedHereEditedThere => ffi::ConflictKind::DeletedHereEditedThere,
-                    core::ConflictKind::EditedHereDeletedThere => ffi::ConflictKind::EditedHereDeletedThere,
-                },
-                title: c.title,
-                fields: c.fields,
-            })
-            .collect(),
+        conflicts: r.conflicts.into_iter().map(sync_conflict).collect(),
         changes: r
             .changes
             .into_iter()

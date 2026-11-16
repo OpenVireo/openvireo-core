@@ -34,7 +34,11 @@ impl Account {
         cancel: CancelToken,
     ) -> Result<AppleEligibility, OvError> {
         let e = self
-            .call(&cancel, |a, t| a.build_apple_eligibility(t, org_id.as_deref()), ov_protocol::auth::parse_apple_eligibility)
+            .call(
+                &cancel,
+                |a, t| a.build_apple_eligibility(t, org_id.as_deref()),
+                ov_protocol::auth::parse_apple_eligibility,
+            )
             .await?;
         Ok(AppleEligibility { eligible: e.eligible, reason: e.reason })
     }

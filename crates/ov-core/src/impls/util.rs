@@ -3,7 +3,7 @@
 use ov_error::{OvError, OvErrorCode};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::api::{CancelToken, SecretBytes};
+use crate::api::SecretBytes;
 
 /// Secret bytes as UTF-8 text, wiping the input; `invalid_request` when it isn't UTF-8.
 pub(crate) fn secret_text(mut bytes: SecretBytes, what: &str) -> Result<Zeroizing<String>, OvError> {
@@ -13,11 +13,6 @@ pub(crate) fn secret_text(mut bytes: SecretBytes, what: &str) -> Result<Zeroizin
     };
     bytes.zeroize();
     out
-}
-
-/// Text as secret bytes.
-pub(crate) fn secret_bytes(s: &str) -> SecretBytes {
-    s.as_bytes().to_vec()
 }
 
 /// The CSPRNG for OPAQUE (the platform's, through `getrandom`).
@@ -38,11 +33,6 @@ pub(crate) fn signed_out(msg: &str) -> OvError {
 /// `Internal` with a message.
 pub(crate) fn internal(msg: impl Into<String>) -> OvError {
     OvError::internal(msg)
-}
-
-/// Checks the token between steps.
-pub(crate) fn check(cancel: &CancelToken) -> Result<(), OvError> {
-    cancel.check()
 }
 
 /// Locks a std mutex, ignoring poisoning (a panic elsewhere leaves plain data behind).
@@ -153,8 +143,8 @@ mod tests {
         let t = parse_rfc3339("2026-11-15T10:00:00Z").unwrap();
         assert_eq!(rfc3339(t), "2026-11-15T10:00:00.000Z");
         assert_eq!(parse_rfc3339("2026-11-15T12:00:00.5+02:00"), Some(t + 500));
-        assert_eq!(parse_rfc3339("2026-11-15"), Some(t - 10 * 3600_000));
-        assert_eq!(parse_rfc3339("1960-02-29T00:00:00Z"), Some(-310_608_000_000));
+        assert_eq!(parse_rfc3339("2026-11-15"), Some(t - 10 * 3_600_000));
+        assert_eq!(parse_rfc3339("1960-02-29T00:00:00Z"), Some(-310_521_600_000));
         assert_eq!(parse_rfc3339("nope"), None);
         assert_eq!(parse_rfc3339("2026-13-01T00:00:00Z"), None);
     }

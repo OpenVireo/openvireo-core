@@ -33,7 +33,11 @@ pub(crate) fn upgrade_url(details: Option<&str>, issuer: &str) -> Option<String>
         .and_then(|v| v.get("upgradeUrl").or_else(|| v.get("upgrade_url")).and_then(|u| u.as_str()).map(str::to_owned));
     if let Some(u) = candidate {
         if let Some((scheme, host, port, path)) = parts(&u) {
-            if (scheme == "https" || scheme == site_scheme) && host == site_host && port == site_port && path.starts_with("/subscription/") {
+            if (scheme == "https" || scheme == site_scheme)
+                && host == site_host
+                && port == site_port
+                && path.starts_with("/subscription/")
+            {
                 return Some(u);
             }
         }

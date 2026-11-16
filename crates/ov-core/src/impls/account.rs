@@ -2,8 +2,6 @@
 //! rule, the SecureStore keys (Secret Key, device id, sessions), the offline cache records (SPEC
 //! §20), unlocking, and the vault list. A port of the private half of the SDK's `account.ts`.
 
-use std::sync::Arc;
-
 use ov_crypto::auk::{derive_auk, DeriveAukOptions, KdfParams};
 use ov_crypto::keyset::{unwrap_keyset, Keyset};
 use ov_crypto::secret_key::{format_secret_key, parse_secret_key, SECRET_KEY_BYTES};
@@ -120,7 +118,12 @@ impl Account {
     }
 
     async fn get_text(&self, key: &str) -> Result<Option<Zeroizing<String>>, OvError> {
-        Ok(self.host().store.get(key).await?.and_then(|v| std::str::from_utf8(&v).ok().map(|s| Zeroizing::new(s.to_owned()))))
+        Ok(self
+            .host()
+            .store
+            .get(key)
+            .await?
+            .and_then(|v| std::str::from_utf8(&v).ok().map(|s| Zeroizing::new(s.to_owned()))))
     }
 
     pub(crate) async fn stored_sk(&self, email: &str) -> Result<Option<Zeroizing<String>>, OvError> {
@@ -156,9 +159,10 @@ impl Account {
     /// The session and the Secret Key this device keeps for it.
     pub(crate) async fn session_and_sk(&self) -> Result<(StoredSession, Zeroizing<[u8; 16]>), OvError> {
         let session = self.inner.tokens.load().await?.ok_or_else(|| signed_out("not signed in"))?;
-        let text = self.stored_sk(&session.email).await?.ok_or_else(|| {
-            OvError::new(OvErrorCode::InvalidSecretKey, "this device needs the account's Secret Key")
-        })?;
+        let text = self
+            .stored_sk(&session.email)
+            .await?
+            .ok_or_else(|| OvError::new(OvErrorCode::InvalidSecretKey, "this device needs the account's Secret Key"))?;
         Ok((session, parse_sk(&text)?))
     }
 
@@ -290,17 +294,27 @@ impl Account {
     }
 
     /// Unwraps the keyset from `/me` with this password, which proves it is the master password.
-    pub(crate) async fn check_password(&self, password: &str, sk: &[u8; 16], cancel: &CancelToken) -> Result<Keyset, OvError> {
+    pub(crate) async fn check_password(
+        &self,
+        password: &str,
+        sk: &[u8; 16],
+        cancel: &CancelToken,
+    ) -> Result<Keyset, OvError> {
         let me = self.call(cancel, |a, t| a.build_me(t), ov_protocol::auth::parse_me).await?;
         let params = crypto_kdf(&me.kdf);
         ov_crypto::auk::check_kdf_params(&params, kdf_min(&self.inner.config))?;
         let auk = derive_auk(password, &params, sk, self.kdf_opts())?;
-        unwrap_keyset(&auk, &crypto_wrapped(&me.keyset)).map_err(|e| unauthorized_on_decrypt(e, "the master password is wrong"))
+        unwrap_keyset(&auk, &crypto_wrapped(&me.keyset))
+            .map_err(|e| unauthorized_on_decrypt(e, "the master password is wrong"))
     }
 
     /// The account record for unlocking: `/me`, or offline the cached profile. Returns it and whether
     /// it came from the cache.
-    pub(crate) async fn unlock_profile(&self, user_id: &str, cancel: &CancelToken) -> Result<(CachedProfile, bool), OvError> {
+    pub(crate) async fn unlock_profile(
+        &self,
+        user_id: &str,
+        cancel: &CancelToken,
+    ) -> Result<(CachedProfile, bool), OvError> {
         match self.call(cancel, |a, t| a.build_me(t), ov_protocol::auth::parse_me).await {
             Ok(me) => {
                 lock(&self.inner.inner).deletion = me.deletion_scheduled_for.clone();
@@ -461,7 +475,9 @@ impl Account {
             }
             Err(e) => {
                 if e.is_unreachable() {
-                    if let Some(v) = self.cached_wire_vaults().await?.unwrap_or_default().into_iter().find(|v| v.id == vault_id) {
+                    if let Some(v) =
+                        self.cached_wire_vaults().await?.unwrap_or_default().into_iter().find(|v| v.id == vault_id)
+                    {
                         self.set_offline(true);
                         return self.ingest(&v);
                     }
@@ -481,10 +497,5 @@ impl Account {
             OvError::new(OvErrorCode::NotAvailableOffline, format!("vault {vault_id} isn't known on this device"))
         })?;
         self.ingest(&v)
-    }
-
-    /// The state handle behind this account, for the vault glue.
-    pub(crate) fn state(&self) -> &Arc<crate::state::AccountState> {
-        &self.inner
     }
 }

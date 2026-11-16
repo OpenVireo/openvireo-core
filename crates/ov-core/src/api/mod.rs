@@ -2,8 +2,8 @@
 //! CLI see.
 //!
 //! **Frozen contract** (rust-core-tasks.md §2.3, tag `contract-v1`): the names, signatures and
-//! records in this module don't change without a CONTRACT-REQUEST. The method bodies are `todo!()`
-//! stubs that W2-A replaces with calls into the domain crates.
+//! records in this module don't change without a CONTRACT-REQUEST. The method bodies (W2-A) only
+//! orchestrate: they call the domain crates through `crate::impls`.
 //!
 //! The API has one Rust method for each public method of the TypeScript SDK's `Account`,
 //! `AccountVault`, `ServiceAccount` and `SelfHostedSync` and of the iOS app's `Account` and its

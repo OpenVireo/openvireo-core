@@ -16,6 +16,8 @@ pub(crate) fn needs_sync() -> OvError {
     OvError::internal("needs ov-sync")
 }
 
+// Used by the glue once ov-sync / ov-vault merge.
+#[allow(dead_code)]
 /// SPEC §20: a clock more than five minutes off the server's.
 // W2-Y: ov_sync::is_clock_skewed.
 pub(crate) fn is_clock_skewed(offset_ms: i64) -> bool {

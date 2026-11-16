@@ -9,7 +9,9 @@ use ov_protocol::types as w;
 use zeroize::Zeroizing;
 
 use super::account::{device_info, parse_sk, CachedProfile};
-use super::convert::{crypto_kdf, crypto_wrapped, deletion_outcome, org_role, profile, vault_role, wire_kdf, wire_wrapped};
+use super::convert::{
+    crypto_kdf, crypto_wrapped, deletion_outcome, org_role, profile, vault_role, wire_kdf, wire_wrapped,
+};
 use super::signin::{fresh_keys, new_kdf};
 use super::util::{lock, rng, secret_text, signed_out};
 use crate::api::{
@@ -48,8 +50,14 @@ impl Account {
         self.refresh_token(cancel).await?;
         let reg = ov_opaque::start_registration(&mut rng(), &next)?;
         let body = w::PasswordStartRequest { request: b64u(&reg.request) };
-        let started = self.call(cancel, |a, t| a.build_password_start(t, &body), api::parse_opaque_registration).await?;
-        let fin = ov_opaque::finish_registration(&mut rng(), reg.state, &opaque_response(&started.response)?, &self.ids(&session.email))?;
+        let started =
+            self.call(cancel, |a, t| a.build_password_start(t, &body), api::parse_opaque_registration).await?;
+        let fin = ov_opaque::finish_registration(
+            &mut rng(),
+            reg.state,
+            &opaque_response(&started.response)?,
+            &self.ids(&session.email),
+        )?;
         let body = w::PasswordFinishRequest {
             session_id: started.session_id,
             record: b64u(&fin.record),
@@ -57,7 +65,8 @@ impl Account {
             keyset: wire_wrapped(&wrapped),
         };
         self.call(cancel, |a, t| a.build_password_finish(t, &body), ov_protocol::parse_empty).await?;
-        self.cache_profile(&session.user_id, &CachedProfile { kdf: body.kdf.clone(), keyset: body.keyset.clone() }).await?;
+        self.cache_profile(&session.user_id, &CachedProfile { kdf: body.kdf.clone(), keyset: body.keyset.clone() })
+            .await?;
         Ok(auk.to_vec())
     }
 
@@ -67,22 +76,38 @@ impl Account {
         self.call(cancel, |a, t| a.build_email_request(t, email), api::parse_email_request).await.map(|_| ())
     }
 
-    pub(crate) async fn change_email_impl(&self, email: &str, code: &str, password: SecretBytes, cancel: &CancelToken) -> Result<(), OvError> {
+    pub(crate) async fn change_email_impl(
+        &self,
+        email: &str,
+        code: &str,
+        password: SecretBytes,
+        cancel: &CancelToken,
+    ) -> Result<(), OvError> {
         let password = secret_text(password, "password")?;
         let (_, sk) = self.session_and_sk().await?;
         let email = email.trim().to_owned();
         drop(self.check_password(&password, &sk, cancel).await?);
         self.refresh_token(cancel).await?;
         let reg = ov_opaque::start_registration(&mut rng(), &password)?;
-        let body = w::EmailStartRequest { email: email.clone(), code: code.trim().to_owned(), request: b64u(&reg.request) };
+        let body =
+            w::EmailStartRequest { email: email.clone(), code: code.trim().to_owned(), request: b64u(&reg.request) };
         let started = self.call(cancel, |a, t| a.build_email_start(t, &body), api::parse_opaque_registration).await?;
-        let fin = ov_opaque::finish_registration(&mut rng(), reg.state, &opaque_response(&started.response)?, &self.ids(&email))?;
+        let fin = ov_opaque::finish_registration(
+            &mut rng(),
+            reg.state,
+            &opaque_response(&started.response)?,
+            &self.ids(&email),
+        )?;
         let body = w::EmailFinishRequest { session_id: started.session_id, record: b64u(&fin.record) };
         self.call(cancel, |a, t| a.build_email_finish(t, &body), ov_protocol::parse_empty).await?;
         self.follow_email(&email).await
     }
 
-    pub(crate) async fn web_session_impl(&self, next: Option<String>, cancel: &CancelToken) -> Result<SecretBytes, OvError> {
+    pub(crate) async fn web_session_impl(
+        &self,
+        next: Option<String>,
+        cancel: &CancelToken,
+    ) -> Result<SecretBytes, OvError> {
         let ws = self.call(cancel, |a, t| a.build_web_session(t), api::parse_web_session).await?;
         let base = format!("{}/session/claim", self.inner.config.issuer.trim_end_matches('/'));
         let q = ov_protocol::url::query(&[("code", Some(ws.code)), ("next", next)]);
@@ -112,7 +137,8 @@ impl Account {
         let kdf = new_kdf(self, kdf)?;
         let reg = ov_opaque::start_registration(&mut rng(), &password)?;
         let body = w::RecoverStartRequest { token: token.to_string(), request: b64u(&reg.request) };
-        let started = self.call_public(cancel, self.auth().build_recover_start(&body), api::parse_opaque_registration).await?;
+        let started =
+            self.call_public(cancel, self.auth().build_recover_start(&body), api::parse_opaque_registration).await?;
         let f = fresh_keys(self, &password, &email, kdf, reg.state, &opaque_response(&started.response)?)?;
         let finish = w::RecoverFinishRequest {
             session_id: started.session_id,
@@ -137,7 +163,11 @@ impl Account {
         Ok(NewAccount {
             user_id: session.user.id,
             secret_key: format_secret_key(&f.sk).as_bytes().to_vec(),
-            emergency_kit: EmergencyKit { email, issuer: self.inner.config.issuer.clone(), web: self.inner.config.web.clone() },
+            emergency_kit: EmergencyKit {
+                email,
+                issuer: self.inner.config.issuer.clone(),
+                web: self.inner.config.web.clone(),
+            },
             auk: f.auk.to_vec(),
         })
     }
@@ -161,7 +191,8 @@ impl Account {
         let email = started.email.clone().unwrap_or_else(|| session.email.clone());
         let wrong = || OvError::new(OvErrorCode::Unauthorized, "the old master password is wrong").with_status(401);
         let ke2 = from_b64u(&started.ke2).map_err(|_| wrong())?;
-        let fin = ov_opaque::finish_login(&mut rng(), login.state, &ke2, &self.ids(&email), &self.opaque_context()).map_err(|_| wrong())?;
+        let fin = ov_opaque::finish_login(&mut rng(), login.state, &ke2, &self.ids(&email), &self.opaque_context())
+            .map_err(|_| wrong())?;
         let body = w::RestoreVerifyRequest { session_id: started.session_id, auth_u: b64u(&fin.auth_u) };
         let verified = self.call(cancel, |a, t| a.build_restore_verify(t, &body), api::parse_restore_verify).await?;
         let params = crypto_kdf(&verified.kdf);
@@ -177,7 +208,8 @@ impl Account {
         })?;
         let mut grants = Vec::with_capacity(verified.grants.len());
         for g in &verified.grants {
-            let sealed = from_b64u(&g.sealed_key).map_err(|_| OvError::new(OvErrorCode::DecryptionFailed, "bad sealed key"))?;
+            let sealed =
+                from_b64u(&g.sealed_key).map_err(|_| OvError::new(OvErrorCode::DecryptionFailed, "bad sealed key"))?;
             let resealed = ov_crypto::restore::reseal_vault_key(&old.enc_sk, &cur_enc_pk, &g.vault_id, &sealed)?;
             grants.push(w::VaultGrant {
                 vault_id: g.vault_id.clone(),
@@ -220,7 +252,11 @@ impl Account {
                     shared_with: v
                         .shared_with
                         .iter()
-                        .map(|s| DeletionShare { principal: s.principal.clone(), display: s.display.clone(), role: vault_role(&s.role) })
+                        .map(|s| DeletionShare {
+                            principal: s.principal.clone(),
+                            display: s.display.clone(),
+                            role: vault_role(&s.role),
+                        })
                         .collect(),
                 })
                 .collect(),
@@ -235,7 +271,11 @@ impl Account {
                     members: o
                         .members
                         .iter()
-                        .map(|m| DeletionCandidate { id: m.id.clone(), email: m.email.clone(), role: org_role(&m.role) })
+                        .map(|m| DeletionCandidate {
+                            id: m.id.clone(),
+                            email: m.email.clone(),
+                            role: org_role(&m.role),
+                        })
                         .collect(),
                 })
                 .collect(),
@@ -250,7 +290,12 @@ impl Account {
         })
     }
 
-    pub(crate) async fn delete_account_impl(&self, password: SecretBytes, confirm: &str, cancel: &CancelToken) -> Result<String, OvError> {
+    pub(crate) async fn delete_account_impl(
+        &self,
+        password: SecretBytes,
+        confirm: &str,
+        cancel: &CancelToken,
+    ) -> Result<String, OvError> {
         let password = secret_text(password, "password")?;
         let (session, sk) = self.session_and_sk().await?;
         drop(self.check_password(&password, &sk, cancel).await?);
@@ -262,7 +307,11 @@ impl Account {
         Ok(r.scheduled_for)
     }
 
-    pub(crate) async fn restore_account_impl(&self, password: SecretBytes, cancel: &CancelToken) -> Result<(), OvError> {
+    pub(crate) async fn restore_account_impl(
+        &self,
+        password: SecretBytes,
+        cancel: &CancelToken,
+    ) -> Result<(), OvError> {
         let password = secret_text(password, "password")?;
         let (_, sk) = self.session_and_sk().await?;
         drop(self.check_password(&password, &sk, cancel).await?);

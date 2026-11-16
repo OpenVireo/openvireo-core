@@ -56,49 +56,55 @@ impl ServiceAccount {
         token: SecretBytes,
         cancel: CancelToken,
     ) -> Result<ServiceAccount, OvError> {
-        todo!()
+        ServiceAccount::from_token_impl(client, token, &cancel).await
     }
 
     /// The SA's id.
     pub fn sa_id(&self) -> String {
-        todo!()
+        self.inner.sa_id.clone()
     }
 
     /// `sa:<id>`.
     pub fn principal(&self) -> Principal {
-        todo!()
+        format!("sa:{}", self.inner.sa_id)
     }
 
     /// Vaults granted to this SA, names decrypted (cached; `refresh` asks again).
     pub async fn vaults(&self, refresh: bool, cancel: CancelToken) -> Result<Vec<SaVault>, OvError> {
-        todo!()
+        self.vaults_impl(refresh, &cancel).await
     }
 
     /// A vault by id or unique name; `not_found` (with how many matched) otherwise.
     pub async fn vault(&self, id_or_name: String, cancel: CancelToken) -> Result<SaVault, OvError> {
-        todo!()
+        self.vault_impl(&id_or_name, &cancel).await
     }
 
     /// Downloads and opens a vault (cached; `refresh` downloads again). Edit it with the [`Vault`]
     /// methods and upload with [`Vault::sync`] (TS `edit`).
     pub async fn open_vault(&self, id_or_name: String, refresh: bool, cancel: CancelToken) -> Result<Vault, OvError> {
-        todo!()
+        self.open_impl(&id_or_name, refresh, &cancel).await
     }
 
     /// Downloads a vault again, merging with the cached copy (TS `pull`).
     pub async fn pull(&self, id_or_name: String, cancel: CancelToken) -> Result<Vault, OvError> {
-        todo!()
+        self.pull_impl(&id_or_name, &cancel).await
     }
 
     /// The value of a secret reference `ov://<vault>/[<group>/…]<entry>/<field>` (SPEC §14).
     pub async fn read(&self, reference: String, cancel: CancelToken) -> Result<SecretBytes, OvError> {
-        todo!()
+        // W2-V: `ov://` references are ov_vault's (vault/reference.ts); then open_vault + read.
+        let _ = reference;
+        cancel.check()?;
+        Err(crate::impls::vault_glue::needs_vault())
     }
 
     /// Replaces every `ov://…` reference in a template (up to whitespace, quotes or `}`) with its
     /// value (SPEC §15, `ov inject`).
     pub async fn inject(&self, template: SecretBytes, cancel: CancelToken) -> Result<Injected, OvError> {
-        todo!()
+        // W2-V: REFERENCE_PATTERN and reading each reference are ov_vault's.
+        let _ = template;
+        cancel.check()?;
+        Err(crate::impls::vault_glue::needs_vault())
     }
 
     /// Sets the field a secret reference names and uploads (needs `write`). With `create`, a missing
@@ -110,11 +116,14 @@ impl ServiceAccount {
         create: bool,
         cancel: CancelToken,
     ) -> Result<(), OvError> {
-        todo!()
+        // W2-V + W2-Y: ov_vault parses the reference and writes the field; ov_sync uploads.
+        let _ = (reference, value, create);
+        cancel.check()?;
+        Err(crate::impls::vault_glue::needs_vault())
     }
 
     /// Wipes the keyset, vault keys and cached vaults; later calls fail with `signed_out`.
     pub fn close(&self) {
-        todo!()
+        self.close_impl()
     }
 }

@@ -79,12 +79,14 @@ pub(crate) enum VaultSource {
 /// Behind [`Vault`](crate::api::Vault).
 pub(crate) struct VaultState {
     pub(crate) source: VaultSource,
-    pub(crate) host: Host,
+    /// The Host, for the clock and the offline cache; `None` for a local file opened without one.
+    pub(crate) host: Option<Host>,
     pub(crate) db: Mutex<Database>,
     pub(crate) offline: AtomicBool,
     pub(crate) etag: Mutex<Option<String>>,
     pub(crate) conflicts: Mutex<Vec<SyncConflict>>,
     /// The sync state as the core serialises it (W2-Y), when the vault has synced.
+    #[allow(dead_code)] // W2-Y: filled by ov_sync.
     pub(crate) sync_state: Mutex<Option<Vec<u8>>>,
     /// The server's bytes at the last sync (merge base).
     pub(crate) base: Mutex<Option<Vec<u8>>>,
@@ -93,6 +95,7 @@ pub(crate) struct VaultState {
 /// Behind [`ServiceAccount`](crate::api::ServiceAccount).
 pub(crate) struct ServiceAccountState {
     pub(crate) client: Arc<ClientState>,
+    #[allow(dead_code)] // W2-Y: the SA's sync needs the server config.
     pub(crate) config: ServerConfig,
     pub(crate) auth: AuthApi,
     pub(crate) sync: SyncApi,

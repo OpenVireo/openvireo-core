@@ -18,6 +18,8 @@ use zeroize::Zeroizing;
 use super::convert::{crypto_public_json, vault_role};
 use crate::api::VaultInfo;
 
+// Used by the glue once ov-sync / ov-vault merge.
+#[allow(dead_code)]
 /// Whether `ov-vault` is wired in. Callers check it before a server-side step whose follow-up would
 /// need it (so nothing is half-done).
 pub(crate) const AVAILABLE: bool = false;
@@ -59,7 +61,10 @@ pub(crate) fn ingest(ks: &Keyset, v: &w::Vault) -> VaultEntry {
         let Ok(sealed) = from_b64u(&k.sealed_key) else { continue };
         // A key sealed to an old keyset is skipped; another version may open.
         if let Ok(key) = ov_crypto::envelope::unseal_vault_key(&ks.enc_sk, &v.id, &sealed) {
-            keys.push(KeyVersion { version: k.key_version.clamp(0, u32::MAX as i64) as u32, key: Zeroizing::new(key.to_vec()) });
+            keys.push(KeyVersion {
+                version: k.key_version.clamp(0, u32::MAX as i64) as u32,
+                key: Zeroizing::new(key.to_vec()),
+            });
         }
     }
     keys.sort_by_key(|k| std::cmp::Reverse(k.version));

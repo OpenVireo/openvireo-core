@@ -71,11 +71,21 @@ pub(crate) fn api_kdf(k: &w::Kdf) -> a::KdfParams {
 }
 
 pub(crate) fn crypto_wrapped(k: &w::WrappedKeyset) -> WrappedKeysetJson {
-    WrappedKeysetJson { enc_pk: k.enc_pk.clone(), sign_pk: k.sign_pk.clone(), sig: k.sig.clone(), wrapped: k.wrapped.clone() }
+    WrappedKeysetJson {
+        enc_pk: k.enc_pk.clone(),
+        sign_pk: k.sign_pk.clone(),
+        sig: k.sig.clone(),
+        wrapped: k.wrapped.clone(),
+    }
 }
 
 pub(crate) fn wire_wrapped(k: &WrappedKeysetJson) -> w::WrappedKeyset {
-    w::WrappedKeyset { enc_pk: k.enc_pk.clone(), sign_pk: k.sign_pk.clone(), sig: k.sig.clone(), wrapped: k.wrapped.clone() }
+    w::WrappedKeyset {
+        enc_pk: k.enc_pk.clone(),
+        sign_pk: k.sign_pk.clone(),
+        sig: k.sig.clone(),
+        wrapped: k.wrapped.clone(),
+    }
 }
 
 pub(crate) fn crypto_public_json(k: &w::PublicKeys) -> ov_crypto::keyset::PublicKeysJson {
@@ -342,6 +352,8 @@ pub(crate) fn uuid_hex(u: &ov_kdbx::model::Uuid) -> String {
     u.simple().to_string()
 }
 
+// Used by the glue once ov-sync / ov-vault merge.
+#[allow(dead_code)]
 /// `ov_merge` change records → facade records (W1-M follow-up).
 pub(crate) fn merge_change(c: &ov_merge::MergeChange) -> a::MergeChange {
     a::MergeChange {
@@ -359,6 +371,8 @@ pub(crate) fn merge_change(c: &ov_merge::MergeChange) -> a::MergeChange {
     }
 }
 
+// Used by the glue once ov-sync / ov-vault merge.
+#[allow(dead_code)]
 /// `ov_merge::SyncConflict` → facade record.
 pub(crate) fn sync_conflict(c: &ov_merge::SyncConflict) -> a::SyncConflict {
     a::SyncConflict {
@@ -373,6 +387,8 @@ pub(crate) fn sync_conflict(c: &ov_merge::SyncConflict) -> a::SyncConflict {
     }
 }
 
+// Used by the glue once ov-sync / ov-vault merge.
+#[allow(dead_code)]
 /// `ov_merge::EntryConflict` (an edit on both sides with the fields both changed) → facade record.
 pub(crate) fn entry_conflict(c: &ov_merge::EntryConflict) -> a::SyncConflict {
     a::SyncConflict {

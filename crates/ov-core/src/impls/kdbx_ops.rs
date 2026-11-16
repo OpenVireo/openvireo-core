@@ -46,25 +46,6 @@ fn all_entries(db: &Database) -> Vec<(&Entry, &Group, Vec<String>)> {
     out
 }
 
-/// The path of names below the root to group `id` (empty for the root).
-fn group_path(db: &Database, id: Uuid) -> Option<Vec<String>> {
-    fn go(g: &Group, id: Uuid, path: &mut Vec<String>) -> bool {
-        if g.uuid == id {
-            return true;
-        }
-        for sub in &g.groups {
-            path.push(sub.name.clone());
-            if go(sub, id, path) {
-                return true;
-            }
-            path.pop();
-        }
-        false
-    }
-    let mut p = Vec::new();
-    go(&db.root, id, &mut p).then_some(p)
-}
-
 fn entry_parent(g: &Group, id: Uuid) -> Option<Uuid> {
     if g.entries.iter().any(|e| e.uuid == id) {
         return Some(g.uuid);
@@ -391,7 +372,13 @@ pub(crate) fn restore_from_recycle_bin(db: &mut Database, id: &str, now: Timesta
     }
 }
 
-pub(crate) fn set_attachment(db: &mut Database, id: &str, name: &str, data: SecretBytes, now: Timestamp) -> Result<(), OvError> {
+pub(crate) fn set_attachment(
+    db: &mut Database,
+    id: &str,
+    name: &str,
+    data: SecretBytes,
+    now: Timestamp,
+) -> Result<(), OvError> {
     let uid = parse_uuid_string(id).ok_or_else(entry_not_found)?;
     let index = db.binaries.len() as u32;
     db.binaries.push(Binary { data: Zeroizing::new(data), protected: true });
@@ -441,7 +428,11 @@ pub(crate) fn parent_group(db: &Database, parent: Option<&str>) -> Result<Uuid, 
 
 // ------------------------------------------------------------------------- versions
 
-pub(crate) fn version_difference(current: &Database, version: &Database, id: &str) -> Result<VersionDifference, OvError> {
+pub(crate) fn version_difference(
+    current: &Database,
+    version: &Database,
+    id: &str,
+) -> Result<VersionDifference, OvError> {
     let uid = parse_uuid_string(id).ok_or_else(entry_not_found)?;
     let old = find_entry(&version.root, uid).ok_or_else(entry_not_found)?;
     match find_entry(&current.root, uid) {
@@ -470,7 +461,13 @@ fn reintern(db: &mut Database, from: &Database, e: &mut Entry) {
     }
 }
 
-pub(crate) fn restore_entry(db: &mut Database, version: &Database, id: &str, group_path: &str, now: Timestamp) -> Result<(), OvError> {
+pub(crate) fn restore_entry(
+    db: &mut Database,
+    version: &Database,
+    id: &str,
+    group_path: &str,
+    now: Timestamp,
+) -> Result<(), OvError> {
     let uid = parse_uuid_string(id).ok_or_else(entry_not_found)?;
     let mut old = find_entry(&version.root, uid).ok_or_else(entry_not_found)?.clone();
     old.history.clear();
@@ -501,7 +498,12 @@ pub(crate) fn restore_entry(db: &mut Database, version: &Database, id: &str, gro
 
 /// Puts `record` into `db` at `group_path`: an edit (with history) when the entry exists, else a new
 /// entry with that id. Returns whether anything changed.
-pub(crate) fn upsert_record(db: &mut Database, rec: &EntryRecord, group_path: &str, now: Timestamp) -> Result<bool, OvError> {
+pub(crate) fn upsert_record(
+    db: &mut Database,
+    rec: &EntryRecord,
+    group_path: &str,
+    now: Timestamp,
+) -> Result<bool, OvError> {
     let uid = parse_id(&rec.id)?;
     let apply = |e: &mut Entry| -> Result<(), OvError> {
         e.strings = rec
@@ -556,7 +558,11 @@ fn csv_cell(s: &str) -> String {
     format!("\"{}\"", s.replace('"', "\"\""))
 }
 
-pub(crate) fn export_plain(db: &Database, format: ExportFormat, group_ids: Option<Vec<String>>) -> Result<SecretBytes, OvError> {
+pub(crate) fn export_plain(
+    db: &Database,
+    format: ExportFormat,
+    group_ids: Option<Vec<String>>,
+) -> Result<SecretBytes, OvError> {
     let sel = selected(db, group_ids)?;
     let rows: Vec<(String, &Entry)> = all_entries(db)
         .into_iter()
@@ -567,7 +573,14 @@ pub(crate) fn export_plain(db: &Database, format: ExportFormat, group_ids: Optio
         ExportFormat::Csv => {
             let mut s = String::from("\"Folder\",\"Title\",\"Username\",\"Password\",\"URL\",\"Notes\"\n");
             for (folder, e) in &rows {
-                let cells = [folder.as_str(), e.title(), e.field_text("UserName"), e.field_text("Password"), e.field_text("URL"), e.field_text("Notes")];
+                let cells = [
+                    folder.as_str(),
+                    e.title(),
+                    e.field_text("UserName"),
+                    e.field_text("Password"),
+                    e.field_text("URL"),
+                    e.field_text("Notes"),
+                ];
                 s.push_str(&cells.iter().map(|c| csv_cell(c)).collect::<Vec<_>>().join(","));
                 s.push('\n');
             }

@@ -64,7 +64,11 @@ pub(crate) fn fresh_keys(
 }
 
 impl Account {
-    pub(crate) async fn register_impl(&self, input: RegisterInput, cancel: &CancelToken) -> Result<NewAccount, OvError> {
+    pub(crate) async fn register_impl(
+        &self,
+        input: RegisterInput,
+        cancel: &CancelToken,
+    ) -> Result<NewAccount, OvError> {
         let RegisterInput { email, password, kdf, trust_device } = input;
         let email = email.trim().to_owned();
         let password = secret_text(password, "password")?;
@@ -72,7 +76,8 @@ impl Account {
         let reg = ov_opaque::start_registration(&mut rng(), &password)?;
         let req = w::RegisterStartRequest { email: email.clone(), request: b64u(&reg.request) };
         let started = self.call_public(cancel, self.auth().build_register_start(&req), parse_register_start).await?;
-        let response = from_b64u(&started.response).map_err(|_| OvError::new(OvErrorCode::OpaqueFailed, "bad response"))?;
+        let response =
+            from_b64u(&started.response).map_err(|_| OvError::new(OvErrorCode::OpaqueFailed, "bad response"))?;
         let f = fresh_keys(self, &password, &email, kdf, reg.state, &response)?;
         let finish = w::RegisterFinishRequest {
             session_id: started.session_id,
@@ -93,7 +98,11 @@ impl Account {
         Ok(NewAccount {
             user_id: session.user.id,
             secret_key: format_secret_key(&f.sk).as_bytes().to_vec(),
-            emergency_kit: EmergencyKit { email, issuer: self.inner.config.issuer.clone(), web: self.inner.config.web.clone() },
+            emergency_kit: EmergencyKit {
+                email,
+                issuer: self.inner.config.issuer.clone(),
+                web: self.inner.config.web.clone(),
+            },
             auk: f.auk.to_vec(),
         })
     }
@@ -123,7 +132,9 @@ impl Account {
         };
         let res = self.call_public(cancel, self.auth().build_login_finish(&req), parse_login_finish).await?;
         match res {
-            LoginFinishResponse::Session(s) => self.finish_signin(&email, &password, &sk, &s, trust_device).await.map(LoginStep::Unlocked),
+            LoginFinishResponse::Session(s) => {
+                self.finish_signin(&email, &password, &sk, &s, trust_device).await.map(LoginStep::Unlocked)
+            }
             LoginFinishResponse::Mfa(m) => {
                 let challenge = TotpChallenge {
                     inner: Arc::new(TotpState {
@@ -145,7 +156,12 @@ impl Account {
         }
     }
 
-    pub(crate) async fn submit_totp_impl(&self, ch: TotpChallenge, code: String, cancel: &CancelToken) -> Result<LoginStep, OvError> {
+    pub(crate) async fn submit_totp_impl(
+        &self,
+        ch: TotpChallenge,
+        code: String,
+        cancel: &CancelToken,
+    ) -> Result<LoginStep, OvError> {
         let st = &ch.inner;
         if st.used.load(Ordering::SeqCst) {
             return Err(OvError::new(OvErrorCode::MfaExpired, "this sign-in is finished; sign in again"));
@@ -176,7 +192,14 @@ impl Account {
     }
 
     /// Unlocks with the session's keyset, keeps the session and caches the profile.
-    async fn finish_signin(&self, email: &str, password: &str, sk: &[u8; 16], s: &w::Session, trust: bool) -> Result<Unlocked, OvError> {
+    async fn finish_signin(
+        &self,
+        email: &str,
+        password: &str,
+        sk: &[u8; 16],
+        s: &w::Session,
+        trust: bool,
+    ) -> Result<Unlocked, OvError> {
         let auk = self.unlock_with(password, &s.kdf, &s.keyset, sk)?;
         self.begin(email, s, sk, trust).await?;
         self.cache_profile(&s.user.id, &CachedProfile { kdf: s.kdf.clone(), keyset: s.keyset.clone() }).await?;

@@ -92,7 +92,12 @@ pub(crate) async fn session_state(host: &Host, issuer: &str, user_id: &str) -> R
     Ok(if host.store.get(&parked).await?.is_some() { SessionState::Parked } else { SessionState::SignedOut })
 }
 
-pub(crate) async fn share_info(client: &OvClient, api: &str, id: &str, cancel: &CancelToken) -> Result<ShareInfo, OvError> {
+pub(crate) async fn share_info(
+    client: &OvClient,
+    api: &str,
+    id: &str,
+    cancel: &CancelToken,
+) -> Result<ShareInfo, OvError> {
     let auth = AuthApi::new(api)?;
     let i = parse_public_share(&send(&client.inner.host, auth.build_public_share(id), cancel).await?)?;
     Ok(ShareInfo {
@@ -126,5 +131,8 @@ pub(crate) async fn open_share(
     let res = send(&client.inner.host, auth.build_open_share(open.id(), &body), cancel).await?;
     let opened = parse_open_share(&res)?;
     let payload = open.decrypt_b64u(&opened.ct)?;
-    Ok(OpenedShare { payload: api_payload(&payload), opens_left: opened.opens_left.map(|n| n.clamp(0, u32::MAX as i64) as u32) })
+    Ok(OpenedShare {
+        payload: api_payload(&payload),
+        opens_left: opened.opens_left.map(|n| n.clamp(0, u32::MAX as i64) as u32),
+    })
 }

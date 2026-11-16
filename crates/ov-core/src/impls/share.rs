@@ -10,7 +10,7 @@ use ov_protocol::types::{CreateShareRequest, UploadShareRequest};
 use zeroize::Zeroizing;
 
 use super::convert::wire_kdf;
-use super::util::{lock, secret_text, signed_out};
+use super::util::secret_text;
 use crate::api::{
     Account, CancelToken, CreatedShare, EntryRecord, FieldRecord, ShareField, ShareListing, ShareOptions, SharePayload,
     ShareRef, ShareableField,
@@ -25,7 +25,12 @@ pub(crate) fn api_payload(p: &ov_share::SharePayload) -> SharePayload {
         fields: p
             .fields
             .iter()
-            .map(|f| ShareField { k: f.k.clone(), label: f.label.clone(), value: f.value.as_bytes().to_vec(), protected: f.protected })
+            .map(|f| ShareField {
+                k: f.k.clone(),
+                label: f.label.clone(),
+                value: f.value.as_bytes().to_vec(),
+                protected: f.protected,
+            })
             .collect(),
     }
 }
@@ -90,7 +95,9 @@ impl Account {
         cancel: &CancelToken,
     ) -> Result<CreatedShare, OvError> {
         let enc_sk = self.with_keyset(|ks| Zeroizing::new(*ks.enc_sk))?;
-        let base = self.share_base_url().ok_or_else(|| OvError::new(OvErrorCode::Unsupported, "this server has no share page"))?;
+        let base = self
+            .share_base_url()
+            .ok_or_else(|| OvError::new(OvErrorCode::Unsupported, "this server has no share page"))?;
         let payload = share_payload(payload)?;
         let ShareOptions { expires_in, max_opens, passcode, vault_id, entry_id } = options;
         let passcode = passcode.map(|p| secret_text(p, "passcode")).transpose()?.filter(|p| !p.is_empty());
@@ -113,7 +120,8 @@ impl Account {
         };
         let share = self.call(cancel, |a, t| a.build_create_share(t, &req), parse_share).await?;
         let ct = ov_share::encrypt_share_payload(&key, &share.id, &payload, passcode_key.as_deref())?;
-        let reference = ov_share::ShareRef { vault: vault_id, entry: entry_id, title: payload.title.clone().unwrap_or_default() };
+        let reference =
+            ov_share::ShareRef { vault: vault_id, entry: entry_id, title: payload.title.clone().unwrap_or_default() };
         let r = ov_share::encrypt_share_ref(&enc_sk[..], &share.id, &reference)?;
         let body = UploadShareRequest { ct: b64u(&ct), reference: r };
         self.call(cancel, |a, t| a.build_upload_share(t, &share.id, &body), parse_share).await?;
@@ -158,14 +166,5 @@ impl Account {
     pub(crate) fn share_base_url(&self) -> Option<String> {
         let c = &self.inner.config;
         c.share.clone().or_else(|| c.web.as_ref().map(|w| format!("{}/s", w.trim_end_matches('/'))))
-    }
-
-    /// Unused helper kept for symmetry with the lock check.
-    pub(crate) fn require_unlocked(&self) -> Result<(), OvError> {
-        if lock(&self.inner.inner).keyset.is_some() {
-            Ok(())
-        } else {
-            Err(signed_out("the account is locked"))
-        }
     }
 }

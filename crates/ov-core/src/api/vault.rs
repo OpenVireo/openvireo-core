@@ -257,7 +257,16 @@ impl Vault {
         credentials: KdbxCredentials,
         cancel: CancelToken,
     ) -> Result<Vault, OvError> {
-        todo!()
+        cancel.check()?;
+        let key = crate::impls::vaults::local_key(&credentials)?;
+        let db = ov_kdbx::read(&kdbx, &key).map_err(|e| {
+            if e.is(ov_error::OvErrorCode::VaultKeyMismatch) {
+                OvError::new(ov_error::OvErrorCode::KdbxError, "the password or key file is wrong")
+            } else {
+                e
+            }
+        })?;
+        Ok(crate::impls::vaults::new_vault(crate::state::VaultSource::Local(credentials), None, db, false))
     }
 
     /// A new empty local database named `name` (KDBX 4, ChaCha20, Argon2id). TS `createNewKdbx`.
@@ -266,55 +275,89 @@ impl Vault {
         credentials: KdbxCredentials,
         cancel: CancelToken,
     ) -> Result<Vault, OvError> {
-        todo!()
+        cancel.check()?;
+        crate::impls::vaults::local_key(&credentials)?;
+        let v = crate::impls::vaults::new_vault(
+            crate::state::VaultSource::Local(credentials),
+            None,
+            ov_kdbx::vault::create_kdbx(&name, 0)?,
+            false,
+        );
+        let now = v.now();
+        let mut db = ov_kdbx::vault::create_kdbx(&name, now)?;
+        db.header.cipher = ov_kdbx::model::Cipher::ChaCha20;
+        if let ov_kdbx::model::Kdf::Argon2 { kind, .. } = &mut db.header.kdf {
+            *kind = ov_kdbx::model::Argon2Type::Id;
+        }
+        *v.db() = db;
+        Ok(v)
     }
 
     /// Saves a local database with its credentials. `invalid_request` for an account vault (use
     /// [`sync`](Self::sync)).
     pub async fn save_local(&self, cancel: CancelToken) -> Result<Vec<u8>, OvError> {
-        todo!()
+        cancel.check()?;
+        let crate::state::VaultSource::Local(creds) = &self.inner.source else {
+            return Err(OvError::new(ov_error::OvErrorCode::InvalidRequest, "an account vault is saved with sync"));
+        };
+        let key = crate::impls::vaults::local_key(creds)?;
+        let db = self.db().clone();
+        ov_kdbx::write(&db, &key)
     }
 
     // ------------------------------------------------------------------------------ state
 
     /// The vault id (for a local file, its root group UUID).
     pub fn id(&self) -> String {
-        todo!()
+        match self.vault_info() {
+            Some(i) => i.id,
+            None => crate::impls::convert::uuid_hex(&self.db().root.uuid),
+        }
     }
 
     /// The vault name (account vaults: the decrypted name from the auth server).
     pub fn name(&self) -> String {
-        todo!()
+        match self.vault_info() {
+            Some(i) => i.name,
+            None => {
+                let db = self.db();
+                if db.meta.database_name.is_empty() {
+                    db.root.name.clone()
+                } else {
+                    db.meta.database_name.clone()
+                }
+            }
+        }
     }
 
     /// The account's view of the vault; `None` for a local file.
     pub fn info(&self) -> Option<VaultInfo> {
-        todo!()
+        self.vault_info()
     }
 
     /// The server ETag at the last sync (compare with a `vault` event's etag).
     pub fn etag(&self) -> Option<String> {
-        todo!()
+        crate::impls::util::lock(&self.inner.etag).clone()
     }
 
     /// The last sync couldn't reach the server, or the vault was opened from the offline cache.
     pub fn is_offline(&self) -> bool {
-        todo!()
+        self.inner.offline.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// An old version from history: edits and sync are refused.
     pub fn is_read_only(&self) -> bool {
-        todo!()
+        matches!(self.inner.source, crate::state::VaultSource::Version { .. })
     }
 
     /// Conflicts the last sync resolved (Swift `OpenedVault.conflicts`).
     pub fn conflicts(&self) -> Vec<SyncConflict> {
-        todo!()
+        crate::impls::util::lock(&self.inner.conflicts).clone()
     }
 
     /// The root group's id.
     pub fn root_group_id(&self) -> String {
-        todo!()
+        crate::impls::convert::uuid_hex(&self.db().root.uuid)
     }
 
     // ----------------------------------------------------------------------------- reading
@@ -322,54 +365,58 @@ impl Vault {
     /// Every entry, without values (TS `listItems`, `collectAllDbData`; Swift `entries`). The
     /// Recycle Bin is left out unless `include_recycle_bin`.
     pub fn entries(&self, include_recycle_bin: bool) -> Vec<EntrySummary> {
-        todo!()
+        crate::impls::kdbx_ops::entries(&self.db(), include_recycle_bin)
     }
 
     /// Every group in tree order, the root first.
     pub fn groups(&self) -> Vec<GroupInfo> {
-        todo!()
+        crate::impls::kdbx_ops::groups(&self.db())
     }
 
     /// One entry with its values; `entry_not_found` if missing.
     pub fn entry(&self, entry_id: String) -> Result<EntryRecord, OvError> {
-        todo!()
+        crate::impls::kdbx_ops::entry(&self.db(), &entry_id)
     }
 
     /// The entry an item reference names (`ov://<vault>/[<group>/…]<entry>`, SPEC §14; the vault
     /// segment is not checked here). `<entry>` is a UUID (hex, dashed or base64) or a unique title.
     pub fn find(&self, reference: String) -> Result<EntryRecord, OvError> {
-        todo!()
+        // W2-V: `ov://` references are ov_vault's (vault/reference.ts).
+        let _ = reference;
+        Err(crate::impls::vault_glue::needs_vault())
     }
 
     /// The value a secret reference names (`ov://<vault>/[<group>/…]<entry>/<field>`, SPEC §14).
     /// TS `AccountVault.read`.
     pub fn read_field(&self, reference: String) -> Result<SecretBytes, OvError> {
-        todo!()
+        // W2-V: `ov://` references are ov_vault's (vault/reference.ts).
+        let _ = reference;
+        Err(crate::impls::vault_glue::needs_vault())
     }
 
     /// Older versions of an entry, oldest first.
     pub fn history(&self, entry_id: String) -> Result<Vec<EntryRecord>, OvError> {
-        todo!()
+        crate::impls::kdbx_ops::history(&self.db(), &entry_id)
     }
 
     /// An attachment's content.
     pub fn attachment(&self, entry_id: String, name: String) -> Result<SecretBytes, OvError> {
-        todo!()
+        crate::impls::kdbx_ops::attachment(&self.db(), &entry_id, &name)
     }
 
     /// A custom icon's PNG bytes.
     pub fn custom_icon(&self, icon_id: String) -> Result<Vec<u8>, OvError> {
-        todo!()
+        crate::impls::kdbx_ops::custom_icon(&self.db(), &icon_id)
     }
 
     /// The group at a `/`-separated path of names below the root, if it exists.
     pub fn group_id_at(&self, path: String) -> Option<String> {
-        todo!()
+        crate::impls::kdbx_ops::group_id_at(&self.db(), &path).map(|u| crate::impls::convert::uuid_hex(&u))
     }
 
     /// Whether an entry or group is in the Recycle Bin.
     pub fn is_in_recycle_bin(&self, id: String) -> bool {
-        todo!()
+        ov_kdbx::entries::parse_uuid_string(&id).is_some_and(|u| crate::impls::kdbx_ops::in_recycle_bin(&self.db(), u))
     }
 
     // ----------------------------------------------------------------------------- editing
@@ -383,7 +430,10 @@ impl Vault {
         create: bool,
         cancel: CancelToken,
     ) -> Result<SyncReport, OvError> {
-        todo!()
+        // W2-V: `ov://` references are ov_vault's (vault/reference.ts); then sync.
+        let _ = (reference, value, create);
+        cancel.check()?;
+        Err(crate::impls::vault_glue::needs_vault())
     }
 
     /// Sets several fields of the entry an item reference names, keeping history (TS
@@ -394,103 +444,137 @@ impl Vault {
         fields: Vec<FieldInput>,
         create: CreateMode,
     ) -> Result<SetFieldsResult, OvError> {
-        todo!()
+        // W2-V: `ov://` references are ov_vault's (vault/reference.ts, TS setItemFields).
+        let _ = (reference, fields, create);
+        Err(crate::impls::vault_glue::needs_vault())
     }
 
     /// Adds an entry to a group; returns its id.
     pub fn add_entry(&self, group_id: String, input: EntryInput) -> Result<String, OvError> {
-        todo!()
+        self.edit(|db, now| crate::impls::kdbx_ops::add_entry(db, &group_id, input, now))
     }
 
     /// Edits an entry (history first).
     pub fn edit_entry(&self, entry_id: String, input: EntryInput) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| crate::impls::kdbx_ops::edit_entry(db, &entry_id, input, now))
     }
 
     /// Moves an entry to another group (updates `LocationChanged`).
     pub fn move_entry(&self, entry_id: String, group_id: String) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| {
+            let id =
+                ov_kdbx::entries::parse_uuid_string(&entry_id).ok_or_else(crate::impls::kdbx_ops::entry_not_found)?;
+            crate::impls::kdbx_ops::move_entry_to(db, id, crate::impls::kdbx_ops::parse_id(&group_id)?, now)
+        })
     }
 
     /// Deletes an entry: into the Recycle Bin when it is enabled, else (or when already there) for
     /// good, with a `DeletedObject` so the deletion syncs.
     pub fn delete_entry(&self, entry_id: String) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| {
+            let id =
+                ov_kdbx::entries::parse_uuid_string(&entry_id).ok_or_else(crate::impls::kdbx_ops::entry_not_found)?;
+            ov_kdbx::entries::delete_entry(db, id, now)
+        })
     }
 
     /// Moves an entry or group out of the Recycle Bin, to its previous parent when that still exists.
     pub fn restore_from_recycle_bin(&self, id: String) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| crate::impls::kdbx_ops::restore_from_recycle_bin(db, &id, now))
     }
 
     /// Empties the Recycle Bin (each item gets a `DeletedObject`).
     pub fn empty_recycle_bin(&self) -> Result<(), OvError> {
-        todo!()
+        self.edit(ov_kdbx::entries::empty_recycle_bin)
     }
 
     /// Sets or replaces an attachment.
     pub fn set_attachment(&self, entry_id: String, name: String, data: SecretBytes) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| crate::impls::kdbx_ops::set_attachment(db, &entry_id, &name, data, now))
     }
 
     /// Removes an attachment.
     pub fn remove_attachment(&self, entry_id: String, name: String) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| crate::impls::kdbx_ops::remove_attachment(db, &entry_id, &name, now))
     }
 
     /// Adds a custom icon (or finds the identical one); returns its id.
     pub fn add_custom_icon(&self, png: Vec<u8>) -> Result<String, OvError> {
-        todo!()
+        self.edit(|db, now| crate::impls::kdbx_ops::add_custom_icon(db, png, now))
     }
 
     /// Adds a group under `parent_id` (the root when `None`); returns its id.
     pub fn add_group(&self, parent_id: Option<String>, name: String) -> Result<String, OvError> {
-        todo!()
+        self.edit(|db, now| {
+            let parent = crate::impls::kdbx_ops::parent_group(db, parent_id.as_deref())?;
+            ov_kdbx::entries::create_group(db, parent, &name, now).map(|u| crate::impls::convert::uuid_hex(&u))
+        })
     }
 
     /// The group at a `/`-separated path, creating missing groups.
     pub fn ensure_group(&self, path: String) -> Result<String, OvError> {
-        todo!()
+        self.edit(|db, now| {
+            crate::impls::kdbx_ops::ensure_group(db, &path, now).map(|u| crate::impls::convert::uuid_hex(&u))
+        })
     }
 
     /// Renames a group.
     pub fn rename_group(&self, group_id: String, name: String) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| {
+            ov_kdbx::entries::rename_group(db, crate::impls::kdbx_ops::parse_id(&group_id)?, &name, now)
+        })
     }
 
     /// Sets a group's standard icon.
     pub fn set_group_icon(&self, group_id: String, icon_id: u32) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| {
+            ov_kdbx::entries::set_group_icon(db, crate::impls::kdbx_ops::parse_id(&group_id)?, icon_id, now)
+        })
     }
 
     /// Moves a group under another; `invalid_request` for a move into itself or its subtree.
     pub fn move_group(&self, group_id: String, parent_id: String) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| {
+            crate::impls::kdbx_ops::move_group_to(
+                db,
+                crate::impls::kdbx_ops::parse_id(&group_id)?,
+                crate::impls::kdbx_ops::parse_id(&parent_id)?,
+                now,
+            )
+        })
     }
 
     /// Deletes a group with everything in it (Recycle Bin rules as [`delete_entry`](Self::delete_entry)).
     pub fn delete_group(&self, group_id: String) -> Result<(), OvError> {
-        todo!()
+        self.edit(|db, now| ov_kdbx::entries::delete_group(db, crate::impls::kdbx_ops::parse_id(&group_id)?, now))
     }
 
     /// How entry `entry_id` of `version` (from
     /// [`Account::open_vault_version`](crate::api::Account::open_vault_version)) compares with this
     /// vault (Swift `Database.difference(from:)`).
     pub fn version_difference(&self, version: Vault, entry_id: String) -> Result<VersionDifference, OvError> {
-        todo!()
+        let old = version.db().clone();
+        crate::impls::kdbx_ops::version_difference(&self.db(), &old, &entry_id)
     }
 
     /// Brings entry `entry_id` back from an old `version`: its content becomes the current version
     /// (the current one goes to history), or it is re-added at `group_path` if it was deleted
     /// (Swift `Database.restoreEntry`). Sync afterwards.
     pub fn restore_entry(&self, version: Vault, entry_id: String, group_path: String) -> Result<(), OvError> {
-        todo!()
+        let old = version.db().clone();
+        self.edit(|db, now| crate::impls::kdbx_ops::restore_entry(db, &old, &entry_id, &group_path, now))
     }
 
     /// Merges AutoFill's saved entries into the working copy (Swift `AutoFillEdits.apply`); `true`
     /// if anything changed.
     pub fn apply_autofill_edits(&self, edits: AutoFillEdits) -> Result<bool, OvError> {
-        todo!()
+        self.edit(|db, now| {
+            let mut changed = false;
+            for e in &edits.entries {
+                changed |= crate::impls::kdbx_ops::upsert_record(db, &e.entry, &e.group_path, now)?;
+            }
+            Ok(changed)
+        })
     }
 
     // -------------------------------------------------------------------------------- sync
@@ -499,18 +583,27 @@ impl Vault {
     /// SPEC §11, §13, §20. Offline, the working copy is kept on the device (encrypted) and uploads
     /// on a later sync; the error is `network_error`.
     pub async fn sync(&self, options: SyncOptions, cancel: CancelToken) -> Result<SyncReport, OvError> {
-        todo!()
+        self.writable()?;
+        match &self.inner.source {
+            crate::state::VaultSource::Local(_) => {
+                Err(OvError::new(ov_error::OvErrorCode::InvalidRequest, "a local file has no server; save it instead"))
+            }
+            _ => crate::impls::sync_glue::sync_account_vault(self, options, None, &cancel).await,
+        }
     }
 
     /// Makes the working copy durable before anything is sent: it survives the app being killed, and
     /// AutoFill sees it. The copy goes once a sync uploads it (Swift `keepEdits`).
     pub async fn keep_edits(&self) -> Result<(), OvError> {
-        todo!()
+        self.keep_edits_impl().await
     }
 
     /// Edits wait on this device for the next upload.
     pub async fn has_pending_edits(&self) -> Result<bool, OvError> {
-        todo!()
+        match &self.inner.source {
+            crate::state::VaultSource::Account { account, .. } => account.pending_for(Some(&self.id())).await,
+            _ => Ok(false),
+        }
     }
 
     // ------------------------------------------------------------------------------ export
@@ -523,12 +616,16 @@ impl Vault {
         group_ids: Option<Vec<String>>,
         cancel: CancelToken,
     ) -> Result<Vec<u8>, OvError> {
-        todo!()
+        cancel.check()?;
+        let key = crate::impls::vaults::local_key(&credentials)?;
+        let now = self.now();
+        let out = crate::impls::kdbx_ops::export_db(&self.db(), group_ids, now)?;
+        ov_kdbx::write(&out, &key)
     }
 
     /// The entries directly in `group_ids` (every group when `None`), unencrypted, as CSV or JSON.
     /// The Recycle Bin is never exported (Swift `Export`).
     pub fn export_plain(&self, format: ExportFormat, group_ids: Option<Vec<String>>) -> Result<SecretBytes, OvError> {
-        todo!()
+        crate::impls::kdbx_ops::export_plain(&self.db(), format, group_ids)
     }
 }

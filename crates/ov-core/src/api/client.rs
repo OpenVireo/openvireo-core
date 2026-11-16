@@ -141,5 +141,5 @@ impl OvClient {
 /// `Account.deletionExpired`.
 pub fn deletion_expired(scheduled_for: Option<Rfc3339>, now_ms: i64) -> bool {
     let Some(at) = scheduled_for.as_deref().and_then(crate::impls::util::parse_rfc3339) else { return false };
-    now_ms > at + 24 * 3600_000
+    now_ms > at + 24 * 3_600_000
 }

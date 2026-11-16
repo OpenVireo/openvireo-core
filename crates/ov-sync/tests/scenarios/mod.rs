@@ -72,7 +72,10 @@ pub fn retries_on_412<W: World>(w: &W) {
     assert_eq!(r.attempts, 2);
     assert_eq!(w.methods().iter().filter(|m| *m == "PUT").count() - before, 2); // 412, success
     let server = ov_kdbx::read(&w.latest("db").unwrap(), &creds()).unwrap();
-    assert_eq!((get(&server, "A", "Password"), get(&server, "A", "Notes")), (Some("mine".into()), Some("theirs".into())));
+    assert_eq!(
+        (get(&server, "A", "Password"), get(&server, "A", "Notes")),
+        (Some("mine".into()), Some("theirs".into()))
+    );
 }
 
 /// "gives up after maxAttempts when the server keeps changing"
@@ -105,8 +108,9 @@ pub fn head_check_rollback_and_loss<W: World>(w: &W) {
     let c = [creds()];
     let k = creds();
     let blob = w.blob("db");
-    let again = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&first.state)).local_changed(false)))
-        .unwrap();
+    let again =
+        run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&first.state)).local_changed(false)))
+            .unwrap();
     assert_eq!(again.outcome, SyncOutcome::Unchanged);
     assert_eq!(again.attempts, 0);
     assert_eq!(w.methods().last().map(String::as_str), Some("HEAD"));
@@ -130,8 +134,12 @@ pub fn head_check_rollback_and_loss<W: World>(w: &W) {
     w.lose_all();
     let e = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&first.state)))).unwrap_err();
     assert_eq!(e.code, OvErrorCode::ServerLostDatabase);
-    let r = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&first.state)).accept_server_state(true)))
-        .unwrap();
+    let r = run(sync_kdbx(
+        &blob,
+        &mut local,
+        &SyncOptions::new(&k, &c).state(Some(&first.state)).accept_server_state(true),
+    ))
+    .unwrap();
     assert_eq!(r.outcome, SyncOutcome::Created);
 }
 
@@ -168,8 +176,12 @@ pub fn measures_clock_offset<W: World>(w: &W) {
     let c = [creds()];
     let k = creds();
     let mut db = first.db;
-    let second = run(sync_kdbx(&w.blob("db"), &mut db, &SyncOptions::new(&k, &c).state(Some(&first.state)).local_changed(false)))
-        .unwrap();
+    let second = run(sync_kdbx(
+        &w.blob("db"),
+        &mut db,
+        &SyncOptions::new(&k, &c).state(Some(&first.state)).local_changed(false),
+    ))
+    .unwrap();
     w.set_server_ahead_ms(0);
     let minutes = second.clock_offset_ms.unwrap() as f64 / 60_000.0;
     assert!((minutes - 10.0).abs() < 0.05, "{minutes}");

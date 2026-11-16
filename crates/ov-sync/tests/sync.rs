@@ -117,7 +117,8 @@ fn ts_sync_state_carries_over() {
     s.store("databases/db", &base);
     let (c, k) = ([creds()], creds());
     let blob = World::blob(&s, "db");
-    let r = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&state)).local_changed(false))).unwrap();
+    let r =
+        run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&state)).local_changed(false))).unwrap();
     assert_eq!(r.outcome, SyncOutcome::Unchanged);
     edit(&mut local, "A", &[("URL", "u")], 200);
     let r = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&state)))).unwrap();

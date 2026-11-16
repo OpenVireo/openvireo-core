@@ -244,8 +244,9 @@ mod tests {
 
     #[test]
     fn lenient_reads() {
-        let s = deserialize_sync_state(r#"{"etag":"x","snapshot":{"nope":1,"AQEBAQEBAQEBAQEBAQEBAQ":5.0},"extra":true}"#)
-            .unwrap();
+        let s =
+            deserialize_sync_state(r#"{"etag":"x","snapshot":{"nope":1,"AQEBAQEBAQEBAQEBAQEBAQ":5.0},"extra":true}"#)
+                .unwrap();
         assert_eq!((s.revision, s.generation, s.base, s.last_sync.as_str()), (0, 0, None, ""));
         assert_eq!(s.snapshot, vec![(Uuid::from_bytes([1; 16]), 5)]);
         assert_eq!(deserialize_sync_state("[]").unwrap_err().code, OvErrorCode::InvalidRequest);
@@ -262,7 +263,8 @@ mod tests {
         assert_eq!(c.base, s.base);
         assert_eq!(from_cached(&c).unwrap(), Some(s.clone()));
         // A TS-format state with the base inside the JSON.
-        let ts = CachedVault { state: serialize_sync_state(&s).into_bytes(), base: None, pending: None, autofill: None };
+        let ts =
+            CachedVault { state: serialize_sync_state(&s).into_bytes(), base: None, pending: None, autofill: None };
         assert_eq!(from_cached(&ts).unwrap(), Some(s));
         let empty = CachedVault { state: vec![], base: None, pending: None, autofill: None };
         assert_eq!(from_cached(&empty).unwrap(), None);

@@ -48,7 +48,13 @@ pub fn three_copies(build: impl FnOnce(&mut Database)) -> Copies {
 }
 
 /// Adds an entry with `fields` at `time` (seconds) to `group` (the root when `None`).
-pub fn add_entry(db: &mut Database, title: &str, fields: &[(&str, &str)], time: Timestamp, group: Option<Uuid>) -> Uuid {
+pub fn add_entry(
+    db: &mut Database,
+    title: &str,
+    fields: &[(&str, &str)],
+    time: Timestamp,
+    group: Option<Uuid>,
+) -> Uuid {
     let mut e = Entry::new(new_uuid().unwrap(), time);
     set(&mut e, "Title", title);
     for (k, v) in fields {
@@ -243,7 +249,10 @@ impl FakeSync {
                 let cur = s.blobs.get(&key).and_then(|l| l.last());
                 let (if_match, if_none) = (header("If-Match"), header("If-None-Match"));
                 if if_match.is_none() && if_none.is_none() {
-                    return (json(428, r#"{"error":"precondition required","code":"precondition_required"}"#.into()), false);
+                    return (
+                        json(428, r#"{"error":"precondition required","code":"precondition_required"}"#.into()),
+                        false,
+                    );
                 }
                 if if_none.as_deref() == Some("*") && cur.is_some() {
                     return (json(412, r#"{"error":"exists","code":"precondition_failed"}"#.into()), false);
@@ -251,7 +260,11 @@ impl FakeSync {
                 if let Some(m) = &if_match {
                     if cur.map(|c| &c.etag) != Some(m) {
                         return (
-                            json(412, r#"{"error":"The database was changed on the server.","code":"precondition_failed"}"#.into()),
+                            json(
+                                412,
+                                r#"{"error":"The database was changed on the server.","code":"precondition_failed"}"#
+                                    .into(),
+                            ),
                             false,
                         );
                     }

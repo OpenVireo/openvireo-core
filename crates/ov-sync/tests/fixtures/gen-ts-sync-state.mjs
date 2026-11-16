@@ -1,3 +1,6 @@
+// Regenerates ts-sync-state.json from the TS SDK build (openvireo-sdk/packages/sdk, `npm run build`):
+//   node gen-ts-sync-state.mjs > ts-sync-state.json   (adjust D to your SDK checkout)
+
 const D = "/Users/bongani/kpnx/openvireo-sdk/packages/sdk/dist";
 const { syncKdbx, serializeSyncState, SyncClient } = await import(`${D}/sync/index.js`);
 const { createVaultKdbx, vaultCredentials, kdbxweb } = await import(`${D}/vault/index.js`);

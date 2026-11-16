@@ -46,8 +46,12 @@ impl VaultCache {
     }
 
     async fn update(&self, f: impl FnOnce(&mut CachedVault)) -> Result<(), OvError> {
-        let mut rec =
-            self.record().await?.unwrap_or(CachedVault { state: Vec::new(), base: None, pending: None, autofill: None });
+        let mut rec = self.record().await?.unwrap_or(CachedVault {
+            state: Vec::new(),
+            base: None,
+            pending: None,
+            autofill: None,
+        });
         f(&mut rec);
         if rec.state.is_empty() && rec.base.is_none() && rec.pending.is_none() && rec.autofill.is_none() {
             return self.cache.remove(&self.user_id, &self.vault_id).await;
@@ -212,7 +216,9 @@ impl VaultSession {
                 }
             };
             let GetResult::Ok { data, .. } = got else {
-                return Err(OvError::new(OvErrorCode::NotFound, "this vault has no data on the sync server").with_status(404));
+                return Err(
+                    OvError::new(OvErrorCode::NotFound, "this vault has no data on the sync server").with_status(404)
+                );
             };
             let (db, version) = open_with_key_versions(&data, &sorted)?;
             let k = sorted.iter().find(|k| k.version == version).expect("the version that opened it");
@@ -277,7 +283,12 @@ impl VaultSession {
     /// Offline open (TS `openLocalCopy`): local edits not yet uploaded, else the server's bytes at
     /// the last sync. `cause` is the network error to report when there is neither
     /// (`not_available_offline`).
-    pub async fn open_local_copy(&mut self, keys: &[KeyVersion], vault_name: &str, cause: &OvError) -> Result<(), OvError> {
+    pub async fn open_local_copy(
+        &mut self,
+        keys: &[KeyVersion],
+        vault_name: &str,
+        cause: &OvError,
+    ) -> Result<(), OvError> {
         self.offline = true;
         if self.db.is_some() {
             return Ok(());

@@ -535,10 +535,15 @@ name = "ov-opaque"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "hex",
  "opaque-ke",
+ "ov-error",
+ "ov-testkit",
  "rand_chacha",
  "rand_core",
+ "serde_json",
  "sha2",
+ "unicode-normalization",
  "zeroize",
 ]
 

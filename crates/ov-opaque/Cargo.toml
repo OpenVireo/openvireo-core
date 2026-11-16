@@ -1,20 +1,46 @@
 [package]
 name = "ov-opaque"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.98.1"
-license = "MIT OR Apache-2.0"
-description = "OPAQUE (RFC 9807) for @openvireo/sdk: opaque-ke compiled to a dependency-free WASM module"
+description = "OPAQUE (RFC 9807, SPEC §8) for openvireo-core over opaque-ke, plus the legacy dependency-free WASM C ABI"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+# rlib: the safe Rust API for the rest of the core. cdylib: the legacy wasm module the TS SDK loads
+# (built by build.sh with the `legacy-c-abi` feature).
+crate-type = ["rlib", "cdylib"]
 path = "src/lib.rs"
 
+[features]
+# `legacy-c-abi` stays on by default until the SDK moves to ov-wasm (Wave 3, IW), so `cargo xtask size`
+# and `unlinked` keep measuring the module the SDK ships. Crates that depend on ov-opaque use
+# `default-features = false`, or the `ov_*` C symbols end up in their cdylibs too.
+default = ["legacy-c-abi"]
+# The old `ov_alloc` / `ov_call` / ... exports (see src/legacy.rs). Remove once the SDK uses ov-wasm.
+legacy-c-abi = ["test-server", "dep:rand_chacha"]
+# opaque-ke's server side (one ServerSetup per user), for tests and local mock servers only.
+test-server = []
+# Enables tests/interop.rs: a live run against the SDK's test/interop/opaque_server.py (libopaque).
+interop = []
+
 [dependencies]
-opaque-ke = { version = "=4.0.1", default-features = false, features = ["argon2", "ristretto255"] }
-argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
-sha2 = { version = "0.10", default-features = false }
-rand_core = { version = "0.6", default-features = false }
-rand_chacha = { version = "0.3", default-features = false }
-zeroize = { version = "1", default-features = false }
+ov-error = { path = "../ov-error" }
+opaque-ke.workspace = true
+argon2.workspace = true
+sha2.workspace = true
+rand_core.workspace = true
+rand_chacha = { workspace = true, optional = true }
+zeroize.workspace = true
+unicode-normalization.workspace = true
+
+[dev-dependencies]
+ov-testkit = { path = "../ov-testkit" }
+rand_chacha.workspace = true
+hex = { workspace = true, features = ["std"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true

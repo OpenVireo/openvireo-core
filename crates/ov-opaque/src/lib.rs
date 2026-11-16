@@ -1,245 +1,406 @@
-//! OPAQUE (SPEC §8, RFC 9807) for @openvireo/sdk, over opaque-ke, as a WASM module with no imports.
+//! OPAQUE (SPEC §8, RFC 9807) for openvireo-core, over opaque-ke 4.0.1.
 //!
 //! Suite: ristretto255 OPRF and 3DH, SHA-512, KSF = Argon2id v1.3 (64 MiB, 2 passes, 1 lane, all-zero
-//! salt). That is libsodium's `crypto_pwhash` INTERACTIVE setting, which libopaque uses, so this module
-//! talks to the libopaque server (Flask) and shares records with the libopaque C client (Qt).
+//! 16-byte salt). That is libsodium's `crypto_pwhash` INTERACTIVE setting, which libopaque uses, so this
+//! crate talks to the libopaque auth server and shares records with the libopaque C client (desktop).
+//! The key-exchange context is `ov-opaque-v1` ([`CONTEXT`]). The OPAQUE password input is the UTF-8 of
+//! the NFKC-normalised password ([`password_bytes`]).
 //!
-//! ABI: `ov_alloc`/`ov_free` for the input buffer, then `ov_call(op, ptr, len) -> status`. Input and
-//! output are lists of fields, each `u32 LE length ‖ bytes`. The output stays in a module buffer
-//! (`ov_out_ptr`/`ov_out_len`) until `ov_out_clear`, which zeroes it. Every call that needs randomness
-//! takes a 32-byte seed from the caller (crypto.getRandomValues) for a ChaCha20 RNG, so the module needs
-//! no host imports. Status: 0 ok, 1 authentication failed, 2 bad input.
+//! The client API is two steps per flow:
+//!
+//! - registration: [`start_registration`] → `request` for `/auth/register/start`, then
+//!   [`finish_registration`] on the server's response → `record` for `/auth/register/finish`;
+//! - login: [`start_login`] → `ke1` for `/auth/login/start`, then [`finish_login`] on `ke2` → `auth_u`
+//!   for `/auth/login/finish` and the session key.
+//!
+//! Randomness comes from the caller's CSPRNG (`rng`), so a seeded RNG replays recorded transcripts.
+//! Secrets (states, export and session keys) are wiped on drop.
+//!
+//! Features: `legacy-c-abi` (default until the SDK moves to ov-wasm) keeps the old dependency-free WASM
+//! C ABI ([`legacy`]); `test-server` adds opaque-ke's server side ([`server`]); `interop` turns on the
+//! live libopaque test.
 
 use argon2::{Algorithm, Argon2, Params, Version};
 use opaque_ke::{
     CipherSuite, ClientLogin, ClientLoginFinishParameters, ClientRegistration, ClientRegistrationFinishParameters,
-    CredentialFinalization, CredentialRequest, CredentialResponse, Identifiers, RegistrationRequest,
-    RegistrationResponse, RegistrationUpload, Ristretto255, ServerLogin, ServerLoginParameters, ServerRegistration,
-    ServerSetup, TripleDh,
+    CredentialResponse, Identifiers, RegistrationResponse, Ristretto255, TripleDh,
 };
-use rand_chacha::ChaCha20Rng;
-use rand_core::SeedableRng;
-use std::cell::RefCell;
-use zeroize::{Zeroize, Zeroizing};
+use ov_error::{OvError, OvErrorCode};
+use rand_core::{CryptoRng, RngCore};
+use std::fmt;
+use unicode_normalization::UnicodeNormalization;
+use zeroize::Zeroizing;
 
-struct Suite;
+#[cfg(feature = "legacy-c-abi")]
+pub mod legacy;
+#[cfg(feature = "test-server")]
+pub mod server;
+mod wire;
+
+/// The OPAQUE key-exchange context (SPEC §8; the discovery document's `opaque.context`).
+pub const CONTEXT: &str = "ov-opaque-v1";
+
+/// The opaque-ke cipher suite (SPEC §8).
+pub struct Suite;
 impl CipherSuite for Suite {
     type OprfCs = Ristretto255;
     type KeyExchange = TripleDh<Ristretto255, sha2::Sha512>;
     type Ksf = Argon2<'static>;
 }
 
-fn ksf() -> Argon2<'static> {
-    // crypto_pwhash_MEMLIMIT_INTERACTIVE (64 MiB) and crypto_pwhash_OPSLIMIT_INTERACTIVE (2)
-    Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::new(65536, 2, 1, None).unwrap())
+/// Argon2id v1.3, 64 MiB, t=2, p=1: `crypto_pwhash_MEMLIMIT_INTERACTIVE` and
+/// `crypto_pwhash_OPSLIMIT_INTERACTIVE`. opaque-ke passes an all-zero 16-byte salt.
+pub(crate) fn ksf() -> Argon2<'static> {
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::new(65536, 2, 1, None).expect("constant Argon2 params"))
 }
 
-const OK: i32 = 0;
-const AUTH_FAILED: i32 = 1;
-const BAD_INPUT: i32 = 2;
-
-/// The test server derives each user's OPRF key from its own ServerSetup, so the id is a constant.
-const CREDENTIAL_ID: &[u8] = b"ov";
-
-thread_local! {
-    static OUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+/// Why an OPAQUE step failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpaqueError {
+    /// Authentication failed: a wrong password, or the fake record the server sends for an unknown
+    /// email. Callers show the same message as a 401.
+    AuthFailed,
+    /// A message, state or argument was malformed. The string says which step failed (no secrets).
+    InvalidInput(&'static str),
 }
 
-#[no_mangle]
-pub extern "C" fn ov_alloc(len: usize) -> *mut u8 {
-    let mut v = Vec::<u8>::with_capacity(len.max(1));
-    let p = v.as_mut_ptr();
-    std::mem::forget(v);
-    p
-}
-
-/// # Safety
-/// `ptr` and `len` must come from `ov_alloc`.
-#[no_mangle]
-pub unsafe extern "C" fn ov_free(ptr: *mut u8, len: usize) {
-    let mut v = Vec::from_raw_parts(ptr, len.max(1), len.max(1));
-    v.zeroize();
-}
-
-#[no_mangle]
-pub extern "C" fn ov_out_ptr() -> *const u8 {
-    OUT.with(|o| o.borrow().as_ptr())
-}
-
-#[no_mangle]
-pub extern "C" fn ov_out_len() -> usize {
-    OUT.with(|o| o.borrow().len())
-}
-
-#[no_mangle]
-pub extern "C" fn ov_out_clear() {
-    OUT.with(|o| {
-        let mut o = o.borrow_mut();
-        o.zeroize();
-        *o = Vec::new();
-    });
-}
-
-enum Fail {
-    Auth,
-    Input,
-}
-
-type Fields<'a> = Vec<&'a [u8]>;
-
-fn unpack(mut b: &[u8], n: usize) -> Result<Fields<'_>, Fail> {
-    let mut out = Vec::with_capacity(n);
-    for _ in 0..n {
-        if b.len() < 4 {
-            return Err(Fail::Input);
+impl fmt::Display for OpaqueError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OpaqueError::AuthFailed => f.write_str("wrong password"),
+            OpaqueError::InvalidInput(message) => f.write_str(message),
         }
-        let len = u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
-        if b.len() - 4 < len {
-            return Err(Fail::Input);
+    }
+}
+
+impl std::error::Error for OpaqueError {}
+
+/// Both kinds become `opaque_failed`, with the TS SDK's messages.
+impl From<OpaqueError> for OvError {
+    fn from(e: OpaqueError) -> Self {
+        OvError::new(OvErrorCode::OpaqueFailed, e.to_string())
+    }
+}
+
+pub(crate) fn bad<E>(message: &'static str) -> impl FnOnce(E) -> OpaqueError {
+    move |_| OpaqueError::InvalidInput(message)
+}
+
+/// The OPAQUE identities (SPEC §8).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OpaqueIds {
+    /// `idU`: the account email, trimmed and lowercased.
+    pub id_u: String,
+    /// `idS`: the issuer host, for example `accounts.openvireo.com`.
+    pub id_s: String,
+}
+
+/// `idU` = trimmed, lowercased email; `idS` = the issuer host (the discovery document's `opaque.ids`, or
+/// the issuer URL's host). Mirrors the TS SDK's `opaqueIds`: when `issuer_or_host` starts with a
+/// `scheme://`, it is reduced to the URL's host (lowercased, userinfo dropped, the scheme's default port
+/// dropped). Unlike the WHATWG URL parser it does not punycode non-ASCII host names.
+pub fn opaque_ids(email: &str, issuer_or_host: &str) -> OpaqueIds {
+    let id_s = js_trim(issuer_or_host);
+    let id_s = match url_host(id_s) {
+        Some(host) => host,
+        None => id_s.to_string(),
+    };
+    OpaqueIds { id_u: js_trim(email).to_lowercase(), id_s }
+}
+
+/// `String.prototype.trim`: Unicode White_Space plus U+FEFF.
+fn js_trim(s: &str) -> &str {
+    s.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
+}
+
+/// The host (`hostname[:port]`) of `scheme://...`, or None when `s` has no scheme.
+fn url_host(s: &str) -> Option<String> {
+    let (scheme, rest) = s.split_once("://")?;
+    let mut chars = scheme.chars();
+    let first_ok = chars.next().is_some_and(|c| c.is_ascii_alphabetic());
+    if !first_ok || !chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')) {
+        return None;
+    }
+    let scheme = scheme.to_ascii_lowercase();
+    let special = matches!(scheme.as_str(), "http" | "https" | "ws" | "wss" | "ftp" | "file");
+    let end = rest.find(|c: char| c == '/' || c == '?' || c == '#' || (special && c == '\\')).unwrap_or(rest.len());
+    let authority = &rest[..end];
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    // The port separator is the last ':' outside an IPv6 literal.
+    let (host, port) = match host_port.rfind(':') {
+        Some(i) if !host_port[i..].contains(']') => (&host_port[..i], Some(&host_port[i + 1..])),
+        _ => (host_port, None),
+    };
+    let host = host.to_ascii_lowercase();
+    let default_port = match scheme.as_str() {
+        "http" | "ws" => Some(80),
+        "https" | "wss" => Some(443),
+        "ftp" => Some(21),
+        _ => None,
+    };
+    Some(match port.filter(|p| !p.is_empty()) {
+        None => host,
+        Some(p) => match p.parse::<u16>() {
+            Ok(n) if Some(n) == default_port => host,
+            Ok(n) => format!("{host}:{n}"),
+            Err(_) => format!("{host}:{p}"),
+        },
+    })
+}
+
+/// The OPAQUE password input: the UTF-8 bytes of NFKC(password), as the TS SDK's `passwordBytes`.
+pub fn password_bytes(password: &str) -> Zeroizing<Vec<u8>> {
+    let normalized = Zeroizing::new(password.nfkc().collect::<String>());
+    Zeroizing::new(normalized.as_bytes().to_vec())
+}
+
+fn check_password(pw: &[u8]) -> Result<(), OpaqueError> {
+    if pw.is_empty() || pw.len() > 0xffff {
+        return Err(OpaqueError::InvalidInput("password must be 1..65535 UTF-8 bytes"));
+    }
+    Ok(())
+}
+
+/// Client state between the two registration steps. It holds the password (finish needs it again)
+/// and is wiped on drop.
+pub struct ClientRegistrationState {
+    inner: ClientRegistration<Suite>,
+    password: Zeroizing<Vec<u8>>,
+}
+
+/// Client state between the two login steps. It holds the password and is wiped on drop.
+pub struct ClientLoginState {
+    inner: ClientLogin<Suite>,
+    password: Zeroizing<Vec<u8>>,
+}
+
+macro_rules! state_bytes {
+    ($ty:ident, $inner:ident, $what:literal) => {
+        impl $ty {
+            /// The state as bytes, `u32le len ‖ opaque-ke state ‖ u32le len ‖ password` (the legacy C
+            /// ABI's format). Secret: wipe it, never store it.
+            pub fn to_bytes(&self) -> Zeroizing<Vec<u8>> {
+                let state = Zeroizing::new(self.inner.serialize().to_vec());
+                wire::pack(&[&state, &self.password])
+            }
+
+            /// Parses [`to_bytes`](Self::to_bytes).
+            pub fn from_bytes(bytes: &[u8]) -> Result<Self, OpaqueError> {
+                let f = wire::unpack(bytes, 2).map_err(bad($what))?;
+                let inner = $inner::<Suite>::deserialize(f[0]).map_err(bad($what))?;
+                Ok($ty { inner, password: Zeroizing::new(f[1].to_vec()) })
+            }
         }
-        out.push(&b[4..4 + len]);
-        b = &b[4 + len..];
-    }
-    if !b.is_empty() {
-        return Err(Fail::Input);
-    }
-    Ok(out)
+
+        impl fmt::Debug for $ty {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(concat!(stringify!($ty), "(redacted)"))
+            }
+        }
+    };
+}
+state_bytes!(ClientRegistrationState, ClientRegistration, "reading the registration state failed");
+state_bytes!(ClientLoginState, ClientLogin, "reading the login state failed");
+
+/// [`start_registration`]'s result.
+#[derive(Debug)]
+pub struct RegistrationStart {
+    /// `request` for `/auth/register/start` (OPAQUE M).
+    pub request: Vec<u8>,
+    pub state: ClientRegistrationState,
 }
 
-fn pack(fields: &[&[u8]]) -> Zeroizing<Vec<u8>> {
-    let mut v = Zeroizing::new(Vec::with_capacity(fields.iter().map(|f| 4 + f.len()).sum()));
-    for f in fields {
-        v.extend_from_slice(&(f.len() as u32).to_le_bytes());
-        v.extend_from_slice(f);
-    }
-    v
+/// [`finish_registration`]'s result.
+pub struct RegistrationFinish {
+    /// `record` for `/auth/register/finish`.
+    pub record: Vec<u8>,
+    /// The export key. Not used in v1 (SPEC §8).
+    pub export_key: Zeroizing<Vec<u8>>,
 }
 
-fn rng(seed: &[u8]) -> Result<ChaCha20Rng, Fail> {
-    let seed: [u8; 32] = seed.try_into().map_err(|_| Fail::Input)?;
-    Ok(ChaCha20Rng::from_seed(seed))
+/// [`start_login`]'s result.
+#[derive(Debug)]
+pub struct LoginStart {
+    /// `ke1` for `/auth/login/start`.
+    pub ke1: Vec<u8>,
+    pub state: ClientLoginState,
 }
 
-fn ids<'a>(id_u: &'a [u8], id_s: &'a [u8]) -> Identifiers<'a> {
+/// [`finish_login`]'s result.
+pub struct LoginFinish {
+    /// `authU` (KE3) for `/auth/login/finish`.
+    pub auth_u: Vec<u8>,
+    /// The session key (the server derives the same one).
+    pub session_key: Zeroizing<Vec<u8>>,
+    /// The export key (the same as at registration).
+    pub export_key: Zeroizing<Vec<u8>>,
+}
+
+macro_rules! redacted_debug {
+    ($ty:ident, $public:ident) => {
+        impl fmt::Debug for $ty {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(stringify!($ty)).field(stringify!($public), &self.$public).finish_non_exhaustive()
+            }
+        }
+    };
+}
+redacted_debug!(RegistrationFinish, record);
+redacted_debug!(LoginFinish, auth_u);
+
+/// Starts a registration. `password` is NFKC-normalised ([`password_bytes`]) and must be 1..65535 bytes.
+pub fn start_registration<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    password: &str,
+) -> Result<RegistrationStart, OpaqueError> {
+    let pw = password_bytes(password);
+    check_password(&pw)?;
+    start_registration_bytes(rng, &pw)
+}
+
+/// [`start_registration`] on password bytes that are already UTF-8(NFKC(password)). No length check.
+pub(crate) fn start_registration_bytes<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    pw: &[u8],
+) -> Result<RegistrationStart, OpaqueError> {
+    let r = ClientRegistration::<Suite>::start(rng, pw).map_err(bad("registration request failed"))?;
+    Ok(RegistrationStart {
+        request: r.message.serialize().to_vec(),
+        state: ClientRegistrationState { inner: r.state, password: Zeroizing::new(pw.to_vec()) },
+    })
+}
+
+/// Finishes a registration on the server's `response`. Consumes (and wipes) the state.
+pub fn finish_registration<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    state: ClientRegistrationState,
+    response: &[u8],
+    ids: &OpaqueIds,
+) -> Result<RegistrationFinish, OpaqueError> {
+    finish_registration_raw(rng, state, response, ids.id_u.as_bytes(), ids.id_s.as_bytes())
+}
+
+pub(crate) fn finish_registration_raw<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    state: ClientRegistrationState,
+    response: &[u8],
+    id_u: &[u8],
+    id_s: &[u8],
+) -> Result<RegistrationFinish, OpaqueError> {
+    const WHAT: &str = "finishing the registration failed";
+    let response = RegistrationResponse::deserialize(response).map_err(bad(WHAT))?;
+    let k = ksf();
+    let r = state
+        .inner
+        .finish(rng, &state.password, response, ClientRegistrationFinishParameters::new(ids(id_u, id_s), Some(&k)))
+        .map_err(bad(WHAT))?;
+    Ok(RegistrationFinish { record: r.message.serialize().to_vec(), export_key: Zeroizing::new(r.export_key.to_vec()) })
+}
+
+/// Starts a login. `password` is NFKC-normalised ([`password_bytes`]) and must be 1..65535 bytes.
+pub fn start_login<R: RngCore + CryptoRng>(rng: &mut R, password: &str) -> Result<LoginStart, OpaqueError> {
+    let pw = password_bytes(password);
+    check_password(&pw)?;
+    start_login_bytes(rng, &pw)
+}
+
+pub(crate) fn start_login_bytes<R: RngCore + CryptoRng>(rng: &mut R, pw: &[u8]) -> Result<LoginStart, OpaqueError> {
+    let r = ClientLogin::<Suite>::start(rng, pw).map_err(bad("credential request failed"))?;
+    Ok(LoginStart {
+        ke1: r.message.serialize().to_vec(),
+        state: ClientLoginState { inner: r.state, password: Zeroizing::new(pw.to_vec()) },
+    })
+}
+
+/// Processes `ke2`. Consumes (and wipes) the state. [`OpaqueError::AuthFailed`] on a wrong password or
+/// a fake record for an unknown email. `context` is [`CONTEXT`] unless discovery says otherwise.
+pub fn finish_login<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    state: ClientLoginState,
+    ke2: &[u8],
+    ids: &OpaqueIds,
+    context: &str,
+) -> Result<LoginFinish, OpaqueError> {
+    finish_login_raw(rng, state, ke2, context.as_bytes(), ids.id_u.as_bytes(), ids.id_s.as_bytes())
+}
+
+pub(crate) fn finish_login_raw<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    state: ClientLoginState,
+    ke2: &[u8],
+    context: &[u8],
+    id_u: &[u8],
+    id_s: &[u8],
+) -> Result<LoginFinish, OpaqueError> {
+    let ke2 = CredentialResponse::deserialize(ke2).map_err(bad("recovering the credentials failed"))?;
+    let k = ksf();
+    let r = state
+        .inner
+        .finish(rng, &state.password, ke2, ClientLoginFinishParameters::new(Some(context), ids(id_u, id_s), Some(&k)))
+        .map_err(|_| OpaqueError::AuthFailed)?;
+    Ok(LoginFinish {
+        auth_u: r.message.serialize().to_vec(),
+        session_key: Zeroizing::new(r.session_key.to_vec()),
+        export_key: Zeroizing::new(r.export_key.to_vec()),
+    })
+}
+
+pub(crate) fn ids<'a>(id_u: &'a [u8], id_s: &'a [u8]) -> Identifiers<'a> {
     Identifiers { client: Some(id_u), server: Some(id_s) }
 }
 
-fn input<T, E>(r: Result<T, E>) -> Result<T, Fail> {
-    r.map_err(|_| Fail::Input)
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Client state between the two steps: the opaque-ke state and the password (finish needs it again).
-fn client_state(state: &[u8], pw: &[u8]) -> Zeroizing<Vec<u8>> {
-    pack(&[state, pw])
-}
-
-fn run(op: u32, inp: &[u8]) -> Result<Zeroizing<Vec<u8>>, Fail> {
-    match op {
-        // client: [seed, pw] -> [request, state]
-        1 => {
-            let f = unpack(inp, 2)?;
-            let r = input(ClientRegistration::<Suite>::start(&mut rng(f[0])?, f[1]))?;
-            Ok(pack(&[&r.message.serialize(), &client_state(&r.state.serialize(), f[1])]))
-        }
-        // client: [seed, state, response, idU, idS] -> [record, export_key]
-        2 => {
-            let f = unpack(inp, 5)?;
-            let s = unpack(f[1], 2)?;
-            let state = input(ClientRegistration::<Suite>::deserialize(s[0]))?;
-            let k = ksf();
-            let r = input(state.finish(
-                &mut rng(f[0])?,
-                s[1],
-                input(RegistrationResponse::deserialize(f[2]))?,
-                ClientRegistrationFinishParameters::new(ids(f[3], f[4]), Some(&k)),
-            ))?;
-            Ok(pack(&[&r.message.serialize(), &r.export_key]))
-        }
-        // client: [seed, pw] -> [ke1, state]
-        3 => {
-            let f = unpack(inp, 2)?;
-            let r = input(ClientLogin::<Suite>::start(&mut rng(f[0])?, f[1]))?;
-            Ok(pack(&[&r.message.serialize(), &client_state(&r.state.serialize(), f[1])]))
-        }
-        // client: [seed, state, ke2, context, idU, idS] -> [auth_u, session_key, export_key]
-        4 => {
-            let f = unpack(inp, 6)?;
-            let s = unpack(f[1], 2)?;
-            let state = input(ClientLogin::<Suite>::deserialize(s[0]))?;
-            let k = ksf();
-            let r = state
-                .finish(
-                    &mut rng(f[0])?,
-                    s[1],
-                    input(CredentialResponse::deserialize(f[2]))?,
-                    ClientLoginFinishParameters::new(Some(f[3]), ids(f[4], f[5]), Some(&k)),
-                )
-                .map_err(|_| Fail::Auth)?;
-            Ok(pack(&[&r.message.serialize(), &r.session_key, &r.export_key]))
-        }
-        // test server: [seed, request] -> [sec, response]; a new ServerSetup per user, like libopaque's
-        // per-user server keypair
-        10 => {
-            let f = unpack(inp, 2)?;
-            let setup = ServerSetup::<Suite>::new(&mut rng(f[0])?);
-            let r = input(ServerRegistration::start(
-                &setup,
-                input(RegistrationRequest::deserialize(f[1]))?,
-                CREDENTIAL_ID,
-            ))?;
-            Ok(pack(&[&setup.serialize(), &r.message.serialize()]))
-        }
-        // test server: [sec, record] -> [stored record]
-        11 => {
-            let f = unpack(inp, 2)?;
-            input(ServerSetup::<Suite>::deserialize(f[0]))?;
-            let file = ServerRegistration::finish(input(RegistrationUpload::<Suite>::deserialize(f[1]))?);
-            Ok(pack(&[&pack(&[f[0], &file.serialize()])]))
-        }
-        // test server: [seed, ke1, stored record, context, idU, idS] -> [ke2, sec]
-        12 => {
-            let f = unpack(inp, 6)?;
-            let rec = unpack(f[2], 2)?;
-            let setup = input(ServerSetup::<Suite>::deserialize(rec[0]))?;
-            let file = input(ServerRegistration::<Suite>::deserialize(rec[1]))?;
-            let r = input(ServerLogin::start(
-                &mut rng(f[0])?,
-                &setup,
-                Some(file),
-                input(CredentialRequest::deserialize(f[1]))?,
-                CREDENTIAL_ID,
-                ServerLoginParameters { context: Some(f[3]), identifiers: ids(f[4], f[5]) },
-            ))?;
-            let sec = pack(&[&r.state.serialize(), f[3], f[4], f[5]]);
-            Ok(pack(&[&r.message.serialize(), &sec]))
-        }
-        // test server: [sec, auth_u] -> [session_key]
-        13 => {
-            let f = unpack(inp, 2)?;
-            let s = unpack(f[0], 4)?;
-            let state = input(ServerLogin::<Suite>::deserialize(s[0]))?;
-            let fin = CredentialFinalization::<Suite>::deserialize(f[1]).map_err(|_| Fail::Auth)?;
-            let r = state
-                .finish(fin, ServerLoginParameters { context: Some(s[1]), identifiers: ids(s[2], s[3]) })
-                .map_err(|_| Fail::Auth)?;
-            Ok(pack(&[&r.session_key]))
-        }
-        _ => Err(Fail::Input),
+    #[test]
+    fn ids_match_the_ts_sdk() {
+        let ids = |e, i| {
+            let r = opaque_ids(e, i);
+            (r.id_u, r.id_s)
+        };
+        assert_eq!(
+            ids("  Alice@Example.COM ", "accounts.openvireo.com"),
+            ("alice@example.com".into(), "accounts.openvireo.com".into())
+        );
+        assert_eq!(ids("a@b.c", "https://accounts.openvireo.com"), ("a@b.c".into(), "accounts.openvireo.com".into()));
+        assert_eq!(
+            ids("a@b.c", " HTTPS://Accounts.OpenVireo.com/path?q#f "),
+            ("a@b.c".into(), "accounts.openvireo.com".into())
+        );
+        assert_eq!(ids("a@b.c", "https://accounts.example:443"), ("a@b.c".into(), "accounts.example".into()));
+        assert_eq!(ids("a@b.c", "http://localhost:8000/"), ("a@b.c".into(), "localhost:8000".into()));
+        assert_eq!(ids("a@b.c", "https://user:pw@host.example:8443"), ("a@b.c".into(), "host.example:8443".into()));
+        assert_eq!(ids("a@b.c", "http://[::1]:80/"), ("a@b.c".into(), "[::1]".into()));
+        assert_eq!(ids("a@b.c", "http://[::1]:8080"), ("a@b.c".into(), "[::1]:8080".into()));
+        // No scheme: kept as is (trimmed), like the SDK.
+        assert_eq!(ids("a@b.c", "Host.Example:8000"), ("a@b.c".into(), "Host.Example:8000".into()));
+        assert_eq!(ids("\u{feff}ÄB@x.y", "h"), ("äb@x.y".into(), "h".into()));
     }
-}
 
-/// # Safety
-/// `ptr` and `len` must describe memory from `ov_alloc`.
-#[no_mangle]
-pub unsafe extern "C" fn ov_call(op: u32, ptr: *const u8, len: usize) -> i32 {
-    ov_out_clear();
-    let inp = std::slice::from_raw_parts(ptr, len);
-    match run(op, inp) {
-        Ok(mut out) => {
-            OUT.with(|o| *o.borrow_mut() = std::mem::take(&mut *out));
-            OK
+    #[test]
+    fn password_is_nfkc_utf8() {
+        assert_eq!(&*password_bytes("ﬁ Å"), "fi Å".as_bytes());
+        assert!(matches!(
+            start_login(&mut rand_chacha::ChaCha20Rng::from_seed_zero(), ""),
+            Err(OpaqueError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn errors_map_to_opaque_failed() {
+        let e: OvError = OpaqueError::AuthFailed.into();
+        assert_eq!((e.wire_code(), e.message.as_str()), ("opaque_failed", "wrong password"));
+        let e: OvError = OpaqueError::InvalidInput("credential request failed").into();
+        assert_eq!(e.message, "credential request failed");
+    }
+
+    trait SeedZero {
+        fn from_seed_zero() -> Self;
+    }
+    impl SeedZero for rand_chacha::ChaCha20Rng {
+        fn from_seed_zero() -> Self {
+            <Self as rand_core::SeedableRng>::from_seed([0; 32])
         }
-        Err(Fail::Auth) => AUTH_FAILED,
-        Err(Fail::Input) => BAD_INPUT,
     }
 }

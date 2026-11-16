@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 88acbd545f8cfd9522ff9a94516f6105dbafde6f6b2cf443942876d88251ae4c # shrinks to c = Case { base: [None, None, None, None, Some(BaseEntry { content: Content { password: 0, url: None, custom: None, attachment: None, tags: 0 }, in_sub: false, history: None }), None], with_sub: true, local: Side { actions: [Keep, Keep, Keep, Keep, Keep, Keep], added: [] }, remote: Side { actions: [Keep, Keep, Keep, Keep, Move(0), Keep], added: [] } }, with_base = false
+cc 8a97195e6bc91a8889094e326626f12d1d9a565f2c78feefca0fdee9339960c0 # shrinks to c = Case { base: [None, Some(BaseEntry { content: Content { password: 0, url: None, custom: None, attachment: None, tags: 0 }, in_sub: false, history: None }), None, None, None, None], with_sub: true, local: Side { actions: [Keep, Move(0), Keep, Keep, Keep, Keep], added: [] }, remote: Side { actions: [Keep, Keep, Keep, Keep, Keep, Keep], added: [] } }, with_base = false
+cc c8c1bc9b90cc7823607924267db9d79b9ebeb77436df63746f2d78bc1e47d982 # shrinks to c = Case { base: [None, Some(BaseEntry { content: Content { password: 0, url: None, custom: Some(0), attachment: None, tags: 0 }, in_sub: false, history: None }), None, None, None, None], with_sub: false, local: Side { actions: [Keep, Edit(Content { password: 0, url: None, custom: None, attachment: None, tags: 1 }, 0), Keep, Keep, Keep, Keep], added: [] }, remote: Side { actions: [Keep, Edit(Content { password: 0, url: None, custom: Some(1), attachment: None, tags: 2 }, 0), Keep, Keep, Keep, Keep], added: [] } }, with_base = true

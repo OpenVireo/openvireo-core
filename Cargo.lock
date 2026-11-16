@@ -699,6 +699,14 @@ dependencies = [
 [[package]]
 name = "ov-merge"
 version = "0.0.0"
+dependencies = [
+ "base64",
+ "ov-error",
+ "ov-kdbx",
+ "ov-testkit",
+ "proptest",
+ "zeroize",
+]
 
 [[package]]
 name = "ov-opaque"

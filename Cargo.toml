@@ -79,3 +79,9 @@ strip = true
 debug = false
 # No panic = "abort": the bindings catch panics at the FFI edge (rust-core-tasks.md §2.3).
 # A wasm build that wants abort sets it with --config.
+
+# Argon2 at the SPEC's 64 MiB is seconds per call unoptimised; tests run it many times.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

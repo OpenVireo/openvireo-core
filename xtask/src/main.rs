@@ -242,13 +242,28 @@ fn wasm_cdylibs() -> Result<Vec<String>> {
         .collect())
 }
 
+/// Release-builds each cdylib on its own, as a cdylib only, the way it ships: `cargo build` of an
+/// rlib+cdylib package drops `-C lto`, and building several packages together unifies features and
+/// lets one share generics with another, so neither size nor symbols would match a shipped module.
 fn wasm_release_build(step: &str, cdylibs: &[String], extra: &[&str]) -> Result {
-    let mut cmd = cargo();
-    cmd.args(["build", "--locked", "--release", "--target", WASM_TARGET]).args(extra);
     for p in cdylibs {
-        cmd.args(["-p", p]);
+        let mut cmd = cargo();
+        cmd.args([
+            "rustc",
+            "--locked",
+            "--release",
+            "--target",
+            WASM_TARGET,
+            "-p",
+            p,
+            "--lib",
+            "--crate-type",
+            "cdylib",
+        ])
+        .args(extra);
+        run(&format!("{step} ({p})"), &mut cmd)?;
     }
-    run(step, &mut cmd)
+    Ok(())
 }
 
 /// Release-builds the wasm cdylibs with symbols kept (same optimisation and LTO as a shipped

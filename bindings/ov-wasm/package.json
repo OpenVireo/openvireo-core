@@ -1,0 +1,16 @@
+{
+  "name": "ov-wasm-dev",
+  "private": true,
+  "description": "Test harness for the @openvireo/core-wasm package that `cargo xtask wasm` writes to pkg/",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.0.0",
+    "jsdom": "26.1.0",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}

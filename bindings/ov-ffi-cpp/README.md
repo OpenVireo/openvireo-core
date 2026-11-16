@@ -23,6 +23,8 @@ Pick one:
 - **From source with Corrosion,** as the desktop does: see `example/CMakeLists.txt`. Corrosion runs cargo. When
   `OV_CXX_INCLUDE_DIR` is set, `build.rs` exports the headers there. Corrosion v0.6 builds one Rust target per
   configure, so a universal macOS app uses the prebuilt package (or one configure per arch, then `lipo`).
+  **On aarch64, pass `CARGO_TARGET_<TRIPLE>_RUSTFLAGS=--cfg aes_armv8`** (the example does): Corrosion runs cargo
+  outside this repo, so `.cargo/config.toml` isn't read, and without the cfg AES-KDF runs in software (~30x slower).
 
 Both paths build for macOS 11.0 and later unless `MACOSX_DEPLOYMENT_TARGET` / `CMAKE_OSX_DEPLOYMENT_TARGET`
 says otherwise.

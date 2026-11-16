@@ -12,6 +12,9 @@
 #![warn(missing_docs)]
 // The facade is a set of `todo!()` stubs until W2-A implements it; remove these then.
 #![allow(unused_variables, dead_code)]
+// On wasm32 the Host and its trait objects are deliberately not Send/Sync (JS values can't cross
+// threads, host.rs), and the client still shares state through Arc; there is only one thread.
+#![cfg_attr(target_arch = "wasm32", allow(clippy::arc_with_non_send_sync))]
 
 pub mod api;
 pub mod host;

@@ -37,7 +37,18 @@ corrosion_import_crate(
 )
 
 set(OVCORE_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/ovcore-include")
-corrosion_set_env_vars(ov_ffi_cpp "OV_CXX_INCLUDE_DIR=${OVCORE_INCLUDE_DIR}")
+set(OVCORE_CARGO_ENV "OV_CXX_INCLUDE_DIR=${OVCORE_INCLUDE_DIR}")
+# openvireo-core's .cargo/config.toml turns on the ARMv8 AES instructions (`--cfg aes_armv8`) for
+# aarch64, but Corrosion runs cargo from the build directory, where that file isn't read. Without
+# the cfg, AES-KDF runs in software (~30x slower: seconds per vault open). Pass it for every crate
+# of the aarch64 target through CARGO_TARGET_<TRIPLE>_RUSTFLAGS (per-target rustflags in Corrosion
+# reach only the top crate, not the aes dependency).
+if(Rust_CARGO_TARGET_ARCH STREQUAL "aarch64")
+  string(TOUPPER "${Rust_CARGO_TARGET}" _ov_triple)
+  string(REPLACE "-" "_" _ov_triple "${_ov_triple}")
+  list(APPEND OVCORE_CARGO_ENV "CARGO_TARGET_${_ov_triple}_RUSTFLAGS=--cfg aes_armv8")
+endif()
+corrosion_set_env_vars(ov_ffi_cpp ${OVCORE_CARGO_ENV})
 
 add_executable(ovcore_example main.cpp)
 target_include_directories(ovcore_example PRIVATE "${OVCORE_INCLUDE_DIR}")

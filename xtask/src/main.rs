@@ -19,7 +19,7 @@ const HELP: &str = "\
 cargo xtask <command>
 
 Commands:
-  ci            fmt, clippy -D warnings, test, cargo deny, vectors, openapi --check, wasm32 + iOS builds, size report
+  ci            fmt, clippy -D warnings, test, cargo deny, vectors, openapi --check, wasm32 build + clippy, iOS build, size report
   vectors       verify every checksum listed in vectors/**/SOURCE.md
   size          build the wasm32 cdylibs in release and print raw + gzip sizes
   unlinked      check that crates with ignored advisories link no code into the wasm cdylibs
@@ -92,6 +92,13 @@ fn ci() -> Result {
     let mut wasm = portable.clone();
     wasm.extend(existing_packages(&["ov-wasm"])?);
     build_for("wasm32 build", &wasm, &[WASM_TARGET])?;
+    // Native clippy can't see wasm32-only code paths (no Send/Sync on the Host, wasm-bindgen glue).
+    let mut clippy = cargo();
+    clippy.args(["clippy", "--locked", "--target", WASM_TARGET]);
+    for p in &wasm {
+        clippy.args(["-p", p]);
+    }
+    run("wasm32 clippy", clippy.args(["--", "-D", "warnings"]))?;
 
     if cfg!(target_os = "macos") {
         let mut ios = portable;

@@ -23,9 +23,7 @@ futures = { workspace = true, features = ["executor"] }
 zeroize.workspace = true
 
 [build-dependencies]
-# OWNER-REQUEST (W1-BC): cxx-build is not on the §2.6 allow-list yet. It must be the same
-# release as `cxx`. Move to `cxx-build.workspace = true` once the lead adds it to the root.
-cxx-build = "=1.0.205"
+cxx-build.workspace = true
 
 [lints]
 workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "ov-testkit"
-description = "Test helpers for openvireo-core: typed loaders for vectors/, hex helpers, fixed clocks (ov_host::Clock)"
+description = "Test helpers for openvireo-core: typed loaders for vectors/, hex helpers, fixed clocks (ov_host::Clock), in-memory auth and sync servers"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,6 +14,17 @@ native-only = true
 
 [dependencies]
 ov-host = { path = "../ov-host" }
+ov-error = { path = "../ov-error" }
+ov-protocol = { path = "../ov-protocol" }
+ov-crypto = { path = "../ov-crypto" }
+ov-share = { path = "../ov-share" }
+# opaque-ke's server side for the in-memory auth server (servers/).
+ov-opaque = { path = "../ov-opaque", default-features = false, features = ["test-server"] }
+async-trait.workspace = true
+zeroize.workspace = true
+sha2.workspace = true
+rand_core.workspace = true
+rand_chacha.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 hex = { workspace = true, features = ["std"] }

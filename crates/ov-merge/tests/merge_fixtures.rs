@@ -1,6 +1,7 @@
 //! Runs `vectors/merge-fixtures/*.json` (results recorded from the desktop
 //! `SyncEngine::mergeDatabases()`) through the port, as the SDK's `merge-fixtures.test.ts` does:
-//! conflicts computed before merging, then the merged projection, with both sides' entries equal.
+//! conflicts computed before merging, then the merged projection, with both sides' entries and groups
+//! equal.
 
 mod common;
 
@@ -13,7 +14,7 @@ use ov_testkit::{merge_fixtures, utc_seconds};
 #[test]
 fn all_merge_fixtures_pass() {
     let fixtures = merge_fixtures();
-    assert_eq!(fixtures.len(), 10, "expected the 10 recorded fixtures");
+    assert_eq!(fixtures.len(), 14, "expected the 14 recorded fixtures");
     let mut failures = Vec::new();
     for (name, fx) in &fixtures {
         let mut local = build(&fx.local);
@@ -47,12 +48,13 @@ fn all_merge_fixtures_pass() {
         }
 
         let got = project(&local);
-        // Like TestMergeFixtures.cpp: both sides' entries end up equal (deleted objects are local's)
-        if project(&remote).entries != got.entries {
+        // Like TestMergeFixtures.cpp: both sides' entries and groups end up equal (deleted objects
+        // are local's)
+        let theirs = project(&remote);
+        if theirs.entries != got.entries || theirs.groups != got.groups {
             failures.push(format!(
-                "{name}: remote entries differ from local\n local {:#?}\nremote {:#?}",
-                got.entries,
-                project(&remote).entries
+                "{name}: remote differs from local\n local {:#?} {:#?}\nremote {:#?} {:#?}",
+                got.entries, got.groups, theirs.entries, theirs.groups
             ));
         }
         let want = normalize(&fx.expected.result);

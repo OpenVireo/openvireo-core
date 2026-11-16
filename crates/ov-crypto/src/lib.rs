@@ -19,8 +19,10 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod auk;
 pub mod curves;
 pub mod encoding;
 pub mod primitives;
+pub mod secret_key;
 
 pub use zeroize::Zeroizing;

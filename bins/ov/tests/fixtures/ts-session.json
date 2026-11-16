@@ -1,0 +1,6 @@
+{
+  "session": "{\"userId\":\"usr_test\",\"email\":\"test@example.com\",\"accessToken\":\"fake-access\",\"refreshToken\":\"fake-refresh\\n\\\"quoted\\\" ü ✓\",\"expiresAt\":1700000000000}",
+  "device:srv_test:usr_test": "dev_fake",
+  "secret_key:srv_test:usr_test": "A3-FAKE00-FAKE00-FAKE0-FAKE0-FAKE0-FAKE0",
+  "cli:issuer": "https://accounts.example.com"
+}

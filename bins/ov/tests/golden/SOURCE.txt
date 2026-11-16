@@ -1,0 +1,11 @@
+help.txt is `ov --help` from the TS CLI, captured byte for byte:
+
+  SDK commit: fd5e531 (openvireo-sdk develop, @openvireo/cli 0.11.0)
+  cd openvireo-sdk/packages/cli && npm run build
+  env -i PATH="$PATH" HOME=/nonexistent node dist/bin.js --help > help.txt    (exit 0)
+  sha256 bde5507b9151bd11431b08ee094f591f00e49dbc0274b064040312be57689106
+
+../fixtures/ts-session.json was written by the TS SDK's FileStorage (@openvireo/sdk/storage/node,
+same SDK commit), the store `ov login` uses, with fake values:
+  storage.set("session", …), set("device:srv_test:usr_test", …), set("secret_key:srv_test:usr_test", …),
+  set("cli:issuer", "https://accounts.example.com")

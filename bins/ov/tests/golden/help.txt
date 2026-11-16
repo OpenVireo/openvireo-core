@@ -1,0 +1,26 @@
+ov 0.11.0: OpenVireo vault secrets for scripts, CI and servers
+
+Usage:
+  ov read <ov://vault/[group/…]entry/field> [-n] [-o file]
+  ov inject [-i template] [-o file]          replace ov:// references ({{ ov://… }} or bare)
+  ov run [--env-file .env.tpl]… [--no-masking] -- <command> [args…]
+  ov item get <ov://vault/[group/…]entry> [--reveal] [--json]
+  ov item list <vault> [--json]
+  ov item create <ov://vault/[group/…]title> [field=value…] [--generate [--length N] [--charset S]] [--stdin-field F]
+  ov item edit <ov://vault/[group/…]entry> [field=value…] [--generate [--length N] [--charset S]] [--stdin-field F]
+  ov rotate <ov://vault/[group/…]entry/field> (--generate [--length N] [--charset S] | --stdin) [--print]
+  ov vault list [--json]
+  ov share <ov://vault/[group/…]entry> [--field F]… [--expires 7d] [--once | --max-opens N] [--passcode]
+  ov share --text [--title T] [--expires 7d] [--once | --max-opens N] [--passcode]   text from stdin
+  ov share list [--json]
+  ov share revoke <id>                       share links open without an account (users only)
+  ov login [--issuer URL] [--email E] [--secret-key K1-…]
+  ov logout [--forget]                       --forget also removes the Secret Key from this machine
+  ov whoami
+  ov account delete [--yes --email E]        lock the account and erase it after 30 days
+  ov account restore                         keep an account scheduled for deletion
+  ov connect [serve | token …]               the REST server (see ov connect --help)
+  ov version
+
+Credentials: OPENVIREO_SERVICE_ACCOUNT_TOKEN (or OPENVIREO_SERVICE_ACCOUNT_TOKEN_FILE), else the session from
+`ov login` unlocked with OPENVIREO_PASSWORD or a prompt. Charsets: letters, lower, upper, digits, symbols.

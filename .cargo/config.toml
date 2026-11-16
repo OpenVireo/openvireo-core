@@ -1,2 +1,9 @@
 [alias]
 xtask = "run --quiet --package xtask --"
+
+# aes 0.8 uses the ARMv8 AES instructions only with this cfg; without it Apple Silicon and iOS run
+# AES (and AES-KDF, often millions of rounds) in software: ~2.5 s per open of a 4.2M-round KDBX file
+# (W1-K2 OWNER-REQUEST). Consumers that build the core from another directory (Corrosion in the
+# desktop build) must pass the same cfg.
+[target.'cfg(target_arch = "aarch64")']
+rustflags = ["--cfg", "aes_armv8"]

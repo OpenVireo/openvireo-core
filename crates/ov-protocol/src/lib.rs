@@ -18,6 +18,8 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod auth;
+pub mod discovery;
 pub mod error;
 pub mod http;
 pub mod types;

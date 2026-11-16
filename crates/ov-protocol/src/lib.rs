@@ -22,6 +22,8 @@ pub mod auth;
 pub mod discovery;
 pub mod error;
 pub mod http;
+pub mod sse;
+pub mod sync;
 pub mod types;
 pub mod url;
 

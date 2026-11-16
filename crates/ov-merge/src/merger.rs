@@ -1,7 +1,8 @@
 //! The sync merge of the desktop `SyncEngine` (`gui/remote/SyncEngine.cpp`), ported from the SDK's
 //! `merge/merger.ts`: the three-way field merge of entries edited on both sides against the common
-//! base (`combineEntries`), the structure merge both ways, deletions decided against the base, the
-//! Recycle Bin, the sync generation bump; plus the conflict checks against the last-sync snapshot.
+//! base (`combineEntries`), the structure merge both ways, each entry put where it was moved last,
+//! deletions decided against the base, the Recycle Bin, the sync generation bump; plus the conflict
+//! checks against the last-sync snapshot.
 
 use ov_kdbx::model::{Database, DeletedObject, Entry, Group, Timestamp, Uuid};
 
@@ -118,7 +119,9 @@ fn emitting_data_differs(a: &Entry, a_db: &Database, b: &Entry, b_db: &Database)
 
 /// `SyncEngine::mergeDatabases()` on both copies: merges `remote` into `local` and `local` into
 /// `remote`, using `base` (the copy both last synced from) to combine entries edited on both sides
-/// field by field and to decide deletions. Afterwards both have the same entries and groups.
+/// field by field and to decide deletions. Afterwards both have the same entries and groups, and
+/// each entry both had sits, on both, in the group of the copy with the newer `LocationChanged`
+/// (local wins a tie), with that time.
 ///
 /// `now` (Unix seconds) is the combined entries' modification time when it is the latest, and the
 /// time of the moves and deletion records the Recycle Bin merge makes. Both attachment pools are
@@ -132,6 +135,8 @@ pub fn merge_in_place(
     let mut changes: Vec<MergeChange> = Vec::new();
     let mut conflicts: Vec<EntryConflict> = Vec::new();
     let mut combined: Vec<Uuid> = Vec::new();
+    // Before combine_entries and the structure merge copy one entry's location over the other's
+    let locations = locations_of(local, remote);
     if let Some(base) = base {
         let ids: Vec<Uuid> = entries_under(&local.root).iter().map(|e| e.uuid).collect();
         for id in ids {
@@ -183,22 +188,24 @@ pub fn merge_in_place(
     let opts = MergeIntoOptions::default();
     let to_remote = tree::merge_into_raw(local, remote, MergeMode::KeepNewer, &opts);
     let to_local = tree::merge_into_raw(remote, local, MergeMode::KeepNewer, &opts);
-    let mut after = match base {
-        Some(base) if !pending.is_empty() => apply_deletions(local, remote, base, &pending),
-        _ => Vec::new(),
-    };
+    let mut placed = apply_locations(local, remote, &locations);
+    let mut after = std::mem::take(&mut placed.changes);
+    if let Some(base) = base.filter(|_| !pending.is_empty()) {
+        after.extend(apply_deletions(local, remote, base, &pending));
+    }
     after.extend(merge_recycle_bins(local, remote, now));
 
     let added = entry_ids(&to_local, |c| c == ChangeType::Added, &[]);
     let mut updated = combined.clone();
-    for id in entry_ids(&to_local, |c| matches!(c, ChangeType::Modified | ChangeType::Moved), &added) {
-        if !updated.contains(&id) {
+    let moved_here = entry_ids(&to_local, |c| matches!(c, ChangeType::Modified | ChangeType::Moved), &added);
+    for id in moved_here.into_iter().chain(placed.moved_here.iter().copied()) {
+        if !updated.contains(&id) && !added.contains(&id) {
             updated.push(id);
         }
     }
     let deleted = entry_ids(&after, |c| c == ChangeType::Deleted, &[]);
-    let remote_changed = !combined.is_empty() || !after.is_empty() || !to_remote.is_empty();
-    let local_changed = !combined.is_empty() || !after.is_empty() || !to_local.is_empty();
+    let remote_changed = !combined.is_empty() || !after.is_empty() || !to_remote.is_empty() || placed.remote;
+    let local_changed = !combined.is_empty() || !after.is_empty() || !to_local.is_empty() || placed.local;
     changes.extend(to_remote);
     changes.extend(to_local);
     changes.extend(after);
@@ -227,6 +234,97 @@ fn entry_ids(changes: &[MergeChange], pick: impl Fn(ChangeType) -> bool, except:
         }
     }
     out
+}
+
+// ------------------------------------------------------------------- locations (SyncEngine)
+
+/// Where an entry both sides have ends up: in the group of the copy moved last (newer
+/// `LocationChanged`, whole seconds; local wins a tie), whichever copy wins on its fields. The
+/// structure merge replaces the older-modified copy with the newer one, location time and all, so a
+/// move made on one device and an edit made on the other would leave the copies in different groups
+/// with the same `LocationChanged`, and no later sync would bring them together. Found before
+/// anything is merged ([`locations_of`]), applied to both copies after the structure merge
+/// ([`apply_locations`]). Desktop `SyncEngine.cpp` `locationsOf`/`applyLocations`.
+struct Location {
+    entry: Uuid,
+    /// `None` for the root group, which counts as the same group whatever its UUID.
+    group: Option<Uuid>,
+    changed: Timestamp,
+}
+
+fn locations_of(local: &Database, remote: &Database) -> Vec<Location> {
+    entries_under(&local.root)
+        .into_iter()
+        .filter_map(|l| {
+            let (l, lp) = find_entry(&local.root, l.uuid)?;
+            let (r, rp) = find_entry(&remote.root, l.uuid)?;
+            let (winner, parent, db) =
+                if l.times.location_changed >= r.times.location_changed { (l, lp, local) } else { (r, rp, remote) };
+            Some(Location {
+                entry: l.uuid,
+                group: (parent.uuid != db.root.uuid).then_some(parent.uuid),
+                changed: winner.times.location_changed,
+            })
+        })
+        .collect()
+}
+
+/// What [`apply_locations`] did.
+struct Placed {
+    /// One `Moved` record per entry that changed group on either side.
+    changes: Vec<MergeChange>,
+    /// A local copy changed (group or `LocationChanged`).
+    local: bool,
+    /// Entries whose local copy changed group.
+    moved_here: Vec<Uuid>,
+    /// A remote copy changed.
+    remote: bool,
+}
+
+/// Puts each copy where `locations` says, with that `LocationChanged`, without touching any
+/// modification times (or `PreviousParentGroup`, as the structure merge's moves).
+fn apply_locations(local: &mut Database, remote: &mut Database, locations: &[Location]) -> Placed {
+    let mut placed = Placed { changes: Vec::new(), local: false, remote: false, moved_here: Vec::new() };
+    for loc in locations {
+        let mut moved = false;
+        for (is_local, db) in [(true, &mut *local), (false, &mut *remote)] {
+            let group = loc.group.unwrap_or(db.root.uuid);
+            let Some((entry, parent)) = find_entry(&db.root, loc.entry) else { continue };
+            if find_group(&db.root, group).is_none() {
+                continue;
+            }
+            let previous = parent.uuid;
+            if previous == group && entry.times.location_changed == loc.changed {
+                continue;
+            }
+            if previous != group {
+                tree::append_entry(&mut db.root, loc.entry, group);
+                moved = true;
+                if is_local {
+                    placed.moved_here.push(loc.entry);
+                }
+            }
+            if let Some(e) = tree::find_entry_mut(&mut db.root, loc.entry) {
+                e.times.location_changed = loc.changed;
+            }
+            if is_local {
+                placed.local = true;
+            } else {
+                placed.remote = true;
+            }
+        }
+        if moved {
+            if let Some((e, p)) = find_entry(&local.root, loc.entry) {
+                placed.changes.push(tree::entry_record(
+                    ChangeType::Moved,
+                    e,
+                    Some(&p.name),
+                    "Moved to where it was moved last",
+                ));
+            }
+        }
+    }
+    placed
 }
 
 // ------------------------------------------------------------------- deletions (SyncEngine)

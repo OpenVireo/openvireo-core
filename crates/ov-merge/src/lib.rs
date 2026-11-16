@@ -4,7 +4,8 @@
 //! recorded `vectors/merge-fixtures/`.
 //!
 //! - [`merge`] / [`merge_in_place`]: the sync merge (field-by-field combine against the base,
-//!   structure merge both ways, deletions decided against the base, Recycle Bin, sync generation).
+//!   structure merge both ways, each entry put where it was moved last, deletions decided against
+//!   the base, Recycle Bin, sync generation).
 //! - [`find_conflicts`], [`needs_common_base`], [`snapshot_of`], [`conflicting_fields`]: the checks
 //!   the sync runs around it.
 //! - [`import_into`] / [`import_as_copies`] / [`import_targets`]: importing a `.kdbx`.
@@ -104,8 +105,8 @@ pub struct MergeReport {
     pub updated: Vec<Uuid>,
     /// Entries deleted from both sides (a deletion on one side the other hadn't changed).
     pub deleted: Vec<Uuid>,
-    /// Every change, in order: combines, structure merge into remote, into local, deletions and
-    /// Recycle Bin.
+    /// Every change, in order: combines, structure merge into remote, into local, entries put where
+    /// they were moved last, deletions and Recycle Bin.
     pub changes: Vec<MergeChange>,
     /// The local copy changed.
     pub local_changed: bool,

@@ -188,11 +188,11 @@ pub fn merge_in_place(
     let opts = MergeIntoOptions::default();
     let to_remote = tree::merge_into_raw(local, remote, MergeMode::KeepNewer, &opts);
     let to_local = tree::merge_into_raw(remote, local, MergeMode::KeepNewer, &opts);
-    let mut placed = apply_locations(local, remote, &locations);
-    let mut after = std::mem::take(&mut placed.changes);
-    if let Some(base) = base.filter(|_| !pending.is_empty()) {
-        after.extend(apply_deletions(local, remote, base, &pending));
-    }
+    let placed = apply_locations(local, remote, &locations);
+    let mut after = match base {
+        Some(base) if !pending.is_empty() => apply_deletions(local, remote, base, &pending),
+        _ => Vec::new(),
+    };
     after.extend(merge_recycle_bins(local, remote, now));
 
     let added = entry_ids(&to_local, |c| c == ChangeType::Added, &[]);
@@ -208,6 +208,7 @@ pub fn merge_in_place(
     let local_changed = !combined.is_empty() || !after.is_empty() || !to_local.is_empty() || placed.local;
     changes.extend(to_remote);
     changes.extend(to_local);
+    changes.extend(placed.changes);
     changes.extend(after);
     if !changes.is_empty() {
         let generation = sync_generation(local).max(sync_generation(remote)) + 1;

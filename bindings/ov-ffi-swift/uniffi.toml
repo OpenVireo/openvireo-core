@@ -1,0 +1,7 @@
+# uniffi-bindgen settings for the Swift binding (read in library mode from this crate's root).
+[bindings.swift]
+# The Swift module. Not `OpenVireoCore`, which is the existing iOS framework target.
+module_name = "OpenVireoRustCore"
+# The C module inside OpenVireoCore.xcframework that the generated Swift imports.
+ffi_module_name = "OpenVireoRustCoreFFI"
+ffi_module_filename = "OpenVireoRustCoreFFI"

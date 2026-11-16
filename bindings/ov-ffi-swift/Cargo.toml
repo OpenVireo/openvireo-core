@@ -8,7 +8,30 @@ rust-version.workspace = true
 repository.workspace = true
 publish = false
 
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+name = "ov_ffi_swift"
+
+[[bin]]
+# `uniffi-bindgen`: generates the Swift sources from the built library. Only built with `--features cli`.
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["cli"]
+
+[features]
+cli = ["uniffi/cli"]
+
 [dependencies]
+ov-core = { path = "../../crates/ov-core" }
+ov-error = { path = "../../crates/ov-error" }
+ov-crypto = { path = "../../crates/ov-crypto" }
+uniffi.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+futures = { workspace = true, features = ["executor"] }
 
 [lints]
 workspace = true

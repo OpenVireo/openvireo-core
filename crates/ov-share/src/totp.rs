@@ -3,11 +3,11 @@
 
 use hmac::{Hmac, Mac};
 use ov_error::{OvError, OvErrorCode};
+use sha1::Sha1;
 use sha2::{Sha256, Sha512};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::payload::EntryField;
-use crate::sha1::hmac_sha1;
 
 /// The TOTP hash.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -182,19 +182,20 @@ pub fn parse_totp_uri(uri: &str) -> Result<TotpParams, OvError> {
     Ok(TotpParams { secret: secret.to_vec(), algorithm, digits: digits as u32, period: period as u32, steam })
 }
 
+/// HMAC with the given digest over `key` and `msg`.
+macro_rules! hmac_with {
+    ($digest:ty, $key:expr, $msg:expr) => {{
+        let mut m = <Hmac<$digest> as Mac>::new_from_slice($key).expect("HMAC takes any key length");
+        m.update($msg);
+        m.finalize().into_bytes().to_vec()
+    }};
+}
+
 fn mac(params: &TotpParams, msg: &[u8]) -> Zeroizing<Vec<u8>> {
     Zeroizing::new(match params.algorithm {
-        TotpAlgorithm::Sha1 => hmac_sha1(&params.secret, msg).to_vec(),
-        TotpAlgorithm::Sha256 => {
-            let mut m = <Hmac<Sha256> as Mac>::new_from_slice(&params.secret).expect("HMAC takes any key length");
-            m.update(msg);
-            m.finalize().into_bytes().to_vec()
-        }
-        TotpAlgorithm::Sha512 => {
-            let mut m = <Hmac<Sha512> as Mac>::new_from_slice(&params.secret).expect("HMAC takes any key length");
-            m.update(msg);
-            m.finalize().into_bytes().to_vec()
-        }
+        TotpAlgorithm::Sha1 => hmac_with!(Sha1, &params.secret, msg),
+        TotpAlgorithm::Sha256 => hmac_with!(Sha256, &params.secret, msg),
+        TotpAlgorithm::Sha512 => hmac_with!(Sha512, &params.secret, msg),
     })
 }
 

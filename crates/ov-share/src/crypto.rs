@@ -7,13 +7,12 @@
 //! - `ct = wrap(content, pad(JSON(payload)), "ov-share-v1|<id>")`
 //! - `ref = b64u(wrap(HKDF(ikm=enc_sk, salt=empty, info="ov-share-ref-v1"), JSON(ref), "ov-share-ref|<id>"))`
 
-use ov_crypto::primitives::{
-    aead_decrypt, aead_encrypt, argon2id_32, hkdf_sha256_32, random_key, random_nonce, sha256, KEY_BYTES, NONCE_BYTES,
-    SHA256_BYTES, TAG_BYTES,
-};
+pub use ov_crypto::auk::{check_kdf_params, KdfMin, KdfParams, KDF_MIN};
+use ov_crypto::auk::{password_bytes, stretch_password, DeriveAukOptions};
+use ov_crypto::envelope::{aad, unwrap, wrap_with_nonce};
+use ov_crypto::primitives::{hkdf_sha256_32, random_key, random_nonce, sha256, KEY_BYTES, NONCE_BYTES, SHA256_BYTES};
 use ov_error::{OvError, OvErrorCode};
-use serde::{Deserialize, Serialize};
-use unicode_normalization::UnicodeNormalization;
+use serde::Serialize;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::b64::{b64u, decode};
@@ -25,52 +24,11 @@ pub const SHARE_KEY_BYTES: usize = 32;
 pub const SHARE_PAD: usize = 512;
 /// The largest `ct` the server takes (bytes).
 pub const SHARE_MAX_CT_BYTES: usize = 64 * 1024;
-/// SPEC §3: the smallest Argon2id memory (KiB) a client accepts.
-pub const KDF_MIN_M: u32 = 19456;
-/// SPEC §3: the fewest Argon2id iterations a client accepts.
-pub const KDF_MIN_T: u32 = 2;
-
-const WRAP_VERSION: u8 = 0x01;
-
-/// Argon2id parameters, the `Kdf` schema of `openapi.yaml`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct KdfParams {
-    /// Always `"argon2id"`.
-    pub alg: String,
-    /// 16 bytes, base64url.
-    pub salt: String,
-    /// Memory in KiB.
-    pub m: u32,
-    /// Iterations.
-    pub t: u32,
-    /// Parallelism.
-    pub p: u32,
-}
-
-// The same check as the TS `checkKdfParams`; ov-crypto's AUK module (W1-C1) will have one too, and
-// the facade can use either once that lands (follow-up).
-/// Refuses parameters below the SPEC §3 minimum (`m >= 19456`, `t >= 2`, `p >= 1`) or a stricter
-/// server floor (`min = (m, t)`): `weak_kdf`.
-pub fn check_kdf_params(kdf: &KdfParams, min: Option<(u32, u32)>) -> Result<(), OvError> {
-    let (min_m, min_t) = min.unwrap_or((KDF_MIN_M, KDF_MIN_T));
-    if kdf.alg != "argon2id" {
-        return Err(OvError::new(OvErrorCode::WeakKdf, format!("unsupported KDF {}", kdf.alg)));
-    }
-    if kdf.m < min_m || kdf.t < min_t || kdf.p < 1 {
-        return Err(OvError::new(
-            OvErrorCode::WeakKdf,
-            format!("KDF parameters below the minimum (m >= {min_m}, t >= {min_t})"),
-        ));
-    }
-    Ok(())
-}
 
 /// The bytes a passcode is stretched from: UTF-8 of its NFKC form, not trimmed (SPEC §3, §22).
+/// The same as the master password's ([`ov_crypto::auk::password_bytes`]).
 pub fn passcode_bytes(passcode: &str) -> Zeroizing<Vec<u8>> {
-    let mut normalized: String = passcode.nfkc().collect();
-    let out = Zeroizing::new(normalized.as_bytes().to_vec());
-    normalized.zeroize();
-    out
+    password_bytes(passcode)
 }
 
 /// `P = Argon2id(NFKC(passcode), kdf)`, 32 bytes. Checks `kdf` against the SPEC §3 minimum unless
@@ -80,15 +38,7 @@ pub fn share_passcode_key(
     kdf: &KdfParams,
     allow_weak: bool,
 ) -> Result<Zeroizing<[u8; KEY_BYTES]>, OvError> {
-    if !allow_weak {
-        check_kdf_params(kdf, None)?;
-    }
-    let salt = decode(&kdf.salt, OvErrorCode::WeakKdf, "the KDF salt")?;
-    let pw = passcode_bytes(passcode);
-    let out = argon2id_32(&pw, &salt, kdf.m, kdf.t, kdf.p)?;
-    let mut key = Zeroizing::new([0u8; KEY_BYTES]);
-    key.copy_from_slice(&out);
-    Ok(key)
+    stretch_password(passcode, kdf, DeriveAukOptions { allow_weak, kdf_min: KDF_MIN })
 }
 
 /// `content = HKDF(ikm=K, salt=P or empty, info="ov-share-v1")`.
@@ -114,12 +64,12 @@ pub fn share_ref_key(enc_sk: &[u8]) -> Zeroizing<[u8; 32]> {
 
 /// The payload AAD, `ov-share-v1|<id>` (SPEC §22).
 pub fn share_aad(share_id: &str) -> String {
-    format!("ov-share-v1|{share_id}")
+    aad::share(share_id)
 }
 
 /// The owner reference AAD, `ov-share-ref|<id>` (SPEC §22).
 pub fn share_ref_aad(share_id: &str) -> String {
-    format!("ov-share-ref|{share_id}")
+    aad::share_ref(share_id)
 }
 
 /// A fresh random link key `K`.
@@ -149,35 +99,6 @@ fn bad_padding() -> OvError {
     OvError::new(OvErrorCode::DecryptionFailed, "bad share padding")
 }
 
-// The SPEC §4 envelope, implemented here on the frozen primitives so this crate doesn't wait for
-// ov-crypto's envelope module (W1-C1). Follow-up: call `ov_crypto` wrap/unwrap once merged.
-/// `0x01 ‖ nonce(24) ‖ XChaCha20-Poly1305(key, nonce, plaintext, aad)`.
-fn wrap(key: &[u8; KEY_BYTES], plaintext: &[u8], aad: &str, nonce: &[u8; NONCE_BYTES]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(1 + NONCE_BYTES + plaintext.len() + TAG_BYTES);
-    out.push(WRAP_VERSION);
-    out.extend_from_slice(nonce);
-    out.extend_from_slice(&aead_encrypt(key, nonce, plaintext, aad.as_bytes()));
-    out
-}
-
-fn unwrap(key: &[u8; KEY_BYTES], blob: &[u8], aad: &str) -> Result<Zeroizing<Vec<u8>>, OvError> {
-    match blob.first() {
-        Some(&WRAP_VERSION) => {}
-        Some(v) => {
-            return Err(OvError::new(OvErrorCode::UnsupportedVersion, format!("unsupported envelope version {v}")))
-        }
-        None => return Err(OvError::new(OvErrorCode::UnsupportedVersion, "unsupported envelope version (empty)")),
-    }
-    if blob.len() < 1 + NONCE_BYTES + TAG_BYTES {
-        return Err(OvError::new(OvErrorCode::DecryptionFailed, "envelope too short"));
-    }
-    let mut nonce = [0u8; NONCE_BYTES];
-    nonce.copy_from_slice(&blob[1..1 + NONCE_BYTES]);
-    aead_decrypt(key, &nonce, &blob[1 + NONCE_BYTES..], aad.as_bytes()).map_err(|_| {
-        OvError::new(OvErrorCode::DecryptionFailed, "decryption failed (wrong key, wrong AAD or corrupted data)")
-    })
-}
-
 fn to_json<T: Serialize>(value: &T) -> Result<Zeroizing<Vec<u8>>, OvError> {
     serde_json::to_vec(value).map(Zeroizing::new).map_err(|e| OvError::internal(format!("JSON encoding failed: {e}")))
 }
@@ -203,7 +124,7 @@ pub fn encrypt_share_payload_with_nonce(
 ) -> Result<Vec<u8>, OvError> {
     let content = share_content_key(key, passcode_key);
     let padded = pad_share(&to_json(payload)?);
-    let ct = wrap(&content, &padded, &share_aad(share_id), nonce);
+    let ct = wrap_with_nonce(&content, &padded, &share_aad(share_id), nonce);
     if ct.len() > SHARE_MAX_CT_BYTES {
         return Err(OvError::new(OvErrorCode::TooLarge, "this is too much to share in one link"));
     }
@@ -236,7 +157,7 @@ pub fn encrypt_share_ref_with_nonce(
     nonce: &[u8; NONCE_BYTES],
 ) -> Result<String, OvError> {
     let k = share_ref_key(enc_sk);
-    Ok(b64u(&wrap(&k, &to_json(reference)?, &share_ref_aad(share_id), nonce)))
+    Ok(b64u(&wrap_with_nonce(&k, &to_json(reference)?, &share_ref_aad(share_id), nonce)))
 }
 
 /// Decrypts the owner's reference to a share; `decryption_failed` if it can't be read.
@@ -278,24 +199,26 @@ mod tests {
     #[test]
     fn kdf_check() {
         let mut kdf = KdfParams { alg: "argon2id".into(), salt: "AAAAAAAAAAAAAAAAAAAAAA".into(), m: 19456, t: 2, p: 1 };
-        assert!(check_kdf_params(&kdf, None).is_ok());
-        assert_eq!(check_kdf_params(&kdf, Some((65536, 3))).unwrap_err().code, OvErrorCode::WeakKdf);
+        assert!(check_kdf_params(&kdf, KDF_MIN).is_ok());
+        assert_eq!(check_kdf_params(&kdf, KdfMin { m: 65536, t: 3 }).unwrap_err().code, OvErrorCode::WeakKdf);
         kdf.m = 1024;
-        assert_eq!(check_kdf_params(&kdf, None).unwrap_err().code, OvErrorCode::WeakKdf);
+        assert_eq!(check_kdf_params(&kdf, KDF_MIN).unwrap_err().code, OvErrorCode::WeakKdf);
         assert_eq!(share_passcode_key("pw", &kdf, false).unwrap_err().code, OvErrorCode::WeakKdf);
         kdf.m = 19456;
         kdf.alg = "scrypt".into();
-        assert_eq!(check_kdf_params(&kdf, None).unwrap_err().code, OvErrorCode::WeakKdf);
+        assert_eq!(check_kdf_params(&kdf, KDF_MIN).unwrap_err().code, OvErrorCode::WeakKdf);
     }
 
     #[test]
-    fn envelope_errors() {
+    fn share_envelope_errors() {
         let key = [1u8; 32];
-        let blob = wrap(&key, b"x", "a", &[2u8; 24]);
-        assert_eq!(unwrap(&key, &blob, "a").unwrap().as_slice(), b"x");
-        assert_eq!(unwrap(&key, &blob, "b").unwrap_err().code, OvErrorCode::DecryptionFailed);
-        assert_eq!(unwrap(&key, &[], "a").unwrap_err().code, OvErrorCode::UnsupportedVersion);
-        assert_eq!(unwrap(&key, &[2, 0, 0], "a").unwrap_err().code, OvErrorCode::UnsupportedVersion);
-        assert_eq!(unwrap(&key, &blob[..20], "a").unwrap_err().code, OvErrorCode::DecryptionFailed);
+        let ct = encrypt_share_payload(&key, "id", &crate::text_share_payload("x", None, None), None).unwrap();
+        assert_eq!(decrypt_share_payload(&key, "other", &ct, None).unwrap_err().code, OvErrorCode::DecryptionFailed);
+        assert_eq!(decrypt_share_payload(&key, "id", &[], None).unwrap_err().code, OvErrorCode::UnsupportedVersion);
+        assert_eq!(
+            decrypt_share_payload(&key, "id", &[2, 0, 0], None).unwrap_err().code,
+            OvErrorCode::UnsupportedVersion
+        );
+        assert_eq!(decrypt_share_payload(&key, "id", &ct[..20], None).unwrap_err().code, OvErrorCode::DecryptionFailed);
     }
 }

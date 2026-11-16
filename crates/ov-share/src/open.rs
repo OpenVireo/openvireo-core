@@ -9,7 +9,7 @@ use ov_error::{OvError, OvErrorCode};
 use zeroize::Zeroizing;
 
 use crate::b64::{b64u, decode};
-use crate::crypto::{check_kdf_params, decrypt_share_payload, share_auth, share_passcode_key, KdfParams};
+use crate::crypto::{check_kdf_params, decrypt_share_payload, share_auth, share_passcode_key, KdfParams, KDF_MIN};
 use crate::link::{parse_share_link, ShareLinkParts};
 use crate::payload::SharePayload;
 
@@ -36,7 +36,7 @@ impl ShareOpen {
         let passcode = passcode
             .filter(|p| !p.is_empty())
             .ok_or_else(|| OvError::new(OvErrorCode::PasscodeRequired, "this link needs a passcode"))?;
-        check_kdf_params(kdf, None)?;
+        check_kdf_params(kdf, KDF_MIN)?;
         let passcode_key = share_passcode_key(passcode, kdf, false)?;
         let auth = Zeroizing::new(b64u(&share_auth(&passcode_key)[..]));
         Ok(ShareOpen { link, passcode_key: Some(passcode_key), auth: Some(auth) })

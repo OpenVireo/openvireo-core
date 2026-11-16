@@ -25,7 +25,6 @@ pub mod crypto;
 pub mod link;
 pub mod open;
 pub mod payload;
-mod sha1;
 pub mod totp;
 
 pub use b64::{b64u, from_b64u};
@@ -33,7 +32,7 @@ pub use crypto::{
     check_kdf_params, decrypt_share_payload, decrypt_share_ref, encrypt_share_payload,
     encrypt_share_payload_with_nonce, encrypt_share_ref, encrypt_share_ref_with_nonce, new_share_key, pad_share,
     passcode_bytes, share_aad, share_auth, share_auth_hash, share_content_key, share_passcode_key, share_ref_aad,
-    share_ref_key, unpad_share, KdfParams, KDF_MIN_M, KDF_MIN_T, SHARE_KEY_BYTES, SHARE_MAX_CT_BYTES, SHARE_PAD,
+    share_ref_key, unpad_share, KdfMin, KdfParams, KDF_MIN, SHARE_KEY_BYTES, SHARE_MAX_CT_BYTES, SHARE_PAD,
 };
 pub use link::{parse_share_link, share_key_from_hash, share_link, ShareLinkParts, SHARE_ID_CHARS, SHARE_KEY_CHARS};
 pub use open::{open_share, ShareOpen};

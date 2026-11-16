@@ -11,10 +11,18 @@ publish = false
 [dependencies]
 ov-error = { path = "../ov-error" }
 argon2.workspace = true
+base64.workspace = true
 chacha20poly1305.workspace = true
+ed25519-dalek.workspace = true
 getrandom.workspace = true
+hex.workspace = true
 hkdf.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
+subtle.workspace = true
+unicode-normalization.workspace = true
+x25519-dalek.workspace = true
 zeroize.workspace = true
 
 # getrandom 0.2 reaches crypto.getRandomValues on wasm32-unknown-unknown only with `js`.
@@ -22,7 +30,7 @@ zeroize.workspace = true
 getrandom = { workspace = true, features = ["js"] }
 
 [dev-dependencies]
-hex.workspace = true
+ov-testkit = { path = "../ov-testkit" }
 secrecy.workspace = true
 
 [lints]

@@ -3,7 +3,7 @@
 //!
 //! - [`read`] opens KDBX 4.0, 4.1 and 3.1 files: AES-KDF and Argon2d/id; AES-256-CBC and ChaCha20
 //!   payloads; ChaCha20 and Salsa20 inner streams; gzip; attachments and custom icons.
-//! - [`write`] saves KDBX 4.0 or 4.1, matching [`model::Header::version`] (a 3.1 file is upgraded to
+//! - [`write()`] saves KDBX 4.0 or 4.1, matching [`model::Header::version`] (a 3.1 file is upgraded to
 //!   4.0, or to 4.1 when it uses a 4.1 feature). The KDF parameters, salt included, are written as
 //!   the model holds them; the master seed, IV and inner stream key are fresh on every save.
 //!   Elements nobody read aren't invented, and unknown elements are written back in their parent.
@@ -152,7 +152,7 @@ pub fn peek_header(bytes: &[u8]) -> Result<Header, OvError> {
     Ok(header::read_outer(bytes)?.header)
 }
 
-/// The version [`write`] uses for `db`.
+/// The version [`write()`] uses for `db`.
 pub fn write_version(db: &Database) -> KdbxVersion {
     let v = db.header.version;
     if v.major >= 4 {

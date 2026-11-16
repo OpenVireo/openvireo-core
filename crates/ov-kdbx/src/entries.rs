@@ -506,7 +506,7 @@ pub fn set_group_icon(db: &mut Database, id: Uuid, icon: u32, now: Timestamp) ->
 
 /// A new database holding the selected groups' entries and the folders leading to them (TS
 /// `exportSelectedGroupsToKdbx`). Entries get new uuids and copy their fields, tags and expiry, as
-/// the TS code does. Save it with [`crate::write`] and the export password.
+/// the TS code does. Save it with [`crate::write()`] and the export password.
 pub fn export_selected_groups(original: &Database, selected: &[Uuid], now: Timestamp) -> Result<Database, OvError> {
     fn has_selected(g: &Group, selected: &[Uuid]) -> bool {
         selected.contains(&g.uuid) || g.groups.iter().any(|s| has_selected(s, selected))

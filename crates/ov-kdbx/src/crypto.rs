@@ -73,7 +73,7 @@ impl CompositeKey {
     /// counts as its SHA-256.
     ///
     /// A malformed XML key file (bad data, or a 2.0 checksum mismatch) makes [`crate::read`] and
-    /// [`crate::write`] fail with `kdbx_error`.
+    /// [`crate::write()`] fail with `kdbx_error`.
     pub fn with_key_file(mut self, file: &[u8]) -> Self {
         self.key_file = Some(key_file_component(file).map(Zeroizing::new));
         self

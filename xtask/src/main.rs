@@ -19,7 +19,7 @@ const HELP: &str = "\
 cargo xtask <command>
 
 Commands:
-  ci            fmt, clippy -D warnings, test, cargo deny, vectors, wasm32 + iOS builds, size report
+  ci            fmt, clippy -D warnings, test, cargo deny, vectors, openapi --check, wasm32 + iOS builds, size report
   vectors       verify every checksum listed in vectors/**/SOURCE.md
   size          build the wasm32 cdylibs in release and print raw + gzip sizes
   unlinked      check that crates with ignored advisories link no code into the wasm cdylibs
@@ -86,6 +86,7 @@ fn ci() -> Result {
     run("test", cargo().args(["test", "--workspace", "--locked"]))?;
     run("deny", cargo().args(["deny", "--locked", "check"]))?;
     vectors()?;
+    openapi::run(&["--check".into()])?;
 
     let portable = portable_packages()?;
     let mut wasm = portable.clone();

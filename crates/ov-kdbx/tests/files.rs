@@ -1,4 +1,4 @@
-//! Every `.kdbx` fixture in `vectors/` and `spikes/kdbx/files/` opens, writes and reopens equal.
+//! Every `.kdbx` fixture in `vectors/` and the kdbxweb + iOS files of `corpus/kdbx/` opens, writes and reopens equal.
 
 use ov_kdbx::model::{Database, KdbxVersion};
 use ov_kdbx::CompositeKey;
@@ -13,8 +13,10 @@ fn hex(s: &str) -> Vec<u8> {
     (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
 }
 
+/// A file from the KDBX spike, now in `corpus/kdbx/{kdbxweb,ios}/` (W1-K3).
 fn spike(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../spikes/kdbx/files").join(name)
+    let dir = if name.starts_with("ios-") { "ios" } else { "kdbxweb" };
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../corpus/kdbx").join(dir).join(name)
 }
 
 /// (label, bytes, key)

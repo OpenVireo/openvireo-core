@@ -1,0 +1,27 @@
+# The files crates/ov-kdbx/tests/corpus.rs round-trips. Tab-separated:
+#   file  writer  password  key-file  kind
+# - file: relative to corpus/kdbx/, or "ext:<path>" relative to $OV_KEEPASSXC_SRC (the desktop repo
+#   checkout, default $HOME/kpnx/openvireo) for files we don't redistribute (SOURCE.md).
+# - password: "-" = no password component, "<empty>" = the empty password.
+# - key-file: relative to corpus/kdbx/, "-" = none.
+# - kind: "required" (must exist), "optional" (generated, not committed: skipped when absent),
+#   "external" (outside this repo: skipped when absent).
+kdbxweb/kdbxweb-vault.kdbx	kdbxweb 2.1.1 (SDK createVaultKdbx)	-	keys/vault.key	required
+kdbxweb/kdbxweb-unknown.kdbx	kdbxweb 2.1.1 + injected unknown elements	spike pw	-	required
+kdbxweb/kdbxweb-unknown-leaf.kdbx	kdbxweb 2.1.1 + injected unknown elements	spike pw	-	required
+kdbxweb/kdbxweb-41-icons.kdbx	kdbxweb 2.1.1	spike pw	-	required
+kdbxweb/kdbxweb-kdbx31.kdbx	kdbxweb 2.1.1	spike pw	-	required
+ios/ios-interop.kdbx	iOS app (simulator)	desktop pw ✓	-	required
+ios/ios-passkey.kdbx	iOS app (simulator)	interop	-	required
+keepassxc/keepassxc-features.kdbx	KeePassXC 2.8.0-snapshot CLI import	corpus pw ✓	-	required
+keepassxc/keepassxc-cli-keyfile.kdbx	KeePassXC 2.8.0-snapshot CLI	corpus pw ✓	keys/keepassxc-cli-keyfile.key	required
+keepassxc/keepassxc-5k.kdbx	KeePassXC 2.8.0-snapshot CLI import	corpus pw ✓	-	optional
+../../vectors/vault-fixture.kdbx	kdbxweb (contract fixture)	-	keys/vault.key	required
+../../vectors/kdbx/desktop-kdbx31.kdbx	KeePassXC 2.8.0-snapshot CLI	desktop pw ✓	-	required
+../../vectors/kdbx/desktop-kdbx4-argon2d.kdbx	iOS app, then KeePassXC CLI	desktop pw ✓	-	required
+ext:tests/data/Format300.kdbx	KeePass 2.x (KDBX 3.0)	a	-	external
+ext:tests/data/Format400.kdbx	KeePass 2.x	t	-	external
+ext:tests/data/Compressed.kdbx	KeePass 2.x	<empty>	-	external
+ext:tests/data/ProtectedStrings.kdbx	KeePass 2.x	masterpw	-	external
+ext:tests/data/NonAscii.kdbx	KeePass 2.x	Δöض	-	external
+ext:tests/data/NewDatabase.kdbx	KeePass 2.x	a	-	external

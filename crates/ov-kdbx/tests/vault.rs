@@ -14,8 +14,11 @@ fn hex(s: &str) -> Vec<u8> {
     (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
 }
 
+/// A file from the KDBX spike, now in `corpus/kdbx/{kdbxweb,ios}/` (W1-K3).
 fn spike(name: &str) -> Vec<u8> {
-    std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spikes/kdbx/files").join(name)).unwrap()
+    let dir = if name.starts_with("ios-") { "ios" } else { "kdbxweb" };
+    std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/kdbx").join(dir).join(name))
+        .unwrap()
 }
 
 #[test]

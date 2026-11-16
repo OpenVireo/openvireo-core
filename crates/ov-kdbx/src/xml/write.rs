@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn unknown_elements_are_written_last_in_their_parent() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../spikes/kdbx/files/kdbxweb-unknown.kdbx");
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../corpus/kdbx/kdbxweb/kdbxweb-unknown.kdbx");
         let db =
             crate::read(&std::fs::read(path).unwrap(), &crate::CompositeKey::new().with_password("spike pw")).unwrap();
         let xml = document(&db, InnerStream::new(3, &[9; 64]).unwrap().unwrap()).unwrap();

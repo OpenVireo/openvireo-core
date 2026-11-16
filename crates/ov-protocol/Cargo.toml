@@ -9,6 +9,12 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+ov-error = { path = "../ov-error" }
+ov-http = { path = "../ov-http" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
 
 [lints]
 workspace = true

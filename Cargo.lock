@@ -514,6 +514,14 @@ dependencies = [
 [[package]]
 name = "ov-protocol"
 version = "0.0.0"
+dependencies = [
+ "hex",
+ "ov-error",
+ "ov-http",
+ "serde",
+ "serde_json",
+ "sha2",
+]
 
 [[package]]
 name = "ov-share"

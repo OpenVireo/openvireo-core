@@ -1,0 +1,15 @@
+const D = "/Users/bongani/kpnx/openvireo-sdk/packages/sdk/dist";
+const { syncKdbx, serializeSyncState, SyncClient } = await import(`${D}/sync/index.js`);
+const { createVaultKdbx, vaultCredentials, kdbxweb } = await import(`${D}/vault/index.js`);
+const { FakeSyncServer } = await import(`${D}/testing/index.js`);
+const KEY = new Uint8Array(32).fill(7);
+const db = createVaultKdbx("Vault", KEY);
+const e = db.createEntry(db.getDefaultGroup());
+e.fields.set("Title", "A");
+e.fields.set("Password", kdbxweb.ProtectedValue.fromString("p"));
+e.times.lastModTime = new Date(100_000);
+const s = new FakeSyncServer();
+const blob = SyncClient.selfHosted("https://sync.example", { fetch: s.fetch, token: "dev-token" }).database("db");
+const r = await syncKdbx({ blob, db, credentials: vaultCredentials(KEY) });
+console.log(serializeSyncState(r.state));
+console.error("uuid", e.uuid.id, "etag", r.state.etag);

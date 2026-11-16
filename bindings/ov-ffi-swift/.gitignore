@@ -1,0 +1,8 @@
+# Outputs of `cargo xtask xcframework` (never committed; release CI zips them).
+/build/
+/Sources/OpenVireoRustCore/OpenVireoRustCore.swift
+.build/
+.swiftpm/
+/SmokeTests/.build/
+/SmokeTests/.swiftpm/
+/SmokeTests/Package.resolved

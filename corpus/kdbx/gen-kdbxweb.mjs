@@ -1,19 +1,25 @@
-// Writes the kdbxweb test files for the W1-K1 spike (spikes/kdbx/files/):
+// Writes the kdbxweb corpus files (corpus/kdbx/kdbxweb/). The first three were made for the W1-K1
+// spike (ADR 0002); W1-K3 moved them here and added the last two.
 //   kdbxweb-vault.kdbx    an account vault as the SDK writes it (createVaultKdbx: KDBX 4, Argon2id
 //                         m=1MiB t=2 p=1, the 32-byte vault key as the only key component)
 //   kdbxweb-unknown.kdbx  the same content, password "spike pw", with unknown elements injected
 //                         into KeePassFile, Meta, Root, Group, Entry and AutoType before encryption
 //   kdbxweb-unknown-leaf.kdbx  the same, but unknown elements only in Meta, Entry and AutoType
 //                         (keepass-rs rejects an unknown child of <Group>, so this isolates the rest)
+//   kdbxweb-41-icons.kdbx the same content as KDBX 4.1, AES-256 + AES-KDF, password "spike pw", with
+//                         a named custom icon on a group and an entry and tags on a group
+//   kdbxweb-kdbx31.kdbx   the same content as KDBX 3.1 (Salsa20 inner stream), password "spike pw"
 //
-//   node spikes/kdbx/gen-kdbxweb.mjs [path/to/openvireo-sdk]
+//   node corpus/kdbx/gen-kdbxweb.mjs [path/to/openvireo-sdk]
+//
+// The SDK defaults to $OV_SDK, else $HOME/kpnx/openvireo-sdk; it must be built (dist/).
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const sdkRoot = process.argv[2] ?? join(here, "../../../../openvireo-sdk");
-const sdk = await import(join(sdkRoot, "packages/sdk/dist/index.js"));
+const sdkRoot = process.argv[2] ?? process.env.OV_SDK ?? join(process.env.HOME ?? "", "kpnx/openvireo-sdk");
+const sdk = await import(pathToFileURL(join(sdkRoot, "packages/sdk/dist/index.js")).href);
 const { kdbxweb, createVaultKdbx, saveKdbx, setSyncGeneration, passwordCredentials, initKdbx } = sdk;
 
 const vectors = JSON.parse(readFileSync(join(here, "../../vectors/test-vectors.json"), "utf8"));
@@ -88,20 +94,44 @@ initKdbx();
 {
   const db = createVaultKdbx("kdbxweb vault", vaultKey);
   await fill(db);
-  writeFileSync(join(here, "files/kdbxweb-vault.kdbx"), await saveKdbx(db));
+  writeFileSync(join(here, "kdbxweb/kdbxweb-vault.kdbx"), await saveKdbx(db));
 }
 {
   const db = kdbxweb.Kdbx.create(passwordCredentials("spike pw")(), "kdbxweb unknown");
   db.setKdf(kdbxweb.Consts.KdfId.Argon2id);
   await fill(db);
   inject(db);
-  writeFileSync(join(here, "files/kdbxweb-unknown.kdbx"), await saveKdbx(db));
+  writeFileSync(join(here, "kdbxweb/kdbxweb-unknown.kdbx"), await saveKdbx(db));
 }
 {
   const db = kdbxweb.Kdbx.create(passwordCredentials("spike pw")(), "kdbxweb unknown leaf");
   db.setKdf(kdbxweb.Consts.KdfId.Argon2id);
   await fill(db);
   inject(db, false);
-  writeFileSync(join(here, "files/kdbxweb-unknown-leaf.kdbx"), await saveKdbx(db));
+  writeFileSync(join(here, "kdbxweb/kdbxweb-unknown-leaf.kdbx"), await saveKdbx(db));
 }
-console.log("wrote files/kdbxweb-vault.kdbx, kdbxweb-unknown.kdbx, kdbxweb-unknown-leaf.kdbx");
+{
+  const db = kdbxweb.Kdbx.create(passwordCredentials("spike pw")(), "kdbxweb 4.1 icons");
+  db.header.versionMinor = 1;
+  db.header.dataCipherUuid = new kdbxweb.KdbxUuid(kdbxweb.Consts.CipherId.Aes);
+  db.setKdf(kdbxweb.Consts.KdfId.Aes);
+  await fill(db);
+  const iconId = new kdbxweb.KdbxUuid(Buffer.alloc(16, 7));
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  db.meta.customIcons.set(iconId.id, { data: png, name: "dot", lastModified: new Date(Date.UTC(2026, 10, 15)) });
+  const work = db.getDefaultGroup().groups.find((g) => g.name === "Work");
+  work.customIcon = iconId;
+  work.tags = ["office", "team"];
+  work.entries[0].customIcon = iconId;
+  writeFileSync(join(here, "kdbxweb/kdbxweb-41-icons.kdbx"), await saveKdbx(db));
+}
+{
+  const db = kdbxweb.Kdbx.create(passwordCredentials("spike pw")(), "kdbxweb 3.1");
+  db.setVersion(3);
+  await fill(db);
+  writeFileSync(join(here, "kdbxweb/kdbxweb-kdbx31.kdbx"), await saveKdbx(db));
+}
+console.log("wrote kdbxweb/{kdbxweb-vault,kdbxweb-unknown,kdbxweb-unknown-leaf,kdbxweb-41-icons,kdbxweb-kdbx31}.kdbx");

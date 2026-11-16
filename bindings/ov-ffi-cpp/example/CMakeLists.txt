@@ -44,7 +44,7 @@ set(OVCORE_CARGO_ENV "OV_CXX_INCLUDE_DIR=${OVCORE_INCLUDE_DIR}")
 # of the aarch64 target through CARGO_TARGET_<TRIPLE>_RUSTFLAGS (per-target rustflags in Corrosion
 # reach only the top crate, not the aes dependency).
 if(Rust_CARGO_TARGET_ARCH STREQUAL "aarch64")
-  string(TOUPPER "${Rust_CARGO_TARGET}" _ov_triple)
+  string(TOUPPER "${Rust_CARGO_TARGET_CACHED}" _ov_triple)
   string(REPLACE "-" "_" _ov_triple "${_ov_triple}")
   list(APPEND OVCORE_CARGO_ENV "CARGO_TARGET_${_ov_triple}_RUSTFLAGS=--cfg aes_armv8")
 endif()

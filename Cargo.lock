@@ -1543,6 +1543,20 @@ dependencies = [
 [[package]]
 name = "ov-sync"
 version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "futures",
+ "ov-error",
+ "ov-host",
+ "ov-kdbx",
+ "ov-merge",
+ "ov-protocol",
+ "ov-testkit",
+ "serde",
+ "serde_json",
+ "zeroize",
+]
 
 [[package]]
 name = "ov-testkit"

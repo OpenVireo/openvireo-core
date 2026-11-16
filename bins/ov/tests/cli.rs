@@ -65,12 +65,23 @@ fn usage_errors_exit_2_and_failures_exit_1() {
     assert_eq!(String::from_utf8(out.stderr).unwrap(), "Not signed in\n");
 }
 
+#[cfg(unix)]
 #[test]
 fn run_without_references_runs_the_command() {
     let home = empty_home("run");
-    let out = ov(&["run", "--", "sh", "-c", "echo ok; exit 5"], &home);
+    let out = ov(&["run", "--", "/bin/sh", "-c", "echo ok; exit 5"], &home);
     assert_eq!(out.status.code(), Some(5));
     assert_eq!(String::from_utf8(out.stdout).unwrap(), "ok\n");
+}
+
+#[test]
+fn run_with_a_missing_command_fails_like_the_ts() {
+    let home = empty_home("run-missing");
+    let missing = home.join("absent-dir").join("no-such-command");
+    let missing = missing.to_str().unwrap();
+    let out = ov(&["run", "--", missing], &home);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(String::from_utf8(out.stderr).unwrap(), format!("ov: spawn {missing} ENOENT\n"));
 }
 
 /// A session saved by the TS `ov login` is found where the TS keeps it and read back unchanged.

@@ -1,0 +1,19 @@
+{
+  "name": "@openvireo/core-wasm",
+  "version": "0.0.0-template",
+  "description": "openvireo-core (the shared Rust core) compiled to WebAssembly, with JS host adapters",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/openvireo/openvireo-core", "directory": "bindings/ov-wasm" },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.js" },
+    "./host": { "types": "./host/index.d.ts", "default": "./host/index.js" },
+    "./ov_wasm_bg.wasm": "./gen/ov_wasm_bg.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": ["index.js", "index.d.ts", "host/", "gen/"]
+}

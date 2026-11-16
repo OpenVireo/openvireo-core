@@ -264,3 +264,39 @@ impl Writer {
         self.out.close("Entry")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::tree::{parse, Node};
+    use super::*;
+
+    fn last_child_name(n: &Node) -> &str {
+        n.children.last().map_or("", |c| c.name.as_str())
+    }
+
+    #[test]
+    fn unknown_elements_are_written_last_in_their_parent() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../spikes/kdbx/files/kdbxweb-unknown.kdbx");
+        let db =
+            crate::read(&std::fs::read(path).unwrap(), &crate::CompositeKey::new().with_password("spike pw")).unwrap();
+        let xml = document(&db, InnerStream::new(3, &[9; 64]).unwrap().unwrap()).unwrap();
+        let mut s = InnerStream::new(3, &[9; 64]).unwrap().unwrap();
+        let file = parse(std::str::from_utf8(&xml).unwrap(), Some(&mut s)).unwrap();
+        assert_eq!(last_child_name(&file), "ZzUnknownFile");
+        let meta = file.child("Meta").unwrap();
+        assert_eq!(last_child_name(meta), "ZzUnknownMeta");
+        let root = file.child("Root").unwrap();
+        assert_eq!(last_child_name(root), "ZzUnknownRoot");
+        let group = root.child("Group").unwrap();
+        assert_eq!(last_child_name(group), "ZzUnknownGroup");
+        let work = group
+            .children
+            .iter()
+            .find(|g| g.name == "Group" && g.child("Name").unwrap().text.as_str() == "Work")
+            .unwrap();
+        let entry = work.child("Entry").unwrap();
+        assert_eq!(last_child_name(entry), "ZzUnknownEntry");
+        assert_eq!(last_child_name(entry.child("AutoType").unwrap()), "ZzUnknownAutoType");
+        assert!(entry.child("QualityCheck").is_none(), "nothing invented");
+    }
+}

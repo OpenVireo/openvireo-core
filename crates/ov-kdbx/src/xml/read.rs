@@ -213,7 +213,8 @@ fn read_meta(meta: Node, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> R
             }
             "CustomIcons" => {
                 for icon in c.children.iter().filter(|i| i.name == "Icon") {
-                    let mut ci = CustomIcon { uuid: Uuid::nil(), data: Vec::new(), name: None, last_modification: None };
+                    let mut ci =
+                        CustomIcon { uuid: Uuid::nil(), data: Vec::new(), name: None, last_modification: None };
                     for f in &icon.children {
                         match f.name.as_str() {
                             "UUID" => ci.uuid = parse_uuid(text(f)).unwrap_or_default(),
@@ -395,7 +396,9 @@ fn read_entry(node: Node, binaries: &mut Vec<Binary>) -> Result<Entry, OvError> 
                         "Key" => name = text(f).to_owned(),
                         "Value" => {
                             index = match f.attr("Ref") {
-                                Some(r) => Some(r.trim().parse::<u32>().map_err(|_| err("a binary Ref is not a number"))?),
+                                Some(r) => {
+                                    Some(r.trim().parse::<u32>().map_err(|_| err("a binary Ref is not a number"))?)
+                                }
                                 None => {
                                     // An inline attachment (old KDBX 3.1 writers): add it to the pool.
                                     binaries.push(Binary { data: binary_bytes(f)?, protected: f.is_protected() });

@@ -55,8 +55,13 @@ pub fn read(bytes: &[u8], key: &CompositeKey) -> Result<Database, OvError> {
         crypto::verify_header_hmac(header_bytes, &base, stored_hmac)?;
         let ciphertext = crypto::read_hmac_blocks(&mut c, &base)?;
         let pkey = crypto::payload_key(&raw.master_seed, &transformed);
-        let mut plain = crypto::decrypt(raw.header.cipher, &pkey, &raw.iv, &ciphertext)
-            .map_err(|e| if e.is(ov_error::OvErrorCode::VaultKeyMismatch) { err("the payload is corrupt") } else { e })?;
+        let mut plain = crypto::decrypt(raw.header.cipher, &pkey, &raw.iv, &ciphertext).map_err(|e| {
+            if e.is(ov_error::OvErrorCode::VaultKeyMismatch) {
+                err("the payload is corrupt")
+            } else {
+                e
+            }
+        })?;
         if raw.header.compression == Compression::Gzip {
             plain = crypto::gunzip(&plain)?;
         }
@@ -166,7 +171,10 @@ pub fn uses_kdbx41(db: &Database) -> bool {
         items.iter().any(|i| i.last_modification.is_some())
     }
     fn entry(e: &Entry) -> bool {
-        e.quality_check.is_some() || e.previous_parent_group.is_some() || cd(&e.custom_data) || e.history.iter().any(entry)
+        e.quality_check.is_some()
+            || e.previous_parent_group.is_some()
+            || cd(&e.custom_data)
+            || e.history.iter().any(entry)
     }
     fn group(g: &Group) -> bool {
         !g.tags.is_empty()

@@ -7,7 +7,7 @@ use ov_error::OvError;
 use uuid::Uuid;
 
 use crate::bytes::{err, le_exact, Cursor};
-use crate::model::{Argon2Type, Cipher, Compression, Header, Kdf, KdbxVersion, Variant, VariantDictionary};
+use crate::model::{Argon2Type, Cipher, Compression, Header, KdbxVersion, Kdf, Variant, VariantDictionary};
 
 pub(crate) const SIGNATURE_1: u32 = 0x9AA2_D903;
 pub(crate) const SIGNATURE_2: u32 = 0xB54B_FB67;

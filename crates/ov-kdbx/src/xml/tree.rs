@@ -78,8 +78,9 @@ fn start_node(e: &BytesStart<'_>) -> Result<Node, OvError> {
     for a in e.attributes() {
         let a = a.map_err(|e| err(format!("bad XML attribute: {e}")))?;
         let key = a.key.local_name().into_inner().to_owned();
-        let value =
-            a.normalized_value(quick_xml::XmlVersion::Implicit1_0).map_err(|e| err(format!("bad XML attribute: {e}")))?;
+        let value = a
+            .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+            .map_err(|e| err(format!("bad XML attribute: {e}")))?;
         attrs.push((key, value.into_owned()));
     }
     Ok(Node { name, attrs, ..Node::default() })
@@ -121,8 +122,10 @@ pub(crate) fn parse(xml: &str, mut stream: Option<&mut InnerStream>) -> Result<N
         }
         if f.node.is_protected() {
             let s = stream.as_deref_mut().ok_or_else(|| err("a protected value but no inner stream"))?;
-            let cleaned: Zeroizing<String> = Zeroizing::new(f.node.text.chars().filter(|c| !c.is_whitespace()).collect());
-            let mut raw = Zeroizing::new(B64.decode(cleaned.as_bytes()).map_err(|_| err("a protected value isn't base64"))?);
+            let cleaned: Zeroizing<String> =
+                Zeroizing::new(f.node.text.chars().filter(|c| !c.is_whitespace()).collect());
+            let mut raw =
+                Zeroizing::new(B64.decode(cleaned.as_bytes()).map_err(|_| err("a protected value isn't base64"))?);
             s.apply(&mut raw);
             f.node.text = Zeroizing::new(String::from_utf8_lossy(&raw).into_owned());
             f.node.raw = Some(raw);
@@ -331,8 +334,11 @@ mod tests {
 
     #[test]
     fn parses_text_refs_and_mixed_content() {
-        let n = parse("<?xml version=\"1.0\"?>\n<A x=\"1&amp;2\">\n\t<B>a &lt;b&gt; &#13;&#x41;</B>\n\t<C/>mid<D> sp </D>\n</A>", None)
-            .unwrap();
+        let n = parse(
+            "<?xml version=\"1.0\"?>\n<A x=\"1&amp;2\">\n\t<B>a &lt;b&gt; &#13;&#x41;</B>\n\t<C/>mid<D> sp </D>\n</A>",
+            None,
+        )
+        .unwrap();
         assert_eq!(n.name, "A");
         assert_eq!(n.attr("x"), Some("1&2"));
         assert_eq!(n.child("B").unwrap().text.as_str(), "a <b> \rA");

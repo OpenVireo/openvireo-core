@@ -191,7 +191,12 @@ pub(crate) fn transform(key: &CompositeKey, kdf: &Kdf) -> Result<Zeroizing<[u8; 
                     Argon2Type::D => Argon2Variant::Argon2d,
                     Argon2Type::Id => Argon2Variant::Argon2id,
                 };
-                primitives::argon2(variant, raw.as_ref(), salt, Argon2Params { m_kib, t, p: *parallelism, out_len: 32 })?
+                primitives::argon2(
+                    variant,
+                    raw.as_ref(),
+                    salt,
+                    Argon2Params { m_kib, t, p: *parallelism, out_len: 32 },
+                )?
             } else {
                 // Argon2 1.0, or a secret / associated data: outside ov-crypto's wrapper.
                 argon2_full(*kind, raw.as_ref(), salt, m_kib, t, *parallelism, *version, secret, associated_data)?
@@ -216,9 +221,8 @@ fn argon2_full(
     secret: &Option<Vec<u8>>,
     associated_data: &Option<Vec<u8>>,
 ) -> Result<Zeroizing<Vec<u8>>, OvError> {
-    let weak = |e: argon2::Error| {
-        OvError::new(ov_error::OvErrorCode::WeakKdf, format!("Argon2 refused the parameters: {e}"))
-    };
+    let weak =
+        |e: argon2::Error| OvError::new(ov_error::OvErrorCode::WeakKdf, format!("Argon2 refused the parameters: {e}"));
     let version = match version {
         0x10 => argon2::Version::V0x10,
         0x13 => argon2::Version::V0x13,
@@ -470,7 +474,13 @@ mod tests {
         assert_eq!(k(v1.as_bytes()), raw);
 
         let check: String = primitives::sha256(&raw)[..4].iter().map(|b| format!("{b:02X}")).collect();
-        let spaced: String = hex.to_uppercase().as_bytes().chunks(8).map(|c| std::str::from_utf8(c).unwrap()).collect::<Vec<_>>().join(" ");
+        let spaced: String = hex
+            .to_uppercase()
+            .as_bytes()
+            .chunks(8)
+            .map(|c| std::str::from_utf8(c).unwrap())
+            .collect::<Vec<_>>()
+            .join(" ");
         let v2 = format!(
             "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<KeyFile>\n\t<Meta>\n\t\t<Version>2.0</Version>\n\t</Meta>\n\t<Key>\n\
              \t\t<Data Hash=\"{check}\">\n\t\t\t{spaced}\n\t\t</Data>\n\t</Key>\n</KeyFile>\n"

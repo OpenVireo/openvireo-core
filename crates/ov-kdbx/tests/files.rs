@@ -52,6 +52,26 @@ fn every_fixture_opens_and_round_trips() {
         let expected_version = ov_kdbx::write_version(&db);
         assert_eq!(back.header.version, expected_version, "{name}");
         assert_eq!(back, upgraded(db.clone(), expected_version), "{name}: write → read differs");
-        println!("{name}: {:?}, {} entries in root, {} binaries", db.header.version, db.root.entries.len(), db.binaries.len());
+        let again = ov_kdbx::read(&ov_kdbx::write(&back, &key).unwrap(), &key).unwrap();
+        assert_eq!(again, back, "{name}: second save differs");
+        println!(
+            "{name}: {:?}, {} entries in root, {} binaries",
+            db.header.version,
+            db.root.entries.len(),
+            db.binaries.len()
+        );
+    }
+}
+
+/// Writes every fixture's rewrite to `target/k2-rewrites/` for checking with the desktop CLI.
+#[test]
+#[ignore = "manual interop check with openvireo-cli"]
+fn dump_rewrites() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/k2-rewrites");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, bytes, key) in fixtures() {
+        let db = ov_kdbx::read(&bytes, &key).unwrap();
+        let file = dir.join(name.replace('/', "_"));
+        std::fs::write(file, ov_kdbx::write(&db, &key).unwrap()).unwrap();
     }
 }

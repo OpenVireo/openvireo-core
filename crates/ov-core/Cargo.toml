@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 ov-error = { path = "../ov-error" }
+ov-http = { path = "../ov-http" }
 async-trait.workspace = true
 zeroize.workspace = true
 

@@ -1,7 +1,7 @@
 //! Test helpers for openvireo-core. Use it as a `[dev-dependencies]` entry only.
 //!
 //! - [`vectors_dir`] and [`vector_path`]: where the frozen copies of the contract live (`vectors/`).
-//! - [`test_vectors`]: typed `vectors/test-vectors.json` (SPEC test vectors), see [`TestVectors`].
+//! - [`mod@test_vectors`]: typed `vectors/test-vectors.json` (SPEC test vectors), see [`TestVectors`].
 //! - [`merge`]: typed `vectors/merge-fixtures/*.json`, see [`merge_fixtures`].
 //! - [`opaque`]: typed `vectors/opaque-transcripts.json`, see [`opaque_transcripts`].
 //! - [`kdbx`]: the `.kdbx` fixtures and their keys.

@@ -1,0 +1,14 @@
+[package]
+name = "ov-http"
+description = "Plain HTTP request/response types shared by ov-protocol and the ov-core Host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true

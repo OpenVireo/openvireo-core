@@ -10,6 +10,7 @@ The dev guide's `scripts/check-contract-copies.sh` compares the copies with thei
 | `test-vectors.json` | SPEC test vectors (AUK, keyset, seal, JWT, share links, ...) | openvireo `docs/plans/accounts/test-vectors.json` |
 | `vault-fixture.kdbx` | the contract's account vault (see `vault_kdbx` in test-vectors.json) | openvireo `docs/plans/accounts/vault-fixture.kdbx` |
 | `merge-fixtures/` | three-way merge cases from the desktop merge | see `merge-fixtures/SOURCE.md` |
+| `openapi/` | auth + sync server OpenAPI contracts | see `openapi/SOURCE.md` |
 | `kdbx/` | `.kdbx` files written by the desktop app | see `kdbx/SOURCE.md` |
 | `opaque-transcripts.json` | deterministic OPAQUE runs, TS SDK (opaque-ke) and libopaque | generated here, see below |
 | `tools/` | the generators for `opaque-transcripts.json` | this repo |

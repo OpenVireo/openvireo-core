@@ -48,6 +48,8 @@ mod helpers;
 mod http;
 mod memory;
 mod sync;
+#[cfg(test)]
+mod tests;
 
 pub use memory::{MemoryCache, MemoryStore, SilentLog};
 

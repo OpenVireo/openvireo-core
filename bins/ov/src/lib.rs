@@ -21,3 +21,5 @@ macro_rules! version {
 
 pub mod js;
 pub mod reference;
+pub mod source;
+pub mod template;

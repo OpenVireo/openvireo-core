@@ -8,7 +8,20 @@ rust-version.workspace = true
 repository.workspace = true
 publish = false
 
+[lib]
+# cdylib: the .wasm `cargo xtask wasm` turns into @openvireo/core-wasm. rlib: so `cargo test`
+# and clippy on the host can build it.
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
+ov-core = { path = "../../crates/ov-core" }
+ov-crypto = { path = "../../crates/ov-crypto" }
+ov-error = { path = "../../crates/ov-error" }
+async-trait.workspace = true
+js-sys.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+zeroize.workspace = true
 
 [lints]
 workspace = true

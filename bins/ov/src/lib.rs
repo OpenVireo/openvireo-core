@@ -19,11 +19,16 @@ macro_rules! version {
     };
 }
 
+pub mod cache;
 pub mod generate;
+pub mod host;
+pub mod http;
 pub mod js;
 pub mod mask;
 pub mod plan;
 pub mod reference;
 pub mod run;
+pub mod session;
 pub mod source;
+pub mod store;
 pub mod template;

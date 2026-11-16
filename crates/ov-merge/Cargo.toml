@@ -9,6 +9,14 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+ov-error = { path = "../ov-error" }
+ov-kdbx = { path = "../ov-kdbx" }
+zeroize.workspace = true
+
+[dev-dependencies]
+ov-testkit = { path = "../ov-testkit" }
+base64.workspace = true
+proptest.workspace = true
 
 [lints]
 workspace = true

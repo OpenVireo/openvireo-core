@@ -118,12 +118,12 @@ impl std::fmt::Debug for TotpChallenge {
 impl TotpChallenge {
     /// Which try this is, from 1.
     pub fn attempt(&self) -> u32 {
-        todo!()
+        self.inner.attempt.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// The previous wrong code's error (`invalid_mfa`), if any.
     pub fn last_error(&self) -> Option<OvError> {
-        todo!()
+        crate::impls::util::lock(&self.inner.last_error).clone()
     }
 }
 
@@ -132,83 +132,102 @@ impl Account {
 
     /// The server's discovery document.
     pub fn server_config(&self) -> ServerConfig {
-        todo!()
+        self.inner.config.clone()
     }
 
     /// Working from the offline cache because the server can't be reached (SPEC §20). Edits are
     /// kept and upload once a sync succeeds; [`reconnect`](Self::reconnect) goes back online.
     pub fn is_offline(&self) -> bool {
-        todo!()
+        crate::impls::util::lock(&self.inner.inner).offline
     }
 
     /// A session is loaded (it may be locked).
     pub fn is_signed_in(&self) -> bool {
-        todo!()
+        self.inner.tokens.current().is_some()
     }
 
     /// The keyset is in memory.
     pub fn is_unlocked(&self) -> bool {
-        todo!()
+        crate::impls::util::lock(&self.inner.inner).keyset.is_some()
     }
 
     /// The erase date while the account is pending deletion (SPEC §23), else `None`. Such a session
     /// opens no vaults: offer [`restore_account`](Self::restore_account) or sign out.
     pub fn deletion_scheduled_for(&self) -> Option<Rfc3339> {
-        todo!()
+        crate::impls::util::lock(&self.inner.inner).deletion.clone()
     }
 
     /// The signed-in user's id.
     pub fn user_id(&self) -> Option<String> {
-        todo!()
+        self.inner.tokens.current().map(|s| s.user_id)
     }
 
     /// The signed-in email.
     pub fn email(&self) -> Option<String> {
-        todo!()
+        self.inner.tokens.current().map(|s| s.email)
     }
 
     /// `user:<id>`; `signed_out` without a session.
     pub fn principal(&self) -> Result<Principal, OvError> {
-        todo!()
+        self.principal_str()
     }
 
     /// This account's public-key fingerprint, to compare out of band (SPEC §5); `signed_out` while locked.
     pub fn fingerprint(&self) -> Result<String, OvError> {
-        todo!()
+        self.with_keyset(|ks| ks.public.fingerprint())
     }
 
     /// How far this device's clock is ahead of the sync server's, from the last sync (ms).
     pub fn clock_offset_ms(&self) -> Option<i64> {
-        todo!()
+        crate::impls::util::lock(&self.inner.inner).clock_offset_ms
     }
 
     /// The stored session (without tokens). An error means the secure store couldn't be read, which
     /// is not the same as being signed out (`None`).
     pub async fn stored_session(&self) -> Result<Option<StoredSession>, OvError> {
-        todo!()
+        Ok(self.inner.tokens.load().await?.map(|s| StoredSession {
+            issuer: s.issuer.clone(),
+            user_id: s.user_id.clone(),
+            email: s.email.clone(),
+            device_id: s.device_id.clone(),
+        }))
     }
 
     /// Asks the server whether this device's session still stands (a token refresh), so a device
     /// signed out elsewhere finds out now. Does nothing offline.
     pub async fn verify_session(&self, cancel: CancelToken) -> Result<(), OvError> {
-        todo!()
+        if self.is_offline() || self.inner.tokens.load().await?.is_none() {
+            return Ok(());
+        }
+        match self.refresh_token(&cancel).await {
+            Err(e) if e.is_unreachable() => Ok(()),
+            r => r,
+        }
     }
 
     /// Completes the next time the server ends this session (signed out elsewhere, password changed,
     /// refresh token reused or expired, account deleted), after the account has locked and dropped
     /// that user's offline data (SPEC §20). Not for this device's own sign-out. Await it in a loop.
     pub async fn signed_out(&self, cancel: CancelToken) -> Result<SignedOutReason, OvError> {
-        todo!()
+        let signal = self.inner.signal.clone();
+        let seen = signal.count();
+        let wait = signal.wait(seen);
+        let cancelled = cancel.cancelled();
+        futures::pin_mut!(wait, cancelled);
+        match futures::future::select(wait, cancelled).await {
+            futures::future::Either::Left((reason, _)) => Ok(reason),
+            futures::future::Either::Right(_) => Err(OvError::new(ov_error::OvErrorCode::Aborted, "cancelled")),
+        }
     }
 
     /// Whether this device keeps the Secret Key for `email` (so sign-in needs only the password).
     pub async fn has_secret_key(&self, email: String) -> Result<bool, OvError> {
-        todo!()
+        Ok(self.stored_sk(&email).await?.is_some())
     }
 
     /// The Secret Key this device keeps for `email`, without unlocking (Swift `storedSecretKey`).
     pub async fn stored_secret_key(&self, email: String) -> Result<Option<SecretBytes>, OvError> {
-        todo!()
+        Ok(self.stored_sk(&email).await?.map(|s| s.as_bytes().to_vec()))
     }
 
     // ------------------------------------------------------------------- sign-up, sign-in
@@ -216,14 +235,14 @@ impl Account {
     /// Creates an account (SPEC §2, §3, §5, §8): a new Secret Key, KDF salt and keyset, OPAQUE
     /// registration, then signed in and unlocked. Show the returned Secret Key once (Emergency Kit).
     pub async fn register(&self, input: RegisterInput, cancel: CancelToken) -> Result<NewAccount, OvError> {
-        todo!()
+        self.register_impl(input, &cancel).await
     }
 
     /// OPAQUE sign-in (SPEC §8), then unlock. Returns [`LoginStep::NeedsTotp`] when the account has
     /// two-step sign-in and `input.totp` is `None`. A wrong password or unknown email is
     /// `unauthorized` (401) either way.
     pub async fn login(&self, input: LoginInput, cancel: CancelToken) -> Result<LoginStep, OvError> {
-        todo!()
+        self.login_impl(input, &cancel).await
     }
 
     /// Sends a TOTP code for a waiting sign-in. A wrong code is `invalid_mfa` and the challenge stays
@@ -235,7 +254,7 @@ impl Account {
         code: String,
         cancel: CancelToken,
     ) -> Result<LoginStep, OvError> {
-        todo!()
+        self.submit_totp_impl(challenge, code, &cancel).await
     }
 
     /// Unlocks a signed-in session with the master password, without an OPAQUE round trip. With
@@ -248,63 +267,77 @@ impl Account {
         secret_key: Option<SecretBytes>,
         cancel: CancelToken,
     ) -> Result<Unlocked, OvError> {
-        todo!()
+        self.unlock_impl(password, secret_key, &cancel).await
     }
 
     /// Unlocks with an AUK kept behind biometrics (Swift `unlock(auk:)`). Offline it uses the cached
     /// profile.
     pub async fn unlock_with_auk(&self, auk: SecretBytes, cancel: CancelToken) -> Result<(), OvError> {
-        todo!()
+        self.unlock_with_auk_impl(auk, &cancel).await
     }
 
     /// The unlocked keyset's private halves (`enc_sk ‖ sign_seed`, 64 bytes), for the web wrapper's
     /// `sealUnlocked`, which seals them with a non-extractable WebCrypto key so a page reload can
     /// resume. `signed_out` while locked.
     pub fn unlocked_keyset_secret(&self) -> Result<SecretBytes, OvError> {
-        todo!()
+        self.with_keyset(|ks| {
+            let mut out = Vec::with_capacity(64);
+            out.extend_from_slice(&ks.enc_sk[..]);
+            out.extend_from_slice(&ks.sign_seed[..]);
+            out
+        })
     }
 
     /// Unlocks from keyset secrets saved by [`unlocked_keyset_secret`](Self::unlocked_keyset_secret)
     /// (TS `resumeUnlocked`). The keys must match the account's public keys (from `/me`, or offline
     /// the cached profile): `invalid_public_keys` otherwise; `signed_out` without a session.
     pub async fn resume_unlocked(&self, keyset_secret: SecretBytes, cancel: CancelToken) -> Result<(), OvError> {
-        todo!()
+        self.resume_unlocked_impl(keyset_secret, &cancel).await
     }
 
     /// Clears the keyset and vault keys from memory. The session stays.
     pub fn lock(&self) {
-        todo!()
+        self.lock_keys()
     }
 
     /// Signs this device out: revokes the session on the server (best effort), deletes the offline
     /// cache, and with `forget_device` also the kept Secret Key and device id (SPEC §21).
     pub async fn sign_out(&self, forget_device: bool, cancel: CancelToken) -> Result<(), OvError> {
-        todo!()
+        self.sign_out_impl(forget_device, &cancel).await
     }
 
     /// For a page closing on a shared session (SPEC §21): locks, stops using the session, and returns
     /// the `POST /auth/logout` request (with `keepalive`) for the platform to fire and forget. `None`
     /// when no access token is in hand (a closing page can't refresh one).
     pub fn sign_out_on_unload(&self) -> Option<HttpRequest> {
-        todo!()
+        let token = self.inner.tokens.access_token_now();
+        self.lock_keys();
+        token.map(|t| self.inner.auth.build_logout(&t, true))
     }
 
     /// Removes what signing in again would reuse (Secret Key, device id), so the next sign-in needs
     /// the Emergency Kit. Works signed out; the account must not be the open one.
     pub async fn forget_device(&self, email: String) -> Result<(), OvError> {
-        todo!()
+        self.forget_device_impl(&email).await
     }
 
     /// Goes back online after working offline: re-reads the account and the vault list. Vaults no
     /// longer listed are forgotten with their local copies. Fails while still unreachable.
     pub async fn reconnect(&self, cancel: CancelToken) -> Result<ReconnectResult, OvError> {
-        todo!()
+        let session = self.inner.tokens.load().await?.ok_or_else(|| crate::impls::util::signed_out("not signed in"))?;
+        let me = self.call(&cancel, |a, t| a.build_me(t), ov_protocol::auth::parse_me).await?;
+        self.follow_email(&me.email).await?;
+        crate::impls::util::lock(&self.inner.inner).deletion = me.deletion_scheduled_for.clone();
+        self.cache_profile(&session.user_id, &crate::impls::account::CachedProfile { kdf: me.kdf, keyset: me.keyset })
+            .await?;
+        let (vaults, dropped) = self.load_vault_list(&cancel).await?;
+        Ok(ReconnectResult { vaults, dropped })
     }
 
     /// The KDF parameters cached at the last sign-in or unlock, so AutoFill can check what a
     /// password unlock costs before running it.
     pub async fn cached_kdf(&self) -> Result<Option<KdfParams>, OvError> {
-        todo!()
+        self.cached_kdf_impl().await
     }
 
     // ------------------------------------------------------------ several accounts (§21)
@@ -312,24 +345,24 @@ impl Account {
     /// Locks and sets this session aside for its user to come back to. The server isn't told and the
     /// offline cache stays. `false` when no session is open.
     pub async fn park_session(&self) -> Result<bool, OvError> {
-        todo!()
+        self.park_impl().await
     }
 
     /// Makes a parked session the active one. `false` when it ended (sign in again); an error when
     /// another account is open.
     pub async fn resume_session(&self, user_id: String) -> Result<bool, OvError> {
-        todo!()
+        self.resume_impl(&user_id).await
     }
 
     /// Asks the server about a parked session (a refresh), keeping it within its 30 days. A refusal
     /// ends it like any other (SPEC §9, §20).
     pub async fn check_parked_session(&self, user_id: String, cancel: CancelToken) -> Result<ParkedCheck, OvError> {
-        todo!()
+        self.check_parked_impl(&user_id, &cancel).await
     }
 
     /// Signs a parked session out, as [`sign_out`](Self::sign_out) does for the open one.
     pub async fn sign_out_parked(&self, user_id: String, cancel: CancelToken) -> Result<(), OvError> {
-        todo!()
+        self.sign_out_parked_impl(&user_id, &cancel).await
     }
 
     // ----------------------------------------------------------------------------- vaults
@@ -337,30 +370,31 @@ impl Account {
     /// `GET /vaults`: every vault this account can open, names decrypted (SPEC §7). Offline, the
     /// list from the last successful call.
     pub async fn vaults(&self, cancel: CancelToken) -> Result<Vec<VaultInfo>, OvError> {
-        todo!()
+        Ok(self.load_vault_list(&cancel).await?.0)
     }
 
     /// The vault list from the last successful call, without the network; `None` if none is cached.
     pub async fn cached_vaults(&self) -> Result<Option<Vec<VaultInfo>>, OvError> {
-        todo!()
+        let Some(list) = self.cached_wire_vaults().await? else { return Ok(None) };
+        Ok(Some(list.iter().map(|v| self.ingest(v).map(|e| e.info)).collect::<Result<_, _>>()?))
     }
 
     /// Downloads and opens a vault (newest key first), merging edits this device kept from an
     /// earlier session. Offline, opens this device's copy ([`Vault::is_offline`]); a vault never
     /// synced here is `not_available_offline`.
     pub async fn open_vault(&self, vault_id: String, cancel: CancelToken) -> Result<Vault, OvError> {
-        todo!()
+        self.open_vault_impl(&vault_id, &cancel).await
     }
 
     /// Opens a vault from this device's copies only (edits not uploaded, else the server's bytes at
     /// the last sync), plus what AutoFill saved since. For the AutoFill extension; never syncs.
     pub async fn open_offline(&self, vault_id: String) -> Result<Vault, OvError> {
-        todo!()
+        self.open_offline_impl(&vault_id, true).await
     }
 
     /// Opens this device's copy of a vault without the network and without AutoFill's edits.
     pub async fn open_copy(&self, vault_id: String) -> Result<Vault, OvError> {
-        todo!()
+        self.open_offline_impl(&vault_id, false).await
     }
 
     /// Creates a vault: a new vault key sealed to this account (and in an org to every confirmed
@@ -372,7 +406,7 @@ impl Account {
         org_id: Option<String>,
         cancel: CancelToken,
     ) -> Result<Vault, OvError> {
-        todo!()
+        self.create_vault_impl(&name, org_id.as_deref(), &cancel).await
     }
 
     /// Imports a `.kdbx` (opened with `credentials`) into the account: as a new vault ("Move to
@@ -385,7 +419,15 @@ impl Account {
         mode: ImportMode,
         cancel: CancelToken,
     ) -> Result<ImportOutcome, OvError> {
-        todo!()
+        let key = crate::impls::vaults::local_key(&credentials)?;
+        let source = ov_kdbx::read(&kdbx, &key).map_err(|e| {
+            if e.is(ov_error::OvErrorCode::VaultKeyMismatch) {
+                OvError::new(ov_error::OvErrorCode::KdbxError, "the password or key file doesn't open this file")
+            } else {
+                e
+            }
+        })?;
+        self.import_db(source, mode, &cancel).await
     }
 
     /// Imports an already open vault (a local database, or one synced with a self-hosted server),
@@ -397,7 +439,8 @@ impl Account {
         mode: ImportMode,
         cancel: CancelToken,
     ) -> Result<ImportOutcome, OvError> {
-        todo!()
+        let db = crate::impls::util::lock(&source.inner.db).clone();
+        self.import_db(db, mode, &cancel).await
     }
 
     /// Renames a vault (needs `manage`): the encrypted name on the auth server, which every client
@@ -408,29 +451,29 @@ impl Account {
         name: String,
         cancel: CancelToken,
     ) -> Result<VaultInfo, OvError> {
-        todo!()
+        self.rename_vault_impl(&vault_id, &name, &cancel).await
     }
 
     /// Deletes a vault for everyone (needs `manage`): the blob on the sync server, then the vault.
     pub async fn delete_vault(&self, vault_id: String, cancel: CancelToken) -> Result<(), OvError> {
-        todo!()
+        self.delete_vault_impl(&vault_id, &cancel).await
     }
 
     /// Whether any vault has edits waiting on this device.
     pub async fn has_any_pending_edits(&self) -> Result<bool, OvError> {
-        todo!()
+        self.pending_for(None).await
     }
 
     /// Whether a vault has edits waiting on this device for its next upload.
     pub async fn has_pending_edits(&self, vault_id: String) -> Result<bool, OvError> {
-        todo!()
+        self.pending_for(Some(&vault_id)).await
     }
 
     // ---------------------------------------------------------------------------- history
 
     /// The saved versions of a vault on the sync server (SPEC §11 history), newest first.
     pub async fn vault_history(&self, vault_id: String, cancel: CancelToken) -> Result<Vec<VaultVersion>, OvError> {
-        todo!()
+        self.history_impl(&vault_id, &cancel).await
     }
 
     /// Opens one saved version, read-only ([`Vault::is_read_only`]).
@@ -440,7 +483,7 @@ impl Account {
         revision: u64,
         cancel: CancelToken,
     ) -> Result<Vault, OvError> {
-        todo!()
+        self.open_version_impl(&vault_id, revision, &cancel).await
     }
 
     // ------------------------------------------------------------------- AutoFill (iOS)
@@ -453,17 +496,17 @@ impl Account {
         entry: EntryRecord,
         group_path: String,
     ) -> Result<(), OvError> {
-        todo!()
+        self.keep_autofill_impl(&vault_id, entry, &group_path).await
     }
 
     /// What AutoFill saved for a vault and the app hasn't taken yet.
     pub async fn autofill_edits(&self, vault_id: String) -> Result<Option<AutoFillEdits>, OvError> {
-        todo!()
+        self.autofill_edits_impl(&vault_id).await
     }
 
     /// Removes AutoFill edits once taken, unless newer ones were written meanwhile.
     pub async fn clear_autofill_edits(&self, edits: AutoFillEdits) -> Result<(), OvError> {
-        todo!()
+        self.clear_autofill_impl(&edits).await
     }
 
     // ----------------------------------------------------------------------------- events
@@ -475,6 +518,15 @@ impl Account {
     /// `deletion_scheduled` / `account_deleted` end the session
     /// ([`AccountEvent::SessionEnded`](super::AccountEvent::SessionEnded)).
     pub async fn subscribe(&self, cancel: CancelToken) -> Result<EventStream, OvError> {
-        todo!()
+        cancel.check()?;
+        if !crate::impls::sync_glue::AVAILABLE {
+            return Err(crate::impls::sync_glue::needs_sync());
+        }
+        Ok(EventStream {
+            inner: Arc::new(crate::state::EventStreamState {
+                closed: std::sync::atomic::AtomicBool::new(false),
+                reconnect: std::sync::atomic::AtomicBool::new(false),
+            }),
+        })
     }
 }

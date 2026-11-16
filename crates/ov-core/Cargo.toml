@@ -12,8 +12,23 @@ publish = false
 ov-error = { path = "../ov-error" }
 ov-http = { path = "../ov-http" }
 ov-host = { path = "../ov-host" }
+ov-crypto = { path = "../ov-crypto" }
+ov-opaque = { path = "../ov-opaque", default-features = false }
+ov-protocol = { path = "../ov-protocol" }
+ov-share = { path = "../ov-share" }
+ov-kdbx = { path = "../ov-kdbx" }
+ov-merge = { path = "../ov-merge" }
 async-trait.workspace = true
+futures.workspace = true
+rand_core = { workspace = true, features = ["getrandom"] }
+serde.workspace = true
+serde_json.workspace = true
 zeroize.workspace = true
+
+[dev-dependencies]
+ov-testkit = { path = "../ov-testkit" }
+ov-opaque = { path = "../ov-opaque", default-features = false, features = ["test-server"] }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

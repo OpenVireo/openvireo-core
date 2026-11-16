@@ -173,13 +173,13 @@ pub struct OpenedShare {
 impl Account {
     /// Where links point: the discovery `share` URL, else `<web>/s`; `None` when neither is known.
     pub fn share_base(&self) -> Option<String> {
-        todo!()
+        self.share_base_url()
     }
 
     /// Why this account can't make a share link from a vault of `org_id` (the org's policy, SPEC
     /// §22), as text for the UI; `None` when it can (or for personal vaults).
     pub async fn share_blocked_reason(&self, org_id: Option<String>) -> Result<Option<String>, OvError> {
-        todo!()
+        self.share_blocked(org_id).await
     }
 
     /// Makes a share link for `payload` (see [`item_share_payload`] and [`text_share_payload`]). The
@@ -191,37 +191,40 @@ impl Account {
         options: ShareOptions,
         cancel: CancelToken,
     ) -> Result<CreatedShare, OvError> {
-        todo!()
+        self.create_share_impl(payload, options, &cancel).await
     }
 
     /// This account's share links, newest first, with those that ended in the last 30 days.
     pub async fn list_shares(&self, cancel: CancelToken) -> Result<Vec<ShareListing>, OvError> {
-        todo!()
+        self.list_shares_impl(&cancel).await
     }
 
     /// Ends a share link at once; its content is deleted from the server.
     pub async fn revoke_share(&self, share_id: String, cancel: CancelToken) -> Result<(), OvError> {
-        todo!()
+        self.revoke_share_impl(&share_id, &cancel).await
     }
 }
 
 /// The fields an item shares by default: `UserName`, `Password`, `URL`. The rest are opt-in.
 pub fn default_share_fields() -> Vec<String> {
-    todo!()
+    ov_share::default_share_fields()
 }
 
 /// The fields of an entry that can be shared (standard ones first, then custom; TOTP as a code
 /// source), in display order.
 pub fn shareable_fields(entry: EntryRecord) -> Vec<ShareableField> {
-    todo!()
+    crate::impls::share::shareable(&entry)
 }
 
 /// A payload with the named fields of an entry.
 pub fn item_share_payload(entry: EntryRecord, names: Vec<String>, shared_by: Option<String>) -> SharePayload {
-    todo!()
+    let fields = crate::impls::share::entry_fields(&entry.fields);
+    crate::impls::share::api_payload(&ov_share::item_share_payload(&fields, &names, shared_by.as_deref()))
 }
 
 /// A payload holding a text.
 pub fn text_share_payload(text: SecretBytes, title: Option<String>, shared_by: Option<String>) -> SharePayload {
-    todo!()
+    let text = String::from_utf8_lossy(&text).into_owned();
+    let text = zeroize::Zeroizing::new(text);
+    crate::impls::share::api_payload(&ov_share::text_share_payload(&text, title.as_deref(), shared_by.as_deref()))
 }

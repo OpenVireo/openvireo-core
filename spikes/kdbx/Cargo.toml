@@ -1,0 +1,27 @@
+[package]
+name = "kdbx-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+
+# Standalone: not a member of the openvireo-core workspace, own Cargo.lock.
+[workspace]
+
+[dependencies]
+keepass = { version = "=0.17.0", features = ["save_kdbx4"] }
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+# Baseline for the wasm size measurement: the same exported function without keepass-rs.
+baseline = []
+
+# Same release profile as the openvireo-core workspace, so the wasm sizes are comparable.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+debug = false

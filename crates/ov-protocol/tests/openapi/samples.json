@@ -1,0 +1,5352 @@
+{
+  "auth DELETE /devices/{id} op": [
+    null
+  ],
+  "auth DELETE /me 202": [
+    {
+      "scheduled_for": "2026-11-15T12:00:00Z"
+    }
+  ],
+  "auth DELETE /me op": [
+    null
+  ],
+  "auth DELETE /me request": [
+    {
+      "confirm": "text"
+    }
+  ],
+  "auth DELETE /me/totp op": [
+    null
+  ],
+  "auth DELETE /me/totp request": [
+    {
+      "totp": "text"
+    }
+  ],
+  "auth DELETE /orgs/{org} op": [
+    null
+  ],
+  "auth DELETE /orgs/{org}/invitations/{id} op": [
+    null
+  ],
+  "auth DELETE /orgs/{org}/members/{user} op": [
+    null
+  ],
+  "auth DELETE /service-accounts/{sa} op": [
+    null
+  ],
+  "auth DELETE /service-accounts/{sa}/secrets/{id} op": [
+    null
+  ],
+  "auth DELETE /shares/{id} op": [
+    null
+  ],
+  "auth DELETE /vaults/{vault} op": [
+    null
+  ],
+  "auth GET /auth/recover/{token} 200": [
+    {
+      "archive_days": 30,
+      "archives": {
+        "personal_vaults": 1,
+        "shared_grants": 1,
+        "sole_admin_orgs": [
+          "text"
+        ]
+      },
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "not_before": "2026-11-15T12:00:00Z"
+    }
+  ],
+  "auth GET /auth/recover/{token} op": [
+    null
+  ],
+  "auth GET /billing/apple/eligibility 200": [
+    {
+      "eligible": true,
+      "reason": "billed_by_stripe"
+    },
+    {
+      "eligible": true,
+      "reason": "billed_by_apple"
+    },
+    {
+      "eligible": true,
+      "reason": "not_owner"
+    },
+    {
+      "eligible": true,
+      "reason": "per_seat_plan"
+    },
+    {
+      "eligible": true,
+      "reason": "billing_off"
+    },
+    {
+      "eligible": true,
+      "reason": null
+    }
+  ],
+  "auth GET /billing/apple/eligibility op": [
+    null
+  ],
+  "auth GET /devices 200": [
+    {
+      "devices": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current": true,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_seen_at": "2026-11-15T12:00:00Z",
+          "name": "text",
+          "platform": "qt-linux"
+        }
+      ]
+    },
+    {
+      "devices": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current": true,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_seen_at": "2026-11-15T12:00:00Z",
+          "name": "text",
+          "platform": "qt-macos"
+        }
+      ]
+    },
+    {
+      "devices": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current": true,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_seen_at": "2026-11-15T12:00:00Z",
+          "name": "text",
+          "platform": "qt-windows"
+        }
+      ]
+    },
+    {
+      "devices": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current": true,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_seen_at": "2026-11-15T12:00:00Z",
+          "name": "text",
+          "platform": "web"
+        }
+      ]
+    },
+    {
+      "devices": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current": true,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_seen_at": "2026-11-15T12:00:00Z",
+          "name": "text",
+          "platform": "cli"
+        }
+      ]
+    },
+    {
+      "devices": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current": true,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_seen_at": "2026-11-15T12:00:00Z",
+          "name": "text",
+          "platform": "connect"
+        }
+      ]
+    },
+    {
+      "devices": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current": true,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_seen_at": "2026-11-15T12:00:00Z",
+          "name": "text",
+          "platform": "ios"
+        }
+      ]
+    }
+  ],
+  "auth GET /devices op": [
+    null
+  ],
+  "auth GET /me 200": [
+    {
+      "deletion_scheduled_for": "2026-11-15T12:00:00Z",
+      "email": "text",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "mfa": {
+        "totp": true
+      },
+      "name": "text",
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "name": "text",
+          "plan": {
+            "billing": {
+              "ends_at": "2026-11-15T12:00:00Z",
+              "interval": "month",
+              "manage": "website",
+              "renews_at": "2026-11-15T12:00:00Z",
+              "source": "stripe",
+              "status": "active"
+            },
+            "id": "free",
+            "limits": {
+              "key": 1
+            }
+          },
+          "role": "owner",
+          "status": "invited"
+        }
+      ],
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "active"
+        },
+        "id": "free",
+        "limits": {
+          "key": 1
+        }
+      }
+    },
+    {
+      "deletion_scheduled_for": "2026-11-15T12:00:00Z",
+      "email": "text",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "mfa": {
+        "totp": true
+      },
+      "name": "text",
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "name": "text",
+          "plan": {
+            "billing": {
+              "ends_at": "2026-11-15T12:00:00Z",
+              "interval": "year",
+              "manage": "app_store",
+              "renews_at": "2026-11-15T12:00:00Z",
+              "source": "apple",
+              "status": "trialing"
+            },
+            "id": "premium",
+            "limits": {
+              "key": 1
+            }
+          },
+          "role": "admin",
+          "status": "accepted"
+        }
+      ],
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "trialing"
+        },
+        "id": "premium",
+        "limits": {
+          "key": 1
+        }
+      }
+    },
+    {
+      "deletion_scheduled_for": "2026-11-15T12:00:00Z",
+      "email": "text",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "mfa": {
+        "totp": true
+      },
+      "name": "text",
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "name": "text",
+          "plan": {
+            "billing": {
+              "ends_at": "2026-11-15T12:00:00Z",
+              "interval": "month",
+              "manage": "website",
+              "renews_at": "2026-11-15T12:00:00Z",
+              "source": "stripe",
+              "status": "past_due"
+            },
+            "id": "org_free",
+            "limits": {
+              "key": 1
+            }
+          },
+          "role": "member",
+          "status": "confirmed"
+        }
+      ],
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "past_due"
+        },
+        "id": "org_free",
+        "limits": {
+          "key": 1
+        }
+      }
+    },
+    {
+      "deletion_scheduled_for": "2026-11-15T12:00:00Z",
+      "email": "text",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "mfa": {
+        "totp": true
+      },
+      "name": "text",
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "name": "text",
+          "plan": {
+            "billing": {
+              "ends_at": "2026-11-15T12:00:00Z",
+              "interval": "year",
+              "manage": "app_store",
+              "renews_at": "2026-11-15T12:00:00Z",
+              "source": "apple",
+              "status": "active"
+            },
+            "id": "families",
+            "limits": {
+              "key": 1
+            }
+          },
+          "role": "owner",
+          "status": "invited"
+        }
+      ],
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "active"
+        },
+        "id": "families",
+        "limits": {
+          "key": 1
+        }
+      }
+    },
+    {
+      "deletion_scheduled_for": "2026-11-15T12:00:00Z",
+      "email": "text",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "mfa": {
+        "totp": true
+      },
+      "name": "text",
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "name": "text",
+          "plan": {
+            "billing": {
+              "ends_at": "2026-11-15T12:00:00Z",
+              "interval": "month",
+              "manage": "website",
+              "renews_at": "2026-11-15T12:00:00Z",
+              "source": "stripe",
+              "status": "trialing"
+            },
+            "id": "teams",
+            "limits": {
+              "key": 1
+            }
+          },
+          "role": "admin",
+          "status": "accepted"
+        }
+      ],
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "trialing"
+        },
+        "id": "teams",
+        "limits": {
+          "key": 1
+        }
+      }
+    },
+    {
+      "deletion_scheduled_for": "2026-11-15T12:00:00Z",
+      "email": "text",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "mfa": {
+        "totp": true
+      },
+      "name": "text",
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "name": "text",
+          "plan": {
+            "billing": {
+              "ends_at": "2026-11-15T12:00:00Z",
+              "interval": "year",
+              "manage": "app_store",
+              "renews_at": "2026-11-15T12:00:00Z",
+              "source": "apple",
+              "status": "past_due"
+            },
+            "id": "business",
+            "limits": {
+              "key": 1
+            }
+          },
+          "role": "member",
+          "status": "confirmed"
+        }
+      ],
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "past_due"
+        },
+        "id": "business",
+        "limits": {
+          "key": 1
+        }
+      }
+    },
+    {
+      "deletion_scheduled_for": null,
+      "email": "text",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "mfa": {
+        "totp": true
+      },
+      "name": null,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "name": "text",
+          "plan": {
+            "billing": null,
+            "id": null,
+            "limits": {
+              "key": null
+            }
+          },
+          "role": "owner",
+          "status": "invited"
+        }
+      ],
+      "plan": {
+        "billing": null,
+        "id": null,
+        "limits": {
+          "key": null
+        }
+      }
+    }
+  ],
+  "auth GET /me op": [
+    null
+  ],
+  "auth GET /me/deletion 200": [
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "owner"
+            }
+          ],
+          "name": "text",
+          "outcome": "leave",
+          "role": "owner"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "website",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "stripe"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "read"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "admin"
+            }
+          ],
+          "name": "text",
+          "outcome": "delete",
+          "role": "admin"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "app_store",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "apple"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "write"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "member"
+            }
+          ],
+          "name": "text",
+          "outcome": "blocked",
+          "role": "member"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "website",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "stripe"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "manage"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "owner"
+            }
+          ],
+          "name": "text",
+          "outcome": "leave",
+          "role": "owner"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "app_store",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "apple"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "read"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "admin"
+            }
+          ],
+          "name": "text",
+          "outcome": "delete",
+          "role": "admin"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "website",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "stripe"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "write"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "member"
+            }
+          ],
+          "name": "text",
+          "outcome": "blocked",
+          "role": "member"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "app_store",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "apple"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "manage"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "owner"
+            }
+          ],
+          "name": "text",
+          "outcome": "leave",
+          "role": "owner"
+        }
+      ],
+      "scheduled_for": null,
+      "share_links": 1,
+      "subscription": null,
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": null,
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "read"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    }
+  ],
+  "auth GET /me/deletion op": [
+    null
+  ],
+  "auth GET /me/recovery 200": [
+    {
+      "archived": true,
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "locked": true,
+      "vaults": 1
+    }
+  ],
+  "auth GET /me/recovery op": [
+    null
+  ],
+  "auth GET /orgs/{org} 200": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "active"
+        },
+        "id": "free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "owner"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "managers",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "trialing"
+        },
+        "id": "premium",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "admin"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "off",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "past_due"
+        },
+        "id": "org_free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "member"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "active"
+        },
+        "id": "families",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "owner"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "managers",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "trialing"
+        },
+        "id": "teams",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "admin"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "off",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "past_due"
+        },
+        "id": "business",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "member"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": null,
+        "id": null,
+        "limits": {
+          "key": null
+        }
+      },
+      "role": "owner"
+    }
+  ],
+  "auth GET /orgs/{org} op": [
+    null
+  ],
+  "auth GET /orgs/{org}/audit 200": [
+    {
+      "events": [
+        {
+          "action": "vault.access.grant",
+          "actor": "user:00000000-0000-4000-8000-000000000002",
+          "at": "2026-11-15T12:00:00Z",
+          "details": {
+            "key": "value"
+          },
+          "id": "text",
+          "ip": "text",
+          "target": "text"
+        }
+      ],
+      "next": "text"
+    },
+    {
+      "events": [
+        {
+          "action": "vault.access.grant",
+          "actor": "user:00000000-0000-4000-8000-000000000002",
+          "at": "2026-11-15T12:00:00Z",
+          "details": {
+            "key": "value"
+          },
+          "id": "text",
+          "ip": "text",
+          "target": "text"
+        }
+      ],
+      "next": null
+    }
+  ],
+  "auth GET /orgs/{org}/audit op": [
+    null
+  ],
+  "auth GET /orgs/{org}/invitations 200": [
+    {
+      "invitations": [
+        {
+          "email": "text",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "invited_by": "user:00000000-0000-4000-8000-000000000002",
+          "role": "owner"
+        }
+      ]
+    },
+    {
+      "invitations": [
+        {
+          "email": "text",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "invited_by": "user:00000000-0000-4000-8000-000000000002",
+          "role": "admin"
+        }
+      ]
+    },
+    {
+      "invitations": [
+        {
+          "email": "text",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "invited_by": "user:00000000-0000-4000-8000-000000000002",
+          "role": "member"
+        }
+      ]
+    }
+  ],
+  "auth GET /orgs/{org}/invitations op": [
+    null
+  ],
+  "auth GET /orgs/{org}/members 200": [
+    {
+      "members": [
+        {
+          "email": "text",
+          "name": "text",
+          "public": {
+            "enc_pk": "AAEC",
+            "sig": "AAEC",
+            "sign_pk": "AAEC"
+          },
+          "role": "owner",
+          "status": "invited",
+          "user_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "members": [
+        {
+          "email": "text",
+          "name": "text",
+          "public": {
+            "enc_pk": "AAEC",
+            "sig": "AAEC",
+            "sign_pk": "AAEC"
+          },
+          "role": "admin",
+          "status": "accepted",
+          "user_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "members": [
+        {
+          "email": "text",
+          "name": "text",
+          "public": {
+            "enc_pk": "AAEC",
+            "sig": "AAEC",
+            "sign_pk": "AAEC"
+          },
+          "role": "member",
+          "status": "confirmed",
+          "user_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "members": [
+        {
+          "email": "text",
+          "name": null,
+          "public": {
+            "enc_pk": "AAEC",
+            "sig": "AAEC",
+            "sign_pk": "AAEC"
+          },
+          "role": "owner",
+          "status": "invited",
+          "user_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    }
+  ],
+  "auth GET /orgs/{org}/members op": [
+    null
+  ],
+  "auth GET /orgs/{org}/service-accounts 200": [
+    {
+      "service_accounts": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "created_by": "user:00000000-0000-4000-8000-000000000002",
+          "disabled": true,
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "keyset": {
+            "enc_pk": "AAEC",
+            "sig": "AAEC",
+            "sign_pk": "AAEC",
+            "wrapped": "AAEC"
+          },
+          "master_key": "AAEC",
+          "name": "text",
+          "org_id": "00000000-0000-4000-8000-000000000001",
+          "public": {
+            "enc_pk": "AAEC",
+            "sig": "AAEC",
+            "sign_pk": "AAEC"
+          }
+        }
+      ]
+    },
+    {
+      "service_accounts": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "created_by": "user:00000000-0000-4000-8000-000000000002",
+          "disabled": true,
+          "expires_at": null,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "keyset": {
+            "enc_pk": "AAEC",
+            "sig": "AAEC",
+            "sign_pk": "AAEC",
+            "wrapped": "AAEC"
+          },
+          "master_key": "AAEC",
+          "name": "text",
+          "org_id": "00000000-0000-4000-8000-000000000001",
+          "public": {
+            "enc_pk": "AAEC",
+            "sig": "AAEC",
+            "sign_pk": "AAEC"
+          }
+        }
+      ]
+    }
+  ],
+  "auth GET /orgs/{org}/service-accounts op": [
+    null
+  ],
+  "auth GET /principals/{principal}/public-key 200": [
+    {
+      "email": "text",
+      "enc_pk": "AAEC",
+      "name": "text",
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "sig": "AAEC",
+      "sign_pk": "AAEC"
+    }
+  ],
+  "auth GET /principals/{principal}/public-key op": [
+    null
+  ],
+  "auth GET /public/shares/{id} 200": [
+    {
+      "expires_at": "2026-11-15T12:00:00Z",
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "opens_left": 1
+    },
+    {
+      "expires_at": "2026-11-15T12:00:00Z",
+      "kdf": null,
+      "opens_left": null
+    }
+  ],
+  "auth GET /public/shares/{id} op": [
+    null
+  ],
+  "auth GET /service-accounts/{sa} 200": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "created_by": "user:00000000-0000-4000-8000-000000000002",
+      "disabled": true,
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_key": "AAEC",
+      "name": "text",
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      }
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "created_by": "user:00000000-0000-4000-8000-000000000002",
+      "disabled": true,
+      "expires_at": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_key": "AAEC",
+      "name": "text",
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      }
+    }
+  ],
+  "auth GET /service-accounts/{sa} op": [
+    null
+  ],
+  "auth GET /service-accounts/{sa}/secrets 200": [
+    {
+      "secrets": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_used_at": "2026-11-15T12:00:00Z",
+          "name": "text",
+          "prefix": "text"
+        }
+      ]
+    },
+    {
+      "secrets": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "expires_at": null,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_used_at": null,
+          "name": "text",
+          "prefix": "text"
+        }
+      ]
+    }
+  ],
+  "auth GET /service-accounts/{sa}/secrets op": [
+    null
+  ],
+  "auth GET /shares 200": [
+    {
+      "shares": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "end_reason": "expired",
+          "ended_at": "2026-11-15T12:00:00Z",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "text",
+          "max_opens": 1,
+          "opened_at": [
+            "2026-11-15T12:00:00Z"
+          ],
+          "opens": 1,
+          "passcode": true,
+          "ref": "AAEC",
+          "status": "pending",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "shares": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "end_reason": "opened",
+          "ended_at": "2026-11-15T12:00:00Z",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "text",
+          "max_opens": 1,
+          "opened_at": [
+            "2026-11-15T12:00:00Z"
+          ],
+          "opens": 1,
+          "passcode": true,
+          "ref": "AAEC",
+          "status": "active",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "shares": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "end_reason": "revoked",
+          "ended_at": "2026-11-15T12:00:00Z",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "text",
+          "max_opens": 1,
+          "opened_at": [
+            "2026-11-15T12:00:00Z"
+          ],
+          "opens": 1,
+          "passcode": true,
+          "ref": "AAEC",
+          "status": "ended",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "shares": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "end_reason": "passcode",
+          "ended_at": "2026-11-15T12:00:00Z",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "text",
+          "max_opens": 1,
+          "opened_at": [
+            "2026-11-15T12:00:00Z"
+          ],
+          "opens": 1,
+          "passcode": true,
+          "ref": "AAEC",
+          "status": "pending",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "shares": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "end_reason": "access_lost",
+          "ended_at": "2026-11-15T12:00:00Z",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "text",
+          "max_opens": 1,
+          "opened_at": [
+            "2026-11-15T12:00:00Z"
+          ],
+          "opens": 1,
+          "passcode": true,
+          "ref": "AAEC",
+          "status": "active",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "shares": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "end_reason": "policy",
+          "ended_at": "2026-11-15T12:00:00Z",
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "text",
+          "max_opens": 1,
+          "opened_at": [
+            "2026-11-15T12:00:00Z"
+          ],
+          "opens": 1,
+          "passcode": true,
+          "ref": "AAEC",
+          "status": "ended",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "shares": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "end_reason": null,
+          "ended_at": null,
+          "expires_at": "2026-11-15T12:00:00Z",
+          "id": "text",
+          "max_opens": null,
+          "opened_at": [
+            "2026-11-15T12:00:00Z"
+          ],
+          "opens": 1,
+          "passcode": true,
+          "ref": null,
+          "status": "pending",
+          "vault_id": null
+        }
+      ]
+    }
+  ],
+  "auth GET /shares op": [
+    null
+  ],
+  "auth GET /users/lookup 200": [
+    {
+      "email": "text",
+      "enc_pk": "AAEC",
+      "name": "text",
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "sig": "AAEC",
+      "sign_pk": "AAEC"
+    }
+  ],
+  "auth GET /users/lookup op": [
+    null
+  ],
+  "auth GET /vaults 200": [
+    {
+      "vaults": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current_key_version": 1,
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "keys": [
+            {
+              "key_version": 1,
+              "sealed_key": "AAEC"
+            }
+          ],
+          "org_id": "00000000-0000-4000-8000-000000000001",
+          "owner_id": "00000000-0000-4000-8000-000000000001",
+          "pending_key_version": 1,
+          "role": "read",
+          "rotation_required": true
+        }
+      ]
+    },
+    {
+      "vaults": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current_key_version": 1,
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "keys": [
+            {
+              "key_version": 1,
+              "sealed_key": "AAEC"
+            }
+          ],
+          "org_id": "00000000-0000-4000-8000-000000000001",
+          "owner_id": "00000000-0000-4000-8000-000000000001",
+          "pending_key_version": 1,
+          "role": "write",
+          "rotation_required": true
+        }
+      ]
+    },
+    {
+      "vaults": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current_key_version": 1,
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "keys": [
+            {
+              "key_version": 1,
+              "sealed_key": "AAEC"
+            }
+          ],
+          "org_id": "00000000-0000-4000-8000-000000000001",
+          "owner_id": "00000000-0000-4000-8000-000000000001",
+          "pending_key_version": 1,
+          "role": "manage",
+          "rotation_required": true
+        }
+      ]
+    },
+    {
+      "vaults": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current_key_version": 1,
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "keys": [
+            {
+              "key_version": 1,
+              "sealed_key": "AAEC"
+            }
+          ],
+          "org_id": null,
+          "owner_id": null,
+          "pending_key_version": null,
+          "role": "read",
+          "rotation_required": true
+        }
+      ]
+    }
+  ],
+  "auth GET /vaults op": [
+    null
+  ],
+  "auth GET /vaults/{vault} 200": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "read",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "write",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "manage",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": null,
+      "owner_id": null,
+      "pending_key_version": null,
+      "role": "read",
+      "rotation_required": true
+    }
+  ],
+  "auth GET /vaults/{vault} op": [
+    null
+  ],
+  "auth GET /vaults/{vault}/access 200": [
+    {
+      "access": [
+        {
+          "display": "text",
+          "granted_at": "2026-11-15T12:00:00Z",
+          "granted_by": "user:00000000-0000-4000-8000-000000000002",
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "read"
+        }
+      ]
+    },
+    {
+      "access": [
+        {
+          "display": "text",
+          "granted_at": "2026-11-15T12:00:00Z",
+          "granted_by": "user:00000000-0000-4000-8000-000000000002",
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "write"
+        }
+      ]
+    },
+    {
+      "access": [
+        {
+          "display": "text",
+          "granted_at": "2026-11-15T12:00:00Z",
+          "granted_by": "user:00000000-0000-4000-8000-000000000002",
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "manage"
+        }
+      ]
+    }
+  ],
+  "auth GET /vaults/{vault}/access op": [
+    null
+  ],
+  "auth PATCH /orgs/{org} 200": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "active"
+        },
+        "id": "free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "owner"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "managers",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "trialing"
+        },
+        "id": "premium",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "admin"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "off",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "past_due"
+        },
+        "id": "org_free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "member"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "active"
+        },
+        "id": "families",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "owner"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "managers",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "trialing"
+        },
+        "id": "teams",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "admin"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "off",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "past_due"
+        },
+        "id": "business",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "member"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": null,
+        "id": null,
+        "limits": {
+          "key": null
+        }
+      },
+      "role": "owner"
+    }
+  ],
+  "auth PATCH /orgs/{org} op": [
+    null
+  ],
+  "auth PATCH /orgs/{org} request": [
+    {
+      "item_share_links": "on",
+      "name": "text"
+    },
+    {
+      "item_share_links": "managers",
+      "name": "text"
+    },
+    {
+      "item_share_links": "off",
+      "name": "text"
+    }
+  ],
+  "auth PATCH /orgs/{org}/members/{user} 200": [
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "owner",
+      "status": "invited",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "admin",
+      "status": "accepted",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "member",
+      "status": "confirmed",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": null,
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "owner",
+      "status": "invited",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "auth PATCH /orgs/{org}/members/{user} op": [
+    null
+  ],
+  "auth PATCH /orgs/{org}/members/{user} request": [
+    {
+      "role": "owner",
+      "sa_master_keys": [
+        {
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "sa_id": "00000000-0000-4000-8000-000000000001",
+          "sealed_key": "AAEC"
+        }
+      ]
+    },
+    {
+      "role": "admin",
+      "sa_master_keys": [
+        {
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "sa_id": "00000000-0000-4000-8000-000000000001",
+          "sealed_key": "AAEC"
+        }
+      ]
+    },
+    {
+      "role": "member",
+      "sa_master_keys": [
+        {
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "sa_id": "00000000-0000-4000-8000-000000000001",
+          "sealed_key": "AAEC"
+        }
+      ]
+    }
+  ],
+  "auth PATCH /service-accounts/{sa} 200": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "created_by": "user:00000000-0000-4000-8000-000000000002",
+      "disabled": true,
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_key": "AAEC",
+      "name": "text",
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      }
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "created_by": "user:00000000-0000-4000-8000-000000000002",
+      "disabled": true,
+      "expires_at": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_key": "AAEC",
+      "name": "text",
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      }
+    }
+  ],
+  "auth PATCH /service-accounts/{sa} op": [
+    null
+  ],
+  "auth PATCH /service-accounts/{sa} request": [
+    {
+      "disabled": true,
+      "expires_at": "2026-11-15T12:00:00Z",
+      "name": "text"
+    },
+    {
+      "disabled": true,
+      "expires_at": null,
+      "name": "text"
+    }
+  ],
+  "auth PATCH /service-accounts/{sa}/secrets/{id} 200": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "last_used_at": "2026-11-15T12:00:00Z",
+      "name": "text",
+      "prefix": "text"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "expires_at": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "last_used_at": null,
+      "name": "text",
+      "prefix": "text"
+    }
+  ],
+  "auth PATCH /service-accounts/{sa}/secrets/{id} op": [
+    null
+  ],
+  "auth PATCH /service-accounts/{sa}/secrets/{id} request": [
+    {
+      "expires_at": "2026-11-15T12:00:00Z"
+    },
+    {
+      "expires_at": null
+    }
+  ],
+  "auth PATCH /vaults/{vault} 200": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "read",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "write",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "manage",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": null,
+      "owner_id": null,
+      "pending_key_version": null,
+      "role": "read",
+      "rotation_required": true
+    }
+  ],
+  "auth PATCH /vaults/{vault} op": [
+    null
+  ],
+  "auth PATCH /vaults/{vault} request": [
+    {
+      "encrypted_name": "AAEC"
+    }
+  ],
+  "auth POST /auth/login/finish 200": [
+    {
+      "access_token": "text",
+      "device_id": "00000000-0000-4000-8000-000000000001",
+      "expires_in": 1,
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "refresh_token": "text",
+      "user": {
+        "email": "text",
+        "id": "00000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "methods": [
+        "totp"
+      ],
+      "mfa_required": true,
+      "mfa_token": "text"
+    }
+  ],
+  "auth POST /auth/login/finish op": [
+    null
+  ],
+  "auth POST /auth/login/finish request": [
+    {
+      "auth_u": "AAEC",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "qt-linux"
+      },
+      "session_id": "text"
+    },
+    {
+      "auth_u": "AAEC",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "qt-macos"
+      },
+      "session_id": "text"
+    },
+    {
+      "auth_u": "AAEC",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "qt-windows"
+      },
+      "session_id": "text"
+    },
+    {
+      "auth_u": "AAEC",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "web"
+      },
+      "session_id": "text"
+    },
+    {
+      "auth_u": "AAEC",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "cli"
+      },
+      "session_id": "text"
+    },
+    {
+      "auth_u": "AAEC",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "connect"
+      },
+      "session_id": "text"
+    },
+    {
+      "auth_u": "AAEC",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "ios"
+      },
+      "session_id": "text"
+    }
+  ],
+  "auth POST /auth/login/mfa 200": [
+    {
+      "access_token": "text",
+      "device_id": "00000000-0000-4000-8000-000000000001",
+      "expires_in": 1,
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "refresh_token": "text",
+      "user": {
+        "email": "text",
+        "id": "00000000-0000-4000-8000-000000000001"
+      }
+    }
+  ],
+  "auth POST /auth/login/mfa op": [
+    null
+  ],
+  "auth POST /auth/login/mfa request": [
+    {
+      "mfa_token": "text",
+      "totp": "123456"
+    }
+  ],
+  "auth POST /auth/login/start 200": [
+    {
+      "ke2": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /auth/login/start op": [
+    null
+  ],
+  "auth POST /auth/login/start request": [
+    {
+      "email": "user@example.com",
+      "ke1": "AAEC"
+    }
+  ],
+  "auth POST /auth/logout op": [
+    null
+  ],
+  "auth POST /auth/recover/finish 200": [
+    {
+      "access_token": "text",
+      "device_id": "00000000-0000-4000-8000-000000000001",
+      "expires_in": 1,
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "refresh_token": "text",
+      "user": {
+        "email": "text",
+        "id": "00000000-0000-4000-8000-000000000001"
+      }
+    }
+  ],
+  "auth POST /auth/recover/finish op": [
+    null
+  ],
+  "auth POST /auth/recover/finish request": [
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "qt-linux"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "qt-macos"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "qt-windows"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "web"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "cli"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "connect"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "ios"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /auth/recover/start 200": [
+    {
+      "response": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /auth/recover/start op": [
+    null
+  ],
+  "auth POST /auth/recover/start request": [
+    {
+      "request": "AAEC",
+      "token": "text"
+    }
+  ],
+  "auth POST /auth/refresh 200": [
+    {
+      "access_token": "text",
+      "expires_in": 600,
+      "refresh_token": "text"
+    }
+  ],
+  "auth POST /auth/refresh op": [
+    null
+  ],
+  "auth POST /auth/refresh request": [
+    {
+      "refresh_token": "text"
+    }
+  ],
+  "auth POST /auth/register/finish 201": [
+    {
+      "access_token": "text",
+      "device_id": "00000000-0000-4000-8000-000000000001",
+      "expires_in": 1,
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "refresh_token": "text",
+      "user": {
+        "email": "text",
+        "id": "00000000-0000-4000-8000-000000000001"
+      }
+    }
+  ],
+  "auth POST /auth/register/finish op": [
+    null
+  ],
+  "auth POST /auth/register/finish request": [
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "qt-linux"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "qt-macos"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "qt-windows"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "web"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "cli"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "connect"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "ios"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /auth/register/start 200": [
+    {
+      "response": "AAEC",
+      "session_id": "text",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "auth POST /auth/register/start op": [
+    null
+  ],
+  "auth POST /auth/register/start request": [
+    {
+      "email": "user@example.com",
+      "request": "AAEC"
+    }
+  ],
+  "auth POST /auth/service-account 200": [
+    {
+      "access_token": "text",
+      "expires_in": 1,
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "wrapped_master": "AAEC"
+    }
+  ],
+  "auth POST /auth/service-account op": [
+    null
+  ],
+  "auth POST /auth/service-account request": [
+    {
+      "sa_id": "00000000-0000-4000-8000-000000000001",
+      "secret": "AAEC"
+    }
+  ],
+  "auth POST /billing/apple/transactions 200": [
+    {
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "active"
+        },
+        "id": "free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "subject": "text"
+    },
+    {
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "trialing"
+        },
+        "id": "premium",
+        "limits": {
+          "key": 1
+        }
+      },
+      "subject": "text"
+    },
+    {
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "past_due"
+        },
+        "id": "org_free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "subject": "text"
+    },
+    {
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "active"
+        },
+        "id": "families",
+        "limits": {
+          "key": 1
+        }
+      },
+      "subject": "text"
+    },
+    {
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "trialing"
+        },
+        "id": "teams",
+        "limits": {
+          "key": 1
+        }
+      },
+      "subject": "text"
+    },
+    {
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "past_due"
+        },
+        "id": "business",
+        "limits": {
+          "key": 1
+        }
+      },
+      "subject": "text"
+    },
+    {
+      "plan": {
+        "billing": null,
+        "id": null,
+        "limits": {
+          "key": null
+        }
+      },
+      "subject": "text"
+    }
+  ],
+  "auth POST /billing/apple/transactions op": [
+    null
+  ],
+  "auth POST /billing/apple/transactions request": [
+    {
+      "signed_transaction": "text"
+    }
+  ],
+  "auth POST /invitations/accept 200": [
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "owner",
+      "status": "invited",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "admin",
+      "status": "accepted",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "member",
+      "status": "confirmed",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": null,
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "owner",
+      "status": "invited",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "auth POST /invitations/accept op": [
+    null
+  ],
+  "auth POST /invitations/accept request": [
+    {
+      "token": "text"
+    }
+  ],
+  "auth POST /me/deletion/cancel op": [
+    null
+  ],
+  "auth POST /me/email 202": [
+    {
+      "expires_in": 1
+    }
+  ],
+  "auth POST /me/email op": [
+    null
+  ],
+  "auth POST /me/email request": [
+    {
+      "email": "text"
+    }
+  ],
+  "auth POST /me/email/finish op": [
+    null
+  ],
+  "auth POST /me/email/finish request": [
+    {
+      "record": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /me/email/start 200": [
+    {
+      "response": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /me/email/start op": [
+    null
+  ],
+  "auth POST /me/email/start request": [
+    {
+      "code": "text",
+      "email": "text",
+      "request": "AAEC"
+    }
+  ],
+  "auth POST /me/password/finish op": [
+    null
+  ],
+  "auth POST /me/password/finish request": [
+    {
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /me/password/start 200": [
+    {
+      "response": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /me/password/start op": [
+    null
+  ],
+  "auth POST /me/password/start request": [
+    {
+      "request": "AAEC"
+    }
+  ],
+  "auth POST /me/recovery/restore/finish op": [
+    null
+  ],
+  "auth POST /me/recovery/restore/finish request": [
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "read",
+          "sealed_key": "AAEC",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "proof": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "write",
+          "sealed_key": "AAEC",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "proof": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "manage",
+          "sealed_key": "AAEC",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "proof": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /me/recovery/restore/start 200": [
+    {
+      "email": "text",
+      "ke2": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /me/recovery/restore/start op": [
+    null
+  ],
+  "auth POST /me/recovery/restore/start request": [
+    {
+      "ke1": "AAEC"
+    }
+  ],
+  "auth POST /me/recovery/restore/verify 200": [
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "read",
+          "sealed_key": "AAEC",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "session_id": "text"
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "write",
+          "sealed_key": "AAEC",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "session_id": "text"
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "manage",
+          "sealed_key": "AAEC",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "session_id": "text"
+    }
+  ],
+  "auth POST /me/recovery/restore/verify op": [
+    null
+  ],
+  "auth POST /me/recovery/restore/verify request": [
+    {
+      "auth_u": "AAEC",
+      "session_id": "text"
+    }
+  ],
+  "auth POST /me/totp 200": [
+    {
+      "otpauth_uri": "text",
+      "secret": "text"
+    }
+  ],
+  "auth POST /me/totp op": [
+    null
+  ],
+  "auth POST /me/web-session 200": [
+    {
+      "code": "text",
+      "expires_in": 1
+    }
+  ],
+  "auth POST /me/web-session op": [
+    null
+  ],
+  "auth POST /orgs 201": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "active"
+        },
+        "id": "free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "owner"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "managers",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "trialing"
+        },
+        "id": "premium",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "admin"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "off",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "past_due"
+        },
+        "id": "org_free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "member"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "active"
+        },
+        "id": "families",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "owner"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "managers",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "trialing"
+        },
+        "id": "teams",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "admin"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "off",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "past_due"
+        },
+        "id": "business",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "member"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": null,
+        "id": null,
+        "limits": {
+          "key": null
+        }
+      },
+      "role": "owner"
+    }
+  ],
+  "auth POST /orgs op": [
+    null
+  ],
+  "auth POST /orgs request": [
+    {
+      "name": "text"
+    }
+  ],
+  "auth POST /orgs/{org}/invitations 201": [
+    {
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "invited_by": "user:00000000-0000-4000-8000-000000000002",
+      "role": "owner"
+    },
+    {
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "invited_by": "user:00000000-0000-4000-8000-000000000002",
+      "role": "admin"
+    },
+    {
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "invited_by": "user:00000000-0000-4000-8000-000000000002",
+      "role": "member"
+    }
+  ],
+  "auth POST /orgs/{org}/invitations op": [
+    null
+  ],
+  "auth POST /orgs/{org}/invitations request": [
+    {
+      "email": "text",
+      "role": "owner"
+    },
+    {
+      "email": "text",
+      "role": "admin"
+    },
+    {
+      "email": "text",
+      "role": "member"
+    }
+  ],
+  "auth POST /orgs/{org}/members/{user}/confirm 200": [
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "owner",
+      "status": "invited",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "admin",
+      "status": "accepted",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "member",
+      "status": "confirmed",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": null,
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "owner",
+      "status": "invited",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "auth POST /orgs/{org}/members/{user}/confirm op": [
+    null
+  ],
+  "auth POST /orgs/{org}/members/{user}/confirm request": [
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "read",
+          "sealed_key": "AAEC",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "sa_master_keys": [
+        {
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "sa_id": "00000000-0000-4000-8000-000000000001",
+          "sealed_key": "AAEC"
+        }
+      ]
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "write",
+          "sealed_key": "AAEC",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "sa_master_keys": [
+        {
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "sa_id": "00000000-0000-4000-8000-000000000001",
+          "sealed_key": "AAEC"
+        }
+      ]
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "manage",
+          "sealed_key": "AAEC",
+          "vault_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "sa_master_keys": [
+        {
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "sa_id": "00000000-0000-4000-8000-000000000001",
+          "sealed_key": "AAEC"
+        }
+      ]
+    }
+  ],
+  "auth POST /orgs/{org}/service-accounts 201": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "created_by": "user:00000000-0000-4000-8000-000000000002",
+      "disabled": true,
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_key": "AAEC",
+      "name": "text",
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      }
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "created_by": "user:00000000-0000-4000-8000-000000000002",
+      "disabled": true,
+      "expires_at": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_key": "AAEC",
+      "name": "text",
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      }
+    }
+  ],
+  "auth POST /orgs/{org}/service-accounts op": [
+    null
+  ],
+  "auth POST /orgs/{org}/service-accounts request": [
+    {
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_keys": [
+        {
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "sa_id": "00000000-0000-4000-8000-000000000001",
+          "sealed_key": "AAEC"
+        }
+      ],
+      "name": "text",
+      "secret": {
+        "expires_at": "2026-11-15T12:00:00Z",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "prefix": "xxxxxxxx",
+        "secret_hash": "text",
+        "wrapped_master": "AAEC"
+      }
+    },
+    {
+      "expires_at": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_keys": [
+        {
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "sa_id": "00000000-0000-4000-8000-000000000001",
+          "sealed_key": "AAEC"
+        }
+      ],
+      "name": "text",
+      "secret": {
+        "expires_at": null,
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "prefix": "xxxxxxxx",
+        "secret_hash": "text",
+        "wrapped_master": "AAEC"
+      }
+    }
+  ],
+  "auth POST /public/shares/{id}/open 200": [
+    {
+      "ct": "AAEC",
+      "opens_left": 1
+    },
+    {
+      "ct": "AAEC",
+      "opens_left": null
+    }
+  ],
+  "auth POST /public/shares/{id}/open op": [
+    null
+  ],
+  "auth POST /public/shares/{id}/open request": [
+    {
+      "auth": "AAEC"
+    }
+  ],
+  "auth POST /service-accounts/{sa}/secrets op": [
+    null
+  ],
+  "auth POST /service-accounts/{sa}/secrets request": [
+    {
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "prefix": "xxxxxxxx",
+      "secret_hash": "text",
+      "wrapped_master": "AAEC"
+    },
+    {
+      "expires_at": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "prefix": "xxxxxxxx",
+      "secret_hash": "text",
+      "wrapped_master": "AAEC"
+    }
+  ],
+  "auth POST /shares 201": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "expired",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "pending",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "opened",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "active",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "revoked",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "ended",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "passcode",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "pending",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "access_lost",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "active",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "policy",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "ended",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": null,
+      "ended_at": null,
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": null,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": null,
+      "status": "pending",
+      "vault_id": null
+    }
+  ],
+  "auth POST /shares op": [
+    null
+  ],
+  "auth POST /shares request": [
+    {
+      "auth": "AAEC",
+      "expires_in": 3600,
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "max_opens": 1,
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "auth": "AAEC",
+      "expires_in": 3600,
+      "kdf": null,
+      "max_opens": null,
+      "vault_id": null
+    }
+  ],
+  "auth POST /vaults 201": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "read",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "write",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "manage",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": null,
+      "owner_id": null,
+      "pending_key_version": null,
+      "role": "read",
+      "rotation_required": true
+    }
+  ],
+  "auth POST /vaults op": [
+    null
+  ],
+  "auth POST /vaults request": [
+    {
+      "encrypted_name": "AAEC",
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "read",
+          "sealed_key": "AAEC"
+        }
+      ],
+      "id": "00000000-0000-4000-8000-000000000001",
+      "org_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "encrypted_name": "AAEC",
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "write",
+          "sealed_key": "AAEC"
+        }
+      ],
+      "id": "00000000-0000-4000-8000-000000000001",
+      "org_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "encrypted_name": "AAEC",
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "manage",
+          "sealed_key": "AAEC"
+        }
+      ],
+      "id": "00000000-0000-4000-8000-000000000001",
+      "org_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "encrypted_name": "AAEC",
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "read",
+          "sealed_key": "AAEC"
+        }
+      ],
+      "id": "00000000-0000-4000-8000-000000000001",
+      "org_id": null
+    }
+  ],
+  "auth POST /vaults/{vault}/access op": [
+    null
+  ],
+  "auth POST /vaults/{vault}/access request": [
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "read",
+          "sealed_key": "AAEC"
+        }
+      ]
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "write",
+          "sealed_key": "AAEC"
+        }
+      ]
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "manage",
+          "sealed_key": "AAEC"
+        }
+      ]
+    }
+  ],
+  "auth POST /vaults/{vault}/keys op": [
+    null
+  ],
+  "auth POST /vaults/{vault}/keys request": [
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "read",
+          "sealed_key": "AAEC"
+        }
+      ],
+      "key_version": 1,
+      "remove": [
+        "user:00000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "write",
+          "sealed_key": "AAEC"
+        }
+      ],
+      "key_version": 1,
+      "remove": [
+        "user:00000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "grants": [
+        {
+          "key_version": 1,
+          "principal": "user:00000000-0000-4000-8000-000000000002",
+          "role": "manage",
+          "sealed_key": "AAEC"
+        }
+      ],
+      "key_version": 1,
+      "remove": [
+        "user:00000000-0000-4000-8000-000000000002"
+      ]
+    }
+  ],
+  "auth POST /vaults/{vault}/keys/{version}/activate op": [
+    null
+  ],
+  "auth POST /vaults/{vault}/owner 200": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "read",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "write",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "manage",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": null,
+      "owner_id": null,
+      "pending_key_version": null,
+      "role": "read",
+      "rotation_required": true
+    }
+  ],
+  "auth POST /vaults/{vault}/owner op": [
+    null
+  ],
+  "auth POST /vaults/{vault}/owner request": [
+    {
+      "principal": "user:00000000-0000-4000-8000-000000000002"
+    }
+  ],
+  "auth PUT /me/totp op": [
+    null
+  ],
+  "auth PUT /me/totp request": [
+    {
+      "totp": "text"
+    }
+  ],
+  "auth PUT /shares/{id} 200": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "expired",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "pending",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "opened",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "active",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "revoked",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "ended",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "passcode",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "pending",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "access_lost",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "active",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "policy",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "ended",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": null,
+      "ended_at": null,
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": null,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": null,
+      "status": "pending",
+      "vault_id": null
+    }
+  ],
+  "auth PUT /shares/{id} op": [
+    null
+  ],
+  "auth PUT /shares/{id} request": [
+    {
+      "ct": "AAEC",
+      "ref": "AAEC"
+    }
+  ],
+  "auth response Error": [
+    {
+      "code": "text",
+      "error": "text"
+    }
+  ],
+  "auth schema B64": [
+    "AAEC"
+  ],
+  "auth schema Billing": [
+    {
+      "ends_at": "2026-11-15T12:00:00Z",
+      "interval": "month",
+      "manage": "website",
+      "renews_at": "2026-11-15T12:00:00Z",
+      "source": "stripe",
+      "status": "active"
+    },
+    {
+      "ends_at": "2026-11-15T12:00:00Z",
+      "interval": "year",
+      "manage": "app_store",
+      "renews_at": "2026-11-15T12:00:00Z",
+      "source": "apple",
+      "status": "trialing"
+    },
+    {
+      "ends_at": "2026-11-15T12:00:00Z",
+      "interval": "month",
+      "manage": "website",
+      "renews_at": "2026-11-15T12:00:00Z",
+      "source": "stripe",
+      "status": "past_due"
+    },
+    {
+      "ends_at": "2026-11-15T12:00:00Z",
+      "interval": "year",
+      "manage": "app_store",
+      "renews_at": "2026-11-15T12:00:00Z",
+      "source": "apple",
+      "status": "active"
+    },
+    {
+      "ends_at": "2026-11-15T12:00:00Z",
+      "interval": "month",
+      "manage": "website",
+      "renews_at": "2026-11-15T12:00:00Z",
+      "source": "stripe",
+      "status": "trialing"
+    },
+    {
+      "ends_at": "2026-11-15T12:00:00Z",
+      "interval": "year",
+      "manage": "app_store",
+      "renews_at": "2026-11-15T12:00:00Z",
+      "source": "apple",
+      "status": "past_due"
+    },
+    {
+      "ends_at": null,
+      "interval": "month",
+      "manage": "website",
+      "renews_at": null,
+      "source": "stripe",
+      "status": "active"
+    }
+  ],
+  "auth schema BlobMeta": [
+    {
+      "etag": "text",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "size": 1,
+      "updatedAt": "2026-11-15T12:00:00Z"
+    }
+  ],
+  "auth schema DeletionPreview": [
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "owner"
+            }
+          ],
+          "name": "text",
+          "outcome": "leave",
+          "role": "owner"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "website",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "stripe"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "read"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "admin"
+            }
+          ],
+          "name": "text",
+          "outcome": "delete",
+          "role": "admin"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "app_store",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "apple"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "write"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "member"
+            }
+          ],
+          "name": "text",
+          "outcome": "blocked",
+          "role": "member"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "website",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "stripe"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "manage"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "owner"
+            }
+          ],
+          "name": "text",
+          "outcome": "leave",
+          "role": "owner"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "app_store",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "apple"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "read"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "admin"
+            }
+          ],
+          "name": "text",
+          "outcome": "delete",
+          "role": "admin"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "website",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "stripe"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "write"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "member"
+            }
+          ],
+          "name": "text",
+          "outcome": "blocked",
+          "role": "member"
+        }
+      ],
+      "scheduled_for": "2026-11-15T12:00:00Z",
+      "share_links": 1,
+      "subscription": {
+        "manage": "app_store",
+        "period_end": "2026-11-15T12:00:00Z",
+        "plan": "text",
+        "source": "apple"
+      },
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": "text",
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "manage"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    },
+    {
+      "blocked": true,
+      "orgs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "members": [
+            {
+              "email": "text",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "role": "owner"
+            }
+          ],
+          "name": "text",
+          "outcome": "leave",
+          "role": "owner"
+        }
+      ],
+      "scheduled_for": null,
+      "share_links": 1,
+      "subscription": null,
+      "vaults": [
+        {
+          "encrypted_name": "AAEC",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "shared_with": [
+            {
+              "display": null,
+              "principal": "user:00000000-0000-4000-8000-000000000002",
+              "role": "read"
+            }
+          ]
+        }
+      ],
+      "would_erase_on": "2026-11-15T12:00:00Z"
+    }
+  ],
+  "auth schema DeviceInfo": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "platform": "qt-linux"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "platform": "qt-macos"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "platform": "qt-windows"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "platform": "web"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "platform": "cli"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "platform": "connect"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "platform": "ios"
+    }
+  ],
+  "auth schema Grant": [
+    {
+      "key_version": 1,
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "role": "read",
+      "sealed_key": "AAEC"
+    },
+    {
+      "key_version": 1,
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "role": "write",
+      "sealed_key": "AAEC"
+    },
+    {
+      "key_version": 1,
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "role": "manage",
+      "sealed_key": "AAEC"
+    }
+  ],
+  "auth schema Invitation": [
+    {
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "invited_by": "user:00000000-0000-4000-8000-000000000002",
+      "role": "owner"
+    },
+    {
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "invited_by": "user:00000000-0000-4000-8000-000000000002",
+      "role": "admin"
+    },
+    {
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "invited_by": "user:00000000-0000-4000-8000-000000000002",
+      "role": "member"
+    }
+  ],
+  "auth schema Kdf": [
+    {
+      "alg": "argon2id",
+      "m": 1,
+      "p": 1,
+      "salt": "AAEC",
+      "t": 1
+    }
+  ],
+  "auth schema Member": [
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "owner",
+      "status": "invited",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "admin",
+      "status": "accepted",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": "text",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "member",
+      "status": "confirmed",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "email": "text",
+      "name": null,
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      },
+      "role": "owner",
+      "status": "invited",
+      "user_id": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "auth schema MemberStatus": [
+    "invited",
+    "accepted",
+    "confirmed"
+  ],
+  "auth schema NewSaSecret": [
+    {
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "prefix": "xxxxxxxx",
+      "secret_hash": "text",
+      "wrapped_master": "AAEC"
+    },
+    {
+      "expires_at": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "prefix": "xxxxxxxx",
+      "secret_hash": "text",
+      "wrapped_master": "AAEC"
+    }
+  ],
+  "auth schema Org": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "active"
+        },
+        "id": "free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "owner"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "managers",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "trialing"
+        },
+        "id": "premium",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "admin"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "off",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "past_due"
+        },
+        "id": "org_free",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "member"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "active"
+        },
+        "id": "families",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "owner"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "managers",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "month",
+          "manage": "website",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "stripe",
+          "status": "trialing"
+        },
+        "id": "teams",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "admin"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "off",
+      "name": "text",
+      "plan": {
+        "billing": {
+          "ends_at": "2026-11-15T12:00:00Z",
+          "interval": "year",
+          "manage": "app_store",
+          "renews_at": "2026-11-15T12:00:00Z",
+          "source": "apple",
+          "status": "past_due"
+        },
+        "id": "business",
+        "limits": {
+          "key": 1
+        }
+      },
+      "role": "member"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "item_share_links": "on",
+      "name": "text",
+      "plan": {
+        "billing": null,
+        "id": null,
+        "limits": {
+          "key": null
+        }
+      },
+      "role": "owner"
+    }
+  ],
+  "auth schema OrgRole": [
+    "owner",
+    "admin",
+    "member"
+  ],
+  "auth schema Plan": [
+    {
+      "billing": {
+        "ends_at": "2026-11-15T12:00:00Z",
+        "interval": "month",
+        "manage": "website",
+        "renews_at": "2026-11-15T12:00:00Z",
+        "source": "stripe",
+        "status": "active"
+      },
+      "id": "free",
+      "limits": {
+        "key": 1
+      }
+    },
+    {
+      "billing": {
+        "ends_at": "2026-11-15T12:00:00Z",
+        "interval": "year",
+        "manage": "app_store",
+        "renews_at": "2026-11-15T12:00:00Z",
+        "source": "apple",
+        "status": "trialing"
+      },
+      "id": "premium",
+      "limits": {
+        "key": 1
+      }
+    },
+    {
+      "billing": {
+        "ends_at": "2026-11-15T12:00:00Z",
+        "interval": "month",
+        "manage": "website",
+        "renews_at": "2026-11-15T12:00:00Z",
+        "source": "stripe",
+        "status": "past_due"
+      },
+      "id": "org_free",
+      "limits": {
+        "key": 1
+      }
+    },
+    {
+      "billing": {
+        "ends_at": "2026-11-15T12:00:00Z",
+        "interval": "year",
+        "manage": "app_store",
+        "renews_at": "2026-11-15T12:00:00Z",
+        "source": "apple",
+        "status": "active"
+      },
+      "id": "families",
+      "limits": {
+        "key": 1
+      }
+    },
+    {
+      "billing": {
+        "ends_at": "2026-11-15T12:00:00Z",
+        "interval": "month",
+        "manage": "website",
+        "renews_at": "2026-11-15T12:00:00Z",
+        "source": "stripe",
+        "status": "trialing"
+      },
+      "id": "teams",
+      "limits": {
+        "key": 1
+      }
+    },
+    {
+      "billing": {
+        "ends_at": "2026-11-15T12:00:00Z",
+        "interval": "year",
+        "manage": "app_store",
+        "renews_at": "2026-11-15T12:00:00Z",
+        "source": "apple",
+        "status": "past_due"
+      },
+      "id": "business",
+      "limits": {
+        "key": 1
+      }
+    },
+    {
+      "billing": null,
+      "id": null,
+      "limits": {
+        "key": null
+      }
+    }
+  ],
+  "auth schema PlanLimit": [
+    {
+      "code": "plan_limit",
+      "current": 1,
+      "error": "text",
+      "limit": "text",
+      "max": 1,
+      "plan": "text",
+      "upgrade_url": "https://example.com/upgrade"
+    }
+  ],
+  "auth schema Platform": [
+    "qt-linux",
+    "qt-macos",
+    "qt-windows",
+    "web",
+    "cli",
+    "connect",
+    "ios"
+  ],
+  "auth schema Principal": [
+    "user:00000000-0000-4000-8000-000000000002"
+  ],
+  "auth schema PublicKeys": [
+    {
+      "enc_pk": "AAEC",
+      "sig": "AAEC",
+      "sign_pk": "AAEC"
+    }
+  ],
+  "auth schema PublicPrincipal": [
+    {
+      "email": "text",
+      "enc_pk": "AAEC",
+      "name": "text",
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "sig": "AAEC",
+      "sign_pk": "AAEC"
+    }
+  ],
+  "auth schema RecoveryArchive": [
+    {
+      "archived": true,
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "locked": true,
+      "vaults": 1
+    }
+  ],
+  "auth schema RecoveryReset": [
+    {
+      "archive_days": 30,
+      "archives": {
+        "personal_vaults": 1,
+        "shared_grants": 1,
+        "sole_admin_orgs": [
+          "text"
+        ]
+      },
+      "email": "text",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "not_before": "2026-11-15T12:00:00Z"
+    }
+  ],
+  "auth schema SaMasterGrant": [
+    {
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "sa_id": "00000000-0000-4000-8000-000000000001",
+      "sealed_key": "AAEC"
+    }
+  ],
+  "auth schema SaSecret": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "last_used_at": "2026-11-15T12:00:00Z",
+      "name": "text",
+      "prefix": "text"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "expires_at": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "last_used_at": null,
+      "name": "text",
+      "prefix": "text"
+    }
+  ],
+  "auth schema ServiceAccount": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "created_by": "user:00000000-0000-4000-8000-000000000002",
+      "disabled": true,
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_key": "AAEC",
+      "name": "text",
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      }
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "created_by": "user:00000000-0000-4000-8000-000000000002",
+      "disabled": true,
+      "expires_at": null,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "master_key": "AAEC",
+      "name": "text",
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "public": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC"
+      }
+    }
+  ],
+  "auth schema Session": [
+    {
+      "access_token": "text",
+      "device_id": "00000000-0000-4000-8000-000000000001",
+      "expires_in": 1,
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "refresh_token": "text",
+      "user": {
+        "email": "text",
+        "id": "00000000-0000-4000-8000-000000000001"
+      }
+    }
+  ],
+  "auth schema Share": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "expired",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "pending",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "opened",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "active",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "revoked",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "ended",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "passcode",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "pending",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "access_lost",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "active",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": "policy",
+      "ended_at": "2026-11-15T12:00:00Z",
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": 1,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": "AAEC",
+      "status": "ended",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "end_reason": null,
+      "ended_at": null,
+      "expires_at": "2026-11-15T12:00:00Z",
+      "id": "text",
+      "max_opens": null,
+      "opened_at": [
+        "2026-11-15T12:00:00Z"
+      ],
+      "opens": 1,
+      "passcode": true,
+      "ref": null,
+      "status": "pending",
+      "vault_id": null
+    }
+  ],
+  "auth schema Vault": [
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "read",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "write",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": "00000000-0000-4000-8000-000000000001",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "pending_key_version": 1,
+      "role": "manage",
+      "rotation_required": true
+    },
+    {
+      "created_at": "2026-11-15T12:00:00Z",
+      "current_key_version": 1,
+      "encrypted_name": "AAEC",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "keys": [
+        {
+          "key_version": 1,
+          "sealed_key": "AAEC"
+        }
+      ],
+      "org_id": null,
+      "owner_id": null,
+      "pending_key_version": null,
+      "role": "read",
+      "rotation_required": true
+    }
+  ],
+  "auth schema VaultGrant": [
+    {
+      "key_version": 1,
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "role": "read",
+      "sealed_key": "AAEC",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "key_version": 1,
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "role": "write",
+      "sealed_key": "AAEC",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "key_version": 1,
+      "principal": "user:00000000-0000-4000-8000-000000000002",
+      "role": "manage",
+      "sealed_key": "AAEC",
+      "vault_id": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "auth schema VaultRole": [
+    "read",
+    "write",
+    "manage"
+  ],
+  "auth schema WrappedKeyset": [
+    {
+      "enc_pk": "AAEC",
+      "sig": "AAEC",
+      "sign_pk": "AAEC",
+      "wrapped": "AAEC"
+    }
+  ],
+  "sync DELETE /internal/vaults/{vault} op": [
+    null
+  ],
+  "sync DELETE /vaults/{vault} op": [
+    null
+  ],
+  "sync GET /events op": [
+    null
+  ],
+  "sync GET /vaults 200": [
+    {
+      "vaults": [
+        {
+          "etag": "text",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "revision": 1,
+          "size": 1,
+          "updatedAt": "2026-11-15T12:00:00Z"
+        }
+      ]
+    }
+  ],
+  "sync GET /vaults op": [
+    null
+  ],
+  "sync GET /vaults/{vault} op": [
+    null
+  ],
+  "sync GET /vaults/{vault}/history 200": [
+    {
+      "versions": [
+        {
+          "etag": "text",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "revision": 1,
+          "size": 1,
+          "updatedAt": "2026-11-15T12:00:00Z"
+        }
+      ]
+    }
+  ],
+  "sync GET /vaults/{vault}/history op": [
+    null
+  ],
+  "sync GET /vaults/{vault}/history/{revision} op": [
+    null
+  ],
+  "sync POST /internal/notify op": [
+    null
+  ],
+  "sync POST /internal/notify request": [
+    {
+      "data": {
+        "change": "granted",
+        "vault": "00000000-0000-4000-8000-000000000001"
+      },
+      "event": "access",
+      "subjects": [
+        "user:00000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "data": {
+        "change": "revoked",
+        "vault": "00000000-0000-4000-8000-000000000001"
+      },
+      "event": "access",
+      "subjects": [
+        "user:00000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "data": {
+        "change": "rotating",
+        "vault": "00000000-0000-4000-8000-000000000001"
+      },
+      "event": "access",
+      "subjects": [
+        "user:00000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "data": {
+        "change": "rotated",
+        "vault": "00000000-0000-4000-8000-000000000001"
+      },
+      "event": "access",
+      "subjects": [
+        "user:00000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "data": {
+        "change": "org",
+        "vault": "00000000-0000-4000-8000-000000000001"
+      },
+      "event": "access",
+      "subjects": [
+        "user:00000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "data": {
+        "change": "granted",
+        "vault": null
+      },
+      "event": "access",
+      "subjects": [
+        "user:00000000-0000-4000-8000-000000000002"
+      ]
+    }
+  ],
+  "sync PUT /vaults/{vault} op": [
+    null
+  ]
+}

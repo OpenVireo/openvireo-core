@@ -20,6 +20,7 @@
 
 pub mod error;
 pub mod http;
+pub mod types;
 pub mod url;
 
 pub use error::{check_status, error_from_response, parse_empty, parse_json};

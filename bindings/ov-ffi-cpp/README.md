@@ -60,8 +60,10 @@ core future to completion on the calling thread with `futures::executor::block_o
   hidden Rust thread. This keeps Qt's thread-affinity rules easy to follow. (A `QNetworkAccessManager` transport
   runs a local `QEventLoop`, or hands the request to a network thread and waits.)
 
-Never call a blocking function on the GUI thread. The handles (`rust::Box<ov::Client>`, `ov::Account`,
-`ov::Vault`, ...) are `Send + Sync` in Rust, so several workers may share one handle (pass it by reference).
+Never call a blocking function on the GUI thread. A few facade calls are async but take no token (local
+secure-store and cache reads such as `stored_session`, `park_session`, `keep_edits`); they block too, without a
+`CancelToken`. The handles (`rust::Box<ov::Client>`, `ov::Account`, `ov::Vault`, `ov::ServiceAccount`,
+`ov::SelfHosted`, ...) are `Send + Sync` in Rust, so several workers may share one handle (pass it by reference).
 
 ### Host
 
@@ -98,34 +100,65 @@ Records cross as flat shared structs. cxx shared structs can't hold `Option`, so
 - Other options are a `has_x` flag plus a value.
 - Enums are cxx shared enums. A value C++ made up (outside the declared ones) is rejected with
   `invalid_request`.
+- Optional results that aren't strings come back as `Optional*` structs (`OptionalBytes`, `OptionalPlan`,
+  `OptionalVaultInfo`, ...) with a `has` flag. Optional `Vec<String>` inputs (the group ids of an export) are an
+  empty list for "every group"; `KdfOverrides` with no `has_*` set means the defaults.
+- Rust enums with data are flattened to a `kind` plus fields: `ImportMode`, `Grantee`, `EntryExpiry`,
+  `ExpiryChange`.
+- A record field named `protected` in Rust is `is_protected` (a C++ keyword); an `OvError` inside a record is an
+  `ErrorInfo`; a list of secrets is `rust::Vec<ov::Bytes>`.
 
 Secrets (`password`, `secret_key`, `auk`, field values, `.kdbx` bytes) cross as `rust::Vec<uint8_t>`. Inputs
 move into the core, which wipes them. The caller wipes outputs with `ov::wipe()`.
 
 ## Coverage
 
-Wave 1 bridges the pipeline and the paths the desktop needs first. The rest of the facade (342 public methods,
-see `docs/api-coverage.md`) uses the same patterns and is a follow-up once W2-A implements the bodies and
-W3-ID says what the desktop calls.
+**All bridged:** every public method and free function of `ov_core::api` (213 items, see
+`docs/api-coverage.md` for how they map to the TS SDK and iOS) has a C++ function, with one deliberate exclusion.
+`cargo xtask cpp --check-coverage` (also part of `cargo test -p ov-ffi-cpp`, so of `cargo xtask ci`) scans
+`crates/ov-core/src/api/*.rs` and the bridge in `src/lib.rs` and fails, naming each one, when a facade item has no
+bridged function.
+
+How facade names become C++ names:
+
+| Facade | C++ |
+|---|---|
+| a method `T::m` | `m` on the handle (`OvClient` is `ov::Client`) |
+| an associated function `T::f` (no `self`) | the free function `t_f`: `ov::vault_open_local`, `ov::service_account_from_token`, `ov::self_hosted_connect` / `_pair` / `_restore`, `ov::plan_limit` / `plan_has` / `plan_has_billing`, `ov::platform_as_str` |
+| `OvClient::new`, `CancelToken::new` | `ov::new_client`, `ov::new_cancel_token` |
+| `Account::register` | `Account::register_account` (`register` is a C++ keyword) |
+| a free function | the same name in namespace `ov` |
 
 | Area | Bridged |
 |---|---|
-| Free | `version`, `take_last_error`, `sha256`, `hkdf_sha256`, `aead_encrypt`/`aead_decrypt` (XChaCha20-Poly1305), `argon2id` (32 bytes), `random_bytes` |
-| `CancelToken` | `new_cancel_token`, `clone`, `cancel`, `is_cancelled` |
-| `OvClient` → `ov::Client` | `new_client`, `discover`, `connect`, `remembered_accounts`, `forget_remembered`, `session_state`, `has_pending_edits` |
-| `Account` | `server_config`, `is_offline`, `is_signed_in`, `is_unlocked`, `user_id`, `email`, `login`, `submit_totp`, `unlock`, `lock`, `sign_out`, `vaults`, `open_vault`, `subscribe` |
-| `LoginStep` / `TotpChallenge` | `needs_totp`, `challenge`, `take_unlocked`; `attempt` |
-| `Vault` | `vault_open_local`, `vault_create_local`, `save_local`, `id`, `name`, `etag`, `is_offline`, `is_read_only`, `entries`, `groups`, `read_field`, `write_field`, `sync`, `export_kdbx` (all groups) |
+| Free | `version`, `take_last_error`, the crypto primitives; `deletion_expired`, `default_share_fields`, `shareable_fields`, `item_share_payload`, `text_share_payload`, `parse_totp_uri`, `totp_code`, `entry_totp_uri`; record helpers `plan_limit`, `plan_has`, `plan_has_billing`, `platform_as_str` |
+| `CancelToken` | `new_cancel_token`, `clone`, `cancel`, `is_cancelled`, `check` |
+| `ov::Client` | everything: discovery, `connect`, `config`, remembered accounts (`remembered_accounts`, `remember_account`, `set_remembered_deletion`, `mark_remembered_checked`, `forget_remembered`), `session_state`, `has_pending_edits`, signed-out share links (`share_info`, `open_share`) |
+| `Account` | everything: state and sessions (incl. `signed_out`, `verify_session`, parked sessions, `sign_out_on_unload`, `unlocked_keyset_secret` / `resume_unlocked`), register / login / TOTP / unlock, vaults and import, history, AutoFill edits, settings and two-step, devices, recovery, deletion, plans and In-App Purchase, vault sharing, orgs, audit log, service-account admin, share links |
+| `LoginStep` / `TotpChallenge` | `needs_totp`, `challenge`, `take_unlocked`; `attempt`, `last_error` |
+| `Vault` | everything: local files, state, reading, every edit (entries, groups, attachments, icons, Recycle Bin), version diff and restore, AutoFill, sync, `keep_edits`, `export_kdbx`, `export_plain` |
+| `ServiceAccount` | everything |
+| `SelfHosted` | everything; `restore` returns `RestoredSelfHosted` (`is_paired()`, then `take()`) |
 | `EventStream` | `next` (`kind == Closed` for the end), `reconnect`, `close` |
 | Host | all six traits |
 
-Not bridged yet: register and recovery, settings, sharing and orgs, share links, plans, service accounts,
-self-hosted sync, TOTP helpers, the other `Vault` edit and history methods, and `Account::signed_out`.
+Deliberately not bridged:
+
+- `CancelToken::cancelled`: it returns a Rust future. Every blocking call already races against it inside the
+  bridge, and C++ code polls `is_cancelled()` or calls `check()`.
 
 ## Tests
 
-- `cargo test -p ov-ffi-cpp`: the edge (panics, error fields, cancellation), conversions and primitives.
-- `smoke/`: builds against the `cargo xtask cpp` package. It calls `version()` and `sha256("abc")`, and
-  checks an OvError through `ov::call`, a panicking stub coming back as `internal`, and a cancelled call
-  coming back as `aborted`.
+- `cargo test -p ov-ffi-cpp`: the edge (panics, error fields, cancellation), conversions (records round-trip,
+  made-up enum values rejected), primitives, the record helpers, and `tests/coverage.rs` (every facade item is
+  bridged; `cargo xtask cpp --check-coverage` prints its report).
+- `smoke/`: builds against the `cargo xtask cpp` package. It calls `version()` and `sha256("abc")`, checks an
+  OvError through `ov::call`, a cancelled call coming back as `aborted`, and one entry point of every bridged area
+  (client, remembered accounts, signed-out share links, `connect`, local vaults, service accounts, self-hosted,
+  TOTP and share-payload helpers, deletion) coming back from its `todo!()` stub as `ov::Error` `internal`. The
+  record helpers and `Client::config` are real code and are checked for their values. `Account`, `Vault`,
+  `ServiceAccount` and `SelfHosted` handles only come from facade constructors that are still stubs, so a
+  compiled-but-never-called function type-checks one method per area on them (register, recovery, settings,
+  sharing, orgs, plans, service accounts, share links, signed-out flows, Vault edit / history / version diff,
+  import, self-hosted) against the generated header.
 - `example/`: the Corrosion build of the same core.

@@ -23,8 +23,16 @@ fn empty_home(name: &str) -> PathBuf {
     dir
 }
 
+/// A test data file exactly as stored in git. `tests/.gitattributes` marks these `-text`, so a
+/// checkout never turns LF into CRLF (Windows `core.autocrlf`); fail clearly if one did.
+fn stored(rel: &str) -> Vec<u8> {
+    let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)).unwrap();
+    assert!(!bytes.contains(&b'\r'), "{rel} was checked out with CRLF line endings; see tests/.gitattributes");
+    bytes
+}
+
 fn golden_help() -> Vec<u8> {
-    std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/help.txt")).unwrap()
+    stored("tests/golden/help.txt")
 }
 
 #[test]
@@ -68,6 +76,7 @@ fn run_without_references_runs_the_command() {
 /// A session saved by the TS `ov login` is found where the TS keeps it and read back unchanged.
 #[tokio::test]
 async fn reads_a_session_written_by_the_ts_cli() {
+    let fixture_bytes = stored("tests/fixtures/ts-session.json");
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ts-session.json");
     let home = empty_home("session");
     let dir = home.join(".config/openvireo");
@@ -91,7 +100,7 @@ async fn reads_a_session_written_by_the_ts_cli() {
         let v = get(k).await.unwrap();
         store.set(k, v.as_bytes()).await.unwrap();
     }
-    assert_eq!(std::fs::read(dir.join("session.json")).unwrap(), std::fs::read(&fixture).unwrap());
+    assert_eq!(std::fs::read(dir.join("session.json")).unwrap(), fixture_bytes);
 
     // With a saved session, commands get past "not signed in" (to the core, W3-L3).
     let out = ov(&["whoami"], &home);

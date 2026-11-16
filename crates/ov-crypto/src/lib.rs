@@ -22,7 +22,10 @@
 pub mod auk;
 pub mod curves;
 pub mod encoding;
+pub mod envelope;
+pub mod keyset;
 pub mod primitives;
 pub mod secret_key;
+pub mod vault_name;
 
 pub use zeroize::Zeroizing;

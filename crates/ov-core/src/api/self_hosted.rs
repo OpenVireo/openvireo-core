@@ -98,14 +98,20 @@ impl SelfHosted {
         credentials: KdbxCredentials,
         cancel: CancelToken,
     ) -> Result<SelfHostedSyncResult, OvError> {
-        crate::impls::sync_glue::sync_database(self, &database_id, &kdbx, &credentials, &cancel).await
+        crate::impls::syncing::sync_database(self, &database_id, &kdbx, &credentials, &cancel).await
     }
 
     /// The legacy `event: database` stream
     /// ([`AccountEvent::DatabaseChanged`](crate::api::AccountEvent::DatabaseChanged)).
     pub async fn events(&self, cancel: CancelToken) -> Result<EventStream, OvError> {
-        // W2-Y: the legacy `event: database` stream is ov_sync's.
         cancel.check()?;
-        Err(crate::impls::sync_glue::needs_sync())
+        let h = &self.inner.client.host;
+        let client = ov_sync::SyncClient::new(
+            h.http.clone(),
+            h.clock.clone(),
+            self.inner.sync.clone(),
+            std::sync::Arc::new(ov_sync::StaticToken(Some(self.inner.token.to_string()))),
+        );
+        Ok(crate::impls::syncing::stream(client, None))
     }
 }

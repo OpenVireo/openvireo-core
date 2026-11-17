@@ -92,19 +92,14 @@ impl ServiceAccount {
 
     /// The value of a secret reference `ov://<vault>/[<group>/…]<entry>/<field>` (SPEC §14).
     pub async fn read(&self, reference: String, cancel: CancelToken) -> Result<SecretBytes, OvError> {
-        // W2-V: `ov://` references are ov_vault's (vault/reference.ts); then open_vault + read.
-        let _ = reference;
-        cancel.check()?;
-        Err(crate::impls::vault_glue::needs_vault())
+        Ok(self.read_impl(&reference, &cancel).await?.as_bytes().to_vec())
     }
 
     /// Replaces every `ov://…` reference in a template (up to whitespace, quotes or `}`) with its
     /// value (SPEC §15, `ov inject`).
     pub async fn inject(&self, template: SecretBytes, cancel: CancelToken) -> Result<Injected, OvError> {
-        // W2-V: REFERENCE_PATTERN and reading each reference are ov_vault's.
-        let _ = template;
-        cancel.check()?;
-        Err(crate::impls::vault_glue::needs_vault())
+        let template = crate::impls::util::secret_text(template, "template")?;
+        self.inject_impl(&template, &cancel).await
     }
 
     /// Sets the field a secret reference names and uploads (needs `write`). With `create`, a missing
@@ -116,10 +111,8 @@ impl ServiceAccount {
         create: bool,
         cancel: CancelToken,
     ) -> Result<(), OvError> {
-        // W2-V + W2-Y: ov_vault parses the reference and writes the field; ov_sync uploads.
-        let _ = (reference, value, create);
-        cancel.check()?;
-        Err(crate::impls::vault_glue::needs_vault())
+        let value = crate::impls::util::secret_text(value, "field value")?;
+        self.write_impl(&reference, &value, create, &cancel).await
     }
 
     /// Wipes the keyset, vault keys and cached vaults; later calls fail with `signed_out`.

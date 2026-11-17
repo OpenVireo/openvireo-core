@@ -280,12 +280,7 @@ impl Account {
     /// `sealUnlocked`, which seals them with a non-extractable WebCrypto key so a page reload can
     /// resume. `signed_out` while locked.
     pub fn unlocked_keyset_secret(&self) -> Result<SecretBytes, OvError> {
-        self.with_keyset(|ks| {
-            let mut out = Vec::with_capacity(64);
-            out.extend_from_slice(&ks.enc_sk[..]);
-            out.extend_from_slice(&ks.sign_seed[..]);
-            out
-        })
+        self.with_keyset(|ks| ov_vault::keyset_secret(ks).to_vec())
     }
 
     /// Unlocks from keyset secrets saved by [`unlocked_keyset_secret`](Self::unlocked_keyset_secret)
@@ -519,14 +514,6 @@ impl Account {
     /// ([`AccountEvent::SessionEnded`](super::AccountEvent::SessionEnded)).
     pub async fn subscribe(&self, cancel: CancelToken) -> Result<EventStream, OvError> {
         cancel.check()?;
-        if !crate::impls::sync_glue::AVAILABLE {
-            return Err(crate::impls::sync_glue::needs_sync());
-        }
-        Ok(EventStream {
-            inner: Arc::new(crate::state::EventStreamState {
-                closed: std::sync::atomic::AtomicBool::new(false),
-                reconnect: std::sync::atomic::AtomicBool::new(false),
-            }),
-        })
+        Ok(crate::impls::syncing::stream(self.sync_client(), Some(self.clone())))
     }
 }

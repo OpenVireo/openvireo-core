@@ -7,7 +7,6 @@ use ov_core::OvErrorCode;
 use servers_common::*;
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn comes_back_with_only_the_password_with_no_sign_in_or_totp() {
     let s = servers();
     let c = device(&s, true);
@@ -37,7 +36,6 @@ async fn comes_back_with_only_the_password_with_no_sign_in_or_totp() {
 }
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn comes_back_offline_from_the_cache() {
     let s = servers();
     let c = device(&s, true);

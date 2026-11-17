@@ -20,11 +20,6 @@ pub(crate) fn rng() -> rand_core::OsRng {
     rand_core::OsRng
 }
 
-/// A random v4 UUID, lowercase and hyphenated (server ids).
-pub(crate) fn random_uuid() -> Result<String, OvError> {
-    Ok(ov_kdbx::vault::new_uuid()?.hyphenated().to_string())
-}
-
 /// `signed_out`.
 pub(crate) fn signed_out(msg: &str) -> OvError {
     OvError::new(OvErrorCode::SignedOut, msg)

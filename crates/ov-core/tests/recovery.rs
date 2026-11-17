@@ -18,7 +18,6 @@ async fn setup() -> (ov_testkit::servers::TestServers, Account, NewAccount, Stri
 }
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn shows_what_the_reset_will_do_then_starts_the_account_with_new_keys() {
     let (s, a, kit, _) = setup().await;
     let old_fp = a.fingerprint().unwrap();
@@ -39,7 +38,6 @@ async fn shows_what_the_reset_will_do_then_starts_the_account_with_new_keys() {
 }
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn surfaces_recovery_not_ready_and_recovery_cancelled() {
     let (s, a, _, _) = setup().await;
     let token = s.approve_reset("alice@example.com", 3600);
@@ -51,7 +49,6 @@ async fn surfaces_recovery_not_ready_and_recovery_cancelled() {
 }
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn says_when_there_is_no_archive() {
     let (_, a, _, _) = setup().await;
     assert!(!a.recovery_status(nc()).await.unwrap().archived);
@@ -65,7 +62,6 @@ async fn reset(s: &ov_testkit::servers::TestServers) -> Account {
 }
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn re_seals_the_archived_vault_keys_to_the_new_keyset() {
     let (s, _, kit, vault_id) = setup().await;
     let fresh = reset(&s).await;
@@ -76,7 +72,6 @@ async fn re_seals_the_archived_vault_keys_to_the_new_keyset() {
 }
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn refuses_a_wrong_old_password_with_401_and_restores_nothing() {
     let (s, _, kit, _) = setup().await;
     let fresh = reset(&s).await;
@@ -86,7 +81,6 @@ async fn refuses_a_wrong_old_password_with_401_and_restores_nothing() {
 }
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn fails_locally_on_a_wrong_old_secret_key_before_finish() {
     let (s, _, _, _) = setup().await;
     let fresh = reset(&s).await;

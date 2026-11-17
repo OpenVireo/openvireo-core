@@ -13,10 +13,10 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 use super::convert::{crypto_kdf, crypto_wrapped, from_stored, kdf_min, wire_platform};
+use super::keyring::VaultEntry;
 use super::net::send;
 use super::tokens::StoredSession;
 use super::util::{lock, signed_out, to_json};
-use super::vault_glue::{ingest, VaultEntry};
 use crate::api::{Account, CancelToken, ClientConfig, VaultInfo};
 use crate::host::{Host, HttpRequest, HttpResponse};
 
@@ -413,10 +413,9 @@ impl Account {
     /// Ingests a listed vault into the keyring.
     pub(crate) fn ingest(&self, v: &w::Vault) -> Result<VaultEntry, OvError> {
         let mut g = lock(&self.inner.inner);
-        let ks = g.keyset.as_ref().ok_or_else(|| signed_out("the account is locked"))?;
-        let e = ingest(ks, v);
-        g.vaults.insert(v.id.clone(), e.clone());
-        Ok(e)
+        let crate::state::AccountInner { keyset, vaults, .. } = &mut *g;
+        let ks = keyset.as_ref().ok_or_else(|| signed_out("the account is locked"))?;
+        Ok(VaultEntry::of(vaults.ingest(v, ks)))
     }
 
     /// `GET /vaults` (offline: the cached list). Returns the list and the vaults no longer listed.
@@ -437,7 +436,7 @@ impl Account {
         };
         self.set_offline(false);
         let seen: std::collections::HashSet<&str> = vaults.iter().map(|v| v.id.as_str()).collect();
-        let mut known: Vec<String> = lock(&self.inner.inner).vaults.keys().cloned().collect();
+        let mut known: Vec<String> = lock(&self.inner.inner).vaults.iter().map(|k| k.id().to_owned()).collect();
         for v in self.cached_wire_vaults().await?.unwrap_or_default() {
             if !known.contains(&v.id) {
                 known.push(v.id);
@@ -465,7 +464,7 @@ impl Account {
     /// The keyring entry of a vault: known, `GET /vaults/{id}`, or offline the cached list.
     pub(crate) async fn entry(&self, vault_id: &str, cancel: &CancelToken) -> Result<VaultEntry, OvError> {
         if let Some(e) = lock(&self.inner.inner).vaults.get(vault_id) {
-            return Ok(e.clone());
+            return Ok(VaultEntry::of(e));
         }
         self.with_keyset(|_| ())?;
         match self.call(cancel, |a, t| a.build_get_vault(t, vault_id), ov_protocol::auth::parse_vault).await {
@@ -490,7 +489,7 @@ impl Account {
     /// The keyring entry from memory or the cached list, without the network.
     pub(crate) async fn entry_offline(&self, vault_id: &str) -> Result<VaultEntry, OvError> {
         if let Some(e) = lock(&self.inner.inner).vaults.get(vault_id) {
-            return Ok(e.clone());
+            return Ok(VaultEntry::of(e));
         }
         let cached = self.cached_wire_vaults().await?.unwrap_or_default();
         let v = cached.into_iter().find(|v| v.id == vault_id).ok_or_else(|| {

@@ -106,15 +106,6 @@ pub(crate) fn api_public_keys_unchecked(k: &w::PublicKeys) -> Option<a::PublicKe
     CryptoPublicKeys::from_json(&crypto_public_json(k)).ok().map(|p| api_public_keys(&p))
 }
 
-/// Facade public keys back to wire JSON.
-pub(crate) fn wire_public_from_api(k: &a::PublicKeys) -> w::PublicKeys {
-    w::PublicKeys {
-        enc_pk: ov_crypto::encoding::b64u(&k.enc_pk),
-        sign_pk: ov_crypto::encoding::b64u(&k.sign_pk),
-        sig: ov_crypto::encoding::b64u(&k.sig),
-    }
-}
-
 // ------------------------------------------------------------------------------------ enums
 
 pub(crate) fn vault_role(r: &w::VaultRole) -> a::VaultRole {
@@ -352,8 +343,6 @@ pub(crate) fn uuid_hex(u: &ov_kdbx::model::Uuid) -> String {
     u.simple().to_string()
 }
 
-// Used by the glue once ov-sync / ov-vault merge.
-#[allow(dead_code)]
 /// `ov_merge` change records → facade records (W1-M follow-up).
 pub(crate) fn merge_change(c: &ov_merge::MergeChange) -> a::MergeChange {
     a::MergeChange {
@@ -371,8 +360,6 @@ pub(crate) fn merge_change(c: &ov_merge::MergeChange) -> a::MergeChange {
     }
 }
 
-// Used by the glue once ov-sync / ov-vault merge.
-#[allow(dead_code)]
 /// `ov_merge::SyncConflict` → facade record.
 pub(crate) fn sync_conflict(c: &ov_merge::SyncConflict) -> a::SyncConflict {
     a::SyncConflict {
@@ -382,18 +369,6 @@ pub(crate) fn sync_conflict(c: &ov_merge::SyncConflict) -> a::SyncConflict {
             ov_merge::ConflictKind::DeletedHereEditedThere => a::ConflictKind::DeletedHereEditedThere,
             ov_merge::ConflictKind::EditedHereDeletedThere => a::ConflictKind::EditedHereDeletedThere,
         },
-        title: c.title.clone(),
-        fields: c.fields.clone(),
-    }
-}
-
-// Used by the glue once ov-sync / ov-vault merge.
-#[allow(dead_code)]
-/// `ov_merge::EntryConflict` (an edit on both sides with the fields both changed) → facade record.
-pub(crate) fn entry_conflict(c: &ov_merge::EntryConflict) -> a::SyncConflict {
-    a::SyncConflict {
-        uuid: uuid_hex(&c.uuid),
-        kind: a::ConflictKind::EditedOnBoth,
         title: c.title.clone(),
         fields: c.fields.clone(),
     }

@@ -1,30 +1,25 @@
 //! [`ServiceAccount`] (SPEC §9, §15), a port of the SDK's `service-account.ts`: token → KEK →
 //! master key → keyset, the JWT re-exchanged before it expires (SAs have no refresh token), the
-//! granted vaults and downloading them. `ov://` reads and writes are `ov-vault`'s (W2-V) and the
-//! upload `ov-sync`'s (W2-Y).
+//! granted vaults, downloading them, and reading and writing `ov://` references (`ov-vault`), with
+//! uploads through `ov-sync`.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use ov_crypto::encoding::b64u;
-use ov_crypto::keyset::unwrap_keyset;
-use ov_crypto::tokens::{parse_sa_token, unwrap_sa_master};
-use ov_error::{OvError, OvErrorCode};
-use ov_kdbx::vault::open_with_key_versions;
+use ov_crypto::tokens::parse_sa_token;
+use ov_error::OvError;
 use ov_protocol::auth::{parse_service_account_exchange, parse_vaults, AuthApi};
-use ov_protocol::sync::{parse_blob_get, parse_blob_head, BlobPath, GetResult, HeadResult, SyncApi};
-use ov_protocol::types::ServiceAccountExchangeRequest;
+use ov_protocol::sync::{HeadResult, SyncApi};
 use zeroize::Zeroizing;
 
 use super::client::discover_raw;
-use super::convert::{crypto_wrapped, server_config, wire_config};
+use super::convert::{server_config, wire_config};
+use super::keyring::VaultEntry;
 use super::net::send;
 use super::util::{lock, secret_text, signed_out};
-use super::vault_glue::{ingest, VaultEntry};
-use super::vaults::new_vault;
-use crate::api::{CancelToken, OvClient, SaVault, SecretBytes, ServiceAccount, Vault};
+use crate::api::{CancelToken, Injected, OvClient, SaVault, SecretBytes, ServiceAccount, SyncOptions, Vault};
 use crate::host::{HttpRequest, HttpResponse};
-use crate::state::{SaInner, ServiceAccountState, VaultSource};
+use crate::state::{SaInner, ServiceAccountState};
 
 const MARGIN_MS: i64 = 60_000;
 
@@ -48,16 +43,13 @@ impl ServiceAccount {
         let auth = AuthApi::new(&wire.api)?;
         let sync = SyncApi::new(&wire.sync)?;
         let host = &client.inner.host;
-        let body = ServiceAccountExchangeRequest { sa_id: t.sa_id.clone(), secret: b64u(&t.secret[..]) };
+        let body = ov_vault::exchange_request(&t);
         let ex =
             parse_service_account_exchange(&send(host, auth.build_service_account_exchange(&body), cancel).await?)?;
-        // W2-V: SA master unwrapping (ov_vault) — token KEK → master → keyset.
-        let master = unwrap_sa_master(&t.kek, &t.sa_id, &ex.wrapped_master)?;
-        let keyset = unwrap_keyset(&master, &crypto_wrapped(&ex.keyset))?;
+        let keyset = ov_vault::unlock_service_account(&t, &ex)?;
         let expires = host.clock.now_unix_ms() + ex.expires_in.saturating_mul(1000);
         let state = ServiceAccountState {
             client: client.inner.clone(),
-            config,
             auth,
             sync,
             sa_id: t.sa_id.clone(),
@@ -78,7 +70,7 @@ impl ServiceAccount {
     }
 
     /// The JWT, exchanged again when it is about to expire (or `force`).
-    async fn access_token(&self, force: bool, cancel: &CancelToken) -> Result<Zeroizing<String>, OvError> {
+    pub(crate) async fn access_token(&self, force: bool, cancel: &CancelToken) -> Result<Zeroizing<String>, OvError> {
         let valid = |g: &SaInner, now: i64| -> Result<Option<Zeroizing<String>>, OvError> {
             if g.keyset.is_none() {
                 return Err(signed_out("service account closed"));
@@ -101,7 +93,10 @@ impl ServiceAccount {
             }
         }
         let secret = lock(&self.inner.inner).secret.clone();
-        let body = ServiceAccountExchangeRequest { sa_id: self.inner.sa_id.clone(), secret: b64u(&secret[..]) };
+        let body = ov_protocol::types::ServiceAccountExchangeRequest {
+            sa_id: self.inner.sa_id.clone(),
+            secret: ov_crypto::encoding::b64u(&secret[..]),
+        };
         let host = &self.inner.client.host;
         let ex = parse_service_account_exchange(
             &send(host, self.inner.auth.build_service_account_exchange(&body), cancel).await?,
@@ -135,26 +130,16 @@ impl ServiceAccount {
         let list = parse_vaults(&res)?;
         let mut g = lock(&self.inner.inner);
         let ks = g.keyset.as_ref().ok_or_else(|| signed_out("service account closed"))?;
-        let entries: Vec<VaultEntry> = list.vaults.iter().map(|v| ingest(ks, v)).collect();
+        let entries: Vec<VaultEntry> =
+            list.vaults.iter().map(|v| VaultEntry::of(&ov_vault::VaultKeys::from_vault(v, ks))).collect();
         g.vaults = Some(entries.clone());
         Ok(entries)
     }
 
     pub(crate) async fn entry(&self, id_or_name: &str, cancel: &CancelToken) -> Result<VaultEntry, OvError> {
         let all = self.entries(false, cancel).await?;
-        if let Some(e) = all.iter().find(|e| e.info.id == id_or_name) {
-            return Ok(e.clone());
-        }
-        let named: Vec<&VaultEntry> = all.iter().filter(|e| e.info.name == id_or_name).collect();
-        if named.len() == 1 {
-            return Ok(named[0].clone());
-        }
-        let msg = if named.is_empty() {
-            format!("vault \"{id_or_name}\" not found or not shared with this service account")
-        } else {
-            format!("{} vaults are named \"{id_or_name}\"", named.len())
-        };
-        Err(OvError::new(OvErrorCode::NotFound, msg).with_status(404))
+        let found = ov_vault::find_vault(all.iter().map(|e| &e.vk), id_or_name)?;
+        Ok(VaultEntry::of(found))
     }
 
     pub(crate) async fn vaults_impl(&self, refresh: bool, cancel: &CancelToken) -> Result<Vec<SaVault>, OvError> {
@@ -167,24 +152,7 @@ impl ServiceAccount {
 
     /// Downloads a vault; the downloaded copy becomes the cached one.
     async fn download(&self, e: &VaultEntry, cancel: &CancelToken) -> Result<Vault, OvError> {
-        let blob = BlobPath::vault(&e.info.id);
-        let res = self.authed(cancel, |t| self.inner.sync.build_blob_get(&blob, Some(t), None)).await?;
-        let GetResult::Ok { data, version } = parse_blob_get(&res)? else {
-            return Err(OvError::new(
-                OvErrorCode::NotFound,
-                format!("vault {} has no data on the sync server", e.info.id),
-            )
-            .with_status(404));
-        };
-        let (db, _) = open_with_key_versions(&data, &e.keys)?;
-        let v = new_vault(
-            VaultSource::ServiceAccount { info: e.info.clone() },
-            Some(self.inner.client.host.clone()),
-            db,
-            false,
-        );
-        *lock(&v.inner.etag) = Some(version.etag);
-        *lock(&v.inner.base) = Some(data);
+        let v = super::syncing::open_sa_session(self, e, cancel).await?;
         lock(&self.inner.inner).opened.insert(e.info.id.clone(), v.clone());
         Ok(v)
     }
@@ -210,12 +178,62 @@ impl ServiceAccount {
         let cached = lock(&self.inner.inner).opened.get(&e.info.id).cloned();
         let Some(v) = cached else { return self.download(&e, cancel).await };
         let Some(etag) = v.etag() else { return self.download(&e, cancel).await };
-        let blob = BlobPath::vault(&e.info.id);
-        let res = self.authed(cancel, |t| self.inner.sync.build_blob_head(&blob, Some(t), Some(&etag))).await?;
-        match parse_blob_head(&res)? {
+        cancel.check()?;
+        match self.sync_client().vault(&e.info.id).head(Some(&etag)).await? {
             HeadResult::NotModified(_) => Ok(v),
             _ => self.download(&e, cancel).await,
         }
+    }
+
+    /// The value of a secret reference.
+    pub(crate) async fn read_impl(&self, reference: &str, cancel: &CancelToken) -> Result<Zeroizing<String>, OvError> {
+        let r = ov_vault::parse_reference(reference)?;
+        let v = self.open_impl(&r.vault, false, cancel).await?;
+        let out = ov_vault::read_field(&v.db(), &r);
+        out
+    }
+
+    /// Replaces every reference in a template; each distinct reference is read once.
+    pub(crate) async fn inject_impl(&self, template: &str, cancel: &CancelToken) -> Result<Injected, OvError> {
+        let mut values: HashMap<String, Zeroizing<String>> = HashMap::new();
+        for r in ov_vault::find_references(template) {
+            let s = &template[r];
+            if !values.contains_key(s) {
+                values.insert(s.to_owned(), self.read_impl(s, cancel).await?);
+            }
+        }
+        let out = ov_vault::inject(template, |s| {
+            values.get(s).cloned().ok_or_else(|| OvError::internal("reference not resolved"))
+        })?;
+        Ok(Injected {
+            text: out.text.as_bytes().to_vec(),
+            secrets: out.secrets.iter().map(|v| v.as_bytes().to_vec()).collect(),
+        })
+    }
+
+    /// Sets the field a reference names and uploads (needs `write`). A failed upload drops the
+    /// cached copy, so a failed edit is never read back.
+    pub(crate) async fn write_impl(
+        &self,
+        reference: &str,
+        value: &str,
+        create: bool,
+        cancel: &CancelToken,
+    ) -> Result<(), OvError> {
+        let r = ov_vault::parse_reference(reference)?;
+        let e = self.entry(&r.vault, cancel).await?;
+        ov_vault::check_writable(&e.vk)?;
+        let v = self.open_impl(&e.info.id, false, cancel).await?;
+        let now = v.now();
+        let result = async {
+            ov_vault::write_field(&mut v.db(), &r, value, create, None, now)?;
+            super::syncing::sync_vault(&v, SyncOptions { local_changed: true }, None, cancel).await
+        }
+        .await;
+        if result.is_err() {
+            lock(&self.inner.inner).opened.remove(&e.info.id);
+        }
+        result.map(|_| ())
     }
 
     pub(crate) fn close_impl(&self) {

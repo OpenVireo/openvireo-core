@@ -284,10 +284,7 @@ impl Account {
         input: NewServiceAccount,
         cancel: CancelToken,
     ) -> Result<CreatedServiceAccount, OvError> {
-        // W2-V: ov_vault makes the SA keyset and master key and seals it to every owner and admin.
-        let _ = (org_id, input);
-        cancel.check()?;
-        Err(crate::impls::vault_glue::needs_vault())
+        self.create_service_account_impl(&org_id, input, &cancel).await
     }
 
     /// Issues another secret for an SA (owner/admin): unseals the master key and builds a token to
@@ -299,10 +296,7 @@ impl Account {
         expires_at: Option<Rfc3339>,
         cancel: CancelToken,
     ) -> Result<IssuedSecret, OvError> {
-        // W2-V: ov_vault unseals the SA master key and wraps it for the new secret.
-        let _ = (sa_id, name, expires_at);
-        cancel.check()?;
-        Err(crate::impls::vault_glue::needs_vault())
+        self.issue_secret_impl(&sa_id, name, expires_at, &cancel).await
     }
 
     /// An SA's secrets (never the tokens).

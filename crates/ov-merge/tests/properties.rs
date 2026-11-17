@@ -3,8 +3,9 @@
 //! - idempotence: `merge(x, x, x) == x` (exact model equality, and without a base too);
 //! - symmetry: swapping local and remote gives an equal result, where "equal" is [`canonical`]
 //!   equality (see its doc for what it leaves out and why), on inputs where the two sides never stamp
-//!   different content with the same second (local edits at odd seconds, remote at even) and an entry
-//!   isn't moved on one side while edited on the other (see `case()`);
+//!   different content with the same second (local edits and moves at odd seconds, remote at even).
+//!   Moves and edits mix freely: an entry moved on one side and edited on the other (or moved and
+//!   edited on the same side) ends up, on both, where it was moved last;
 //! - both copies agree after `merge_in_place`.
 
 mod common;
@@ -80,6 +81,8 @@ enum Action {
     Delete(i64),
     /// Move to the other group.
     Move(i64),
+    /// Move to the other group, then edit (the edit's step, then the move's).
+    MoveEdit(Content, i64, i64),
 }
 
 fn action() -> impl Strategy<Value = Action> {
@@ -88,6 +91,7 @@ fn action() -> impl Strategy<Value = Action> {
         3 => (content(), -2i64..6).prop_map(|(c, t)| Action::Edit(c, t)),
         1 => (0i64..6).prop_map(Action::Delete),
         1 => (0i64..6).prop_map(Action::Move),
+        1 => (content(), 0i64..6, 0i64..6).prop_map(|(c, t, m)| Action::MoveEdit(c, t, m)),
     ]
 }
 
@@ -114,22 +118,8 @@ struct Case {
 fn case() -> impl Strategy<Value = Case> {
     let base_entry = (content(), any::<bool>(), proptest::option::of(content()))
         .prop_map(|(content, in_sub, history)| BaseEntry { content, in_sub, history });
-    (proptest::collection::vec(proptest::option::of(base_entry), POOL), any::<bool>(), side(), side()).prop_map(
-        |(base, with_sub, mut local, mut remote)| {
-            // A move on one side and an edit on the other is left out: the side whose entry is older
-            // takes a copy of the newer one *with its location time*, so the move is lost on one
-            // copy only and the copies end up in different groups. That is the desktop `Merger`'s
-            // and the SDK's behaviour (merge-behaviour.md §1.1), kept as is; see the W1-M report.
-            for (l, r) in local.actions.iter_mut().zip(remote.actions.iter_mut()) {
-                match (&*l, &*r) {
-                    (Action::Move(_), Action::Edit(..)) => *l = Action::Keep,
-                    (Action::Edit(..), Action::Move(_)) => *r = Action::Keep,
-                    _ => {}
-                }
-            }
-            Case { base, with_sub, local, remote }
-        },
-    )
+    (proptest::collection::vec(proptest::option::of(base_entry), POOL), any::<bool>(), side(), side())
+        .prop_map(|(base, with_sub, local, remote)| Case { base, with_sub, local, remote })
 }
 
 fn base_time(i: usize) -> Timestamp {
@@ -167,30 +157,23 @@ fn build_side(base: &Database, c: &Case, s: &Side, parity: i64) -> Database {
             Action::Edit(content, step) => {
                 // slow clocks: steps below 0 land before the base time
                 let t = if *step < 0 { base_time(i) - 10 + 2 * step + parity } else { stamp(*step) };
-                let mut e = make_entry(&mut db, i, content, t);
-                e.times.location_changed = current.times.location_changed;
-                let mut before = current.clone();
-                before.history.clear();
-                e.history = current.history.clone();
-                e.history.push(before);
-                replace(&mut db.root, e);
+                edit(&mut db, i, &current, content, t);
             }
             Action::Delete(step) => {
                 take(&mut db.root, id);
                 db.deleted_objects.push(DeletedObject { uuid: id, deletion_time: stamp(*step) });
             }
             Action::Move(step) => {
-                if !c.with_sub {
-                    continue;
+                if c.with_sub {
+                    move_to_other_group(&mut db, base, id, stamp(*step));
                 }
-                let mut e = take(&mut db.root, id).expect("present");
-                let in_root = base.root.entries.iter().any(|x| x.uuid == id);
-                e.times.location_changed = stamp(*step);
-                if in_root {
-                    db.root.groups[0].entries.push(e);
-                } else {
-                    db.root.entries.push(e);
+            }
+            Action::MoveEdit(content, edit_step, move_step) => {
+                if c.with_sub {
+                    move_to_other_group(&mut db, base, id, stamp(*move_step));
                 }
+                let current = find(&db.root, id).cloned().expect("present");
+                edit(&mut db, i, &current, content, stamp(*edit_step));
             }
         }
     }
@@ -205,6 +188,28 @@ fn build_side(base: &Database, c: &Case, s: &Side, parity: i64) -> Database {
     }
     ov_merge::compact_binaries(&mut db);
     db
+}
+
+/// Gives entry `i` new content at time `t`, keeping its location; the old content goes to history.
+fn edit(db: &mut Database, i: usize, current: &Entry, content: &Content, t: Timestamp) {
+    let mut e = make_entry(db, i, content, t);
+    e.times.location_changed = current.times.location_changed;
+    let mut before = current.clone();
+    before.history.clear();
+    e.history = current.history.clone();
+    e.history.push(before);
+    replace(&mut db.root, e);
+}
+
+/// Moves entry `id` between the root and the subgroup (away from where the base has it) at `t`.
+fn move_to_other_group(db: &mut Database, base: &Database, id: Uuid, t: Timestamp) {
+    let mut e = take(&mut db.root, id).expect("present");
+    e.times.location_changed = t;
+    if base.root.entries.iter().any(|x| x.uuid == id) {
+        db.root.groups[0].entries.push(e);
+    } else {
+        db.root.entries.push(e);
+    }
 }
 
 fn find(g: &Group, id: Uuid) -> Option<&Entry> {
@@ -238,12 +243,15 @@ fn replace(g: &mut Group, e: Entry) {
 ///   side's records as they are (TS `mergeDatabases`; the structure merge in keep-newer mode never
 ///   copies deletion records), so the local copy's list is local's.
 ///
-/// - an entry's `LocationChanged` is left out: when the structure merge moves an entry to follow
-///   the other side, the counterpart keeps its own location time (merge-behaviour.md §1.1, TS
-///   `Pass.entry`), so the two copies hold different values for it. Its group is compared.
+/// - a history item's `LocationChanged` is left out: history merges by modification time, and a
+///   move doesn't change that, so an entry moved and then edited on one side keeps a snapshot with
+///   the base's modification time and the new location time, while the other side's snapshot at
+///   that time has the old one; each copy keeps its own (desktop `Merger`, merge-behaviour.md §2).
+///   The entries' own `LocationChanged` is compared: the sync puts both copies where the entry was
+///   moved last, with that time.
 ///
 /// Everything else in the database (meta, custom data with the sync generation, groups and their
-/// properties and parents, every entry field, times, history) must match exactly.
+/// properties and parents, every entry field and its group, times, history) must match exactly.
 fn canonical(db: &Database, with_deleted: bool) -> String {
     let mut groups = BTreeMap::new();
     let mut entries = BTreeMap::new();
@@ -259,7 +267,7 @@ fn canonical(db: &Database, with_deleted: bool) -> String {
         shallow.groups.clear();
         groups.insert(g.uuid, format!("{parent:?} {shallow:?}"));
         for e in &g.entries {
-            entries.insert(e.uuid, format!("in {} {}", g.uuid, entry_text(db, e)));
+            entries.insert(e.uuid, format!("in {} {}", g.uuid, entry_text(db, e, false)));
         }
         for c in &g.groups {
             walk(db, c, Some(g.uuid), groups, entries);
@@ -273,10 +281,12 @@ fn canonical(db: &Database, with_deleted: bool) -> String {
     format!("{:?}\n{meta:?}\n{groups:#?}\n{entries:#?}\ndeleted {deleted:?}", db.header)
 }
 
-fn entry_text(db: &Database, e: &Entry) -> String {
+fn entry_text(db: &Database, e: &Entry, in_history: bool) -> String {
     let mut plain = e.clone();
     plain.history.clear();
-    plain.times.location_changed = 0;
+    if in_history {
+        plain.times.location_changed = 0;
+    }
     let atts: Vec<(String, Vec<u8>, bool)> = e
         .binaries
         .iter()
@@ -289,7 +299,7 @@ fn entry_text(db: &Database, e: &Entry) -> String {
     let strings: Vec<(String, String, bool)> =
         e.strings.iter().map(|s| (s.key.clone(), s.value.to_string(), s.protected)).collect();
     plain.strings.clear();
-    let history: Vec<String> = e.history.iter().map(|h| entry_text(db, h)).collect();
+    let history: Vec<String> = e.history.iter().map(|h| entry_text(db, h, true)).collect();
     format!("{plain:?} {strings:?} {atts:?} history {history:?}")
 }
 

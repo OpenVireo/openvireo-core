@@ -1,9 +1,8 @@
 # merge-fixtures/
 
 Copied unchanged from openvireo (`github.com/openvireo/openvireo`) `tests/data/merge-fixtures/`, branch
-`develop`, at HEAD `14873339afc6faa2dbf450200b17aec69aa58df7` (2026-11-15). The folder last changed in
-`5d36cb741accd8eed8060f15ae454bf99689ccad` (2026-11-02, "Apply deletions in sync against the base, and
-sync the Recycle Bin"). The SDK (`packages/sdk/test/fixtures/merge-fixtures/`) and iOS
+`develop`, at `c28db5c0` (2026-11-16). The folder last changed in `5a9bfaf6` (2026-11-16, "Add move-versus-edit
+merge fixtures": cases 11-14 and the optional groups/locations format; 01-10 unchanged). The SDK (`packages/sdk/test/fixtures/merge-fixtures/`) and iOS
 (`OpenVireoCoreTests/Fixtures/merge-fixtures/`) hold the same files.
 
 Recorded from the desktop merge (`SyncEngine::mergeDatabases()`); `README.md` defines the format. Typed
@@ -22,5 +21,9 @@ d97bc138628afe35f629507b81465d0bb6be3186ba4c1e4e84e1f17606e47881  07-no-base-new
 de64c8164cefbc888b7315efcedb20adc5d19dd8e14cb14c45eb19017c6d873b  08-field-removed-on-one-side.json
 e8b9031bcb1bf9df0cb6609bcb20eb9924d9f22d081b8fef34e7b3b14ce75337  09-deleted-here-edited-there-clock-ahead.json
 53c8df462d7ac26d5ec64e3e9e617277098ed1f64775a6e878da4b075acf047a  10-deleted-there-clock-behind.json
-db7a20d4b55d46ad10fedd97b62e011cd24827f59747ef207a8c981d5e80a2ff  README.md
+e952a819f1d24ef117f4b760f56298f8cb70420d830b0c2852083838d83c5615  11-moved-here-edited-there.json
+ce55e487ab397b487c26aa4a68426c58933e7080db71e568fc7f28cd8dab5b30  12-edited-here-moved-there.json
+89ab7f1b74eb3cc9bd1b0b8e84523c1b5a8cfcfb148659c01f78df355d507457  13-moved-to-different-groups.json
+be15fe3482014c6fb1cced366e1c23479390fcd6cd5c3dbbeac1862cc2b07c95  14-group-moved-here-content-edited-there.json
+a38e349c4fefdf80f9a84a6e0218e1c8f251f84e91f8ca4f451f271554dc69ae  README.md
 ```

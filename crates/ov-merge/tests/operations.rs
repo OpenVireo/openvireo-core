@@ -1,5 +1,6 @@
 //! Cases the fixtures don't cover: attachment re-interning across pools, import (merge and copies),
-//! the Recycle Bin, group deletions, snapshot conflicts, custom data metadata.
+//! the Recycle Bin, group deletions, snapshot conflicts, custom data metadata, copies left in
+//! different groups.
 
 mod common;
 
@@ -267,4 +268,33 @@ fn newer_database_custom_data_is_applied() {
     let (merged, _) = merge(None, &local, &remote, T0);
     let keys: Vec<&str> = merged.meta.custom_data.iter().map(|i| i.key.as_str()).collect();
     assert_eq!(keys, ["_LAST_MODIFIED", "KPXC_BROWSER_x", "New", "KPXC_SYNC_GENERATION"]);
+}
+
+#[test]
+fn copies_left_apart_by_the_old_merge_come_together() {
+    // What the move-vs-edit defect left behind: the same entry, same content and LocationChanged,
+    // in different groups. The next sync puts both where local has it (local wins a tie), records
+    // the move and changes no modification time.
+    const SUB: Uuid = Uuid::from_u128(0x5b);
+    let mut local = empty_db(ROOT, T0);
+    local.root.groups.push(Group::new(SUB, "Sub", T0));
+    let mut remote = local.clone();
+    let mut e = entry(1, "A", T0 + 10);
+    e.times.location_changed = T0 + 5;
+    local.root.groups[0].entries.push(e.clone());
+    remote.root.entries.push(e);
+
+    let report = merge_in_place(&mut local, &mut remote, None, T0 + 100);
+    for db in [&local, &remote] {
+        assert_eq!(db.root.groups[0].entries.len(), 1, "in Sub on both");
+        assert!(db.root.entries.is_empty());
+        let e = find(db, 1).unwrap();
+        assert_eq!((e.times.last_modification, e.times.location_changed), (T0 + 10, T0 + 5));
+    }
+    assert!(report.remote_changed && !report.local_changed);
+    assert!(report.updated.is_empty(), "the local copy didn't move");
+    assert!(report.changes.iter().any(|c| c.uuid == Some(id(1)) && c.details == "Moved to where it was moved last"));
+    // and once together, a second sync changes nothing
+    let again = merge_in_place(&mut local, &mut remote, None, T0 + 200);
+    assert!(again.changes.is_empty() && !again.local_changed && !again.remote_changed);
 }

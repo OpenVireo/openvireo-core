@@ -62,7 +62,7 @@ fn test_vectors_decode() {
 #[test]
 fn merge_fixtures_load() {
     let fixtures = merge_fixtures();
-    assert_eq!(fixtures.len(), 10);
+    assert_eq!(fixtures.len(), 14);
     for (name, f) in &fixtures {
         assert_lossless(&format!("merge-fixtures/{name}"), f);
         let now = FixedClock::at_utc(&f.now).now_unix_ms();

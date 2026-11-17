@@ -78,8 +78,7 @@ Pass them to `ov::new_client()` as `std::unique_ptr`. Their rules:
 
 ### Errors and panics
 
-Every bridged function catches panics and returns `OvError{code: internal}`. The facade's `todo!()` stubs
-behave like this too, until W2-A fills them in. A failure throws `rust::Error` with the text
+Every bridged function catches panics and returns `OvError{code: internal}`. A failure throws `rust::Error` with the text
 `"<wire code>: <message>"`. The full `OvError` (code, message, status, retry-after, details JSON, server code)
 is saved for the calling thread. Wrap calls in `ov::call([&]{ ... })` to get an `ov::Error` that carries all
 of it:
@@ -152,13 +151,12 @@ Deliberately not bridged:
 - `cargo test -p ov-ffi-cpp`: the edge (panics, error fields, cancellation), conversions (records round-trip,
   made-up enum values rejected), primitives, the record helpers, and `tests/coverage.rs` (every facade item is
   bridged; `cargo xtask cpp --check-coverage` prints its report).
-- `smoke/`: builds against the `cargo xtask cpp` package. It calls `version()` and `sha256("abc")`, checks an
-  OvError through `ov::call`, a cancelled call coming back as `aborted`, and one entry point of every bridged area
-  (client, remembered accounts, signed-out share links, `connect`, local vaults, service accounts, self-hosted,
-  TOTP and share-payload helpers, deletion) coming back from its `todo!()` stub as `ov::Error` `internal`. The
-  record helpers and `Client::config` are real code and are checked for their values. `Account`, `Vault`,
-  `ServiceAccount` and `SelfHosted` handles only come from facade constructors that are still stubs, so a
-  compiled-but-never-called function type-checks one method per area on them (register, recovery, settings,
-  sharing, orgs, plans, service accounts, share links, signed-out flows, Vault edit / history / version diff,
-  import, self-hosted) against the generated header.
+- `smoke/`: builds against the `cargo xtask cpp` package and runs with an offline Host (no server). It calls
+  `version()` and `sha256("abc")`, checks an OvError through `ov::call` and a cancelled call coming back as
+  `aborted`, then calls at least one method of every bridged area: network calls (register, recovery, settings,
+  devices, deletion, sharing, orgs, plans, service accounts, share links, history, self-hosted) must come back as
+  an `ov::Error` with a real code (`network_error`, `signed_out`, `invalid_token`, ...), never `internal` or a
+  crash; local work is checked for its values (a local vault: add, edit with history, version diff, plain export,
+  delete to the Recycle Bin, save and reopen; RFC 6238 TOTP; share payloads; the record helpers;
+  `Client::config`). A compiled-but-never-called function type-checks more of the API against the header.
 - `example/`: the Corrosion build of the same core.

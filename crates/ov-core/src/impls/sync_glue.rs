@@ -56,7 +56,14 @@ pub(crate) async fn sync_database(
 }
 
 /// The next event from an open stream (connect, parse SSE, reconnect with backoff).
-// W2-Y: ov_sync event stream.
+///
+/// The Host has no timer, so the core never sleeps: when `ov_sync`'s stream says
+/// `Waiting { retry_in_ms }`, this returns `Err(network_error)` with `retry_after` (seconds, rounded
+/// up) and `details: {"retryInMs": n}`, and the platform waits that long before calling `next`
+/// again — the contract's "connection errors while reconnecting are returned as `Err` and the stream
+/// keeps going". `Connecting`/`Open` are consumed here; `Closed` is `Ok(None)`.
+// W2-Y: ov_sync event stream (account: refresh + reload the vault list on `access`, end the session
+// on `deletion_scheduled` / `account_deleted`).
 pub(crate) async fn next_event(
     stream: &crate::api::EventStream,
     cancel: &CancelToken,

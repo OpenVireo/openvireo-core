@@ -58,16 +58,41 @@ impl std::fmt::Debug for TotpCode {
 
 /// Parses an `otpauth://totp/…` URI; `invalid_totp` if it can't be used.
 pub fn parse_totp_uri(uri: SecretBytes) -> Result<TotpParams, OvError> {
-    todo!()
+    let uri = crate::impls::util::secret_text(uri, "TOTP URI")?;
+    let p = ov_share::parse_totp_uri(&uri)?;
+    Ok(TotpParams {
+        secret: p.secret.clone(),
+        digits: p.digits,
+        period: p.period,
+        algorithm: match p.algorithm {
+            ov_share::TotpAlgorithm::Sha1 => TotpAlgorithm::Sha1,
+            ov_share::TotpAlgorithm::Sha256 => TotpAlgorithm::Sha256,
+            ov_share::TotpAlgorithm::Sha512 => TotpAlgorithm::Sha512,
+        },
+        encoder: p.steam.then(|| "steam".to_owned()),
+    })
 }
 
 /// The code at `now_ms` (Unix milliseconds).
 pub fn totp_code(params: TotpParams, now_ms: i64) -> TotpCode {
-    todo!()
+    let p = ov_share::TotpParams {
+        secret: params.secret.clone(),
+        algorithm: match params.algorithm {
+            TotpAlgorithm::Sha1 => ov_share::TotpAlgorithm::Sha1,
+            TotpAlgorithm::Sha256 => ov_share::TotpAlgorithm::Sha256,
+            TotpAlgorithm::Sha512 => ov_share::TotpAlgorithm::Sha512,
+        },
+        digits: params.digits,
+        period: params.period,
+        steam: params.encoder.as_deref().is_some_and(|e| e.eq_ignore_ascii_case("steam")),
+    };
+    let c = ov_share::totp_code(&p, now_ms);
+    TotpCode { code: c.code.as_bytes().to_vec(), remaining: c.remaining }
 }
 
 /// An entry's TOTP as an `otpauth://` URI, from its `otp` field or the legacy KeePassXC fields;
 /// `None` if it has none. `label` names the issuer in a built URI.
 pub fn entry_totp_uri(fields: Vec<FieldRecord>, label: String) -> Option<SecretBytes> {
-    todo!()
+    let fields = crate::impls::share::entry_fields(&fields);
+    ov_share::entry_totp_uri(&fields, &label).map(|u| u.as_bytes().to_vec())
 }

@@ -48,7 +48,8 @@ impl std::fmt::Debug for SelfHosted {
 impl SelfHosted {
     /// A server with a device token already in hand. Checks the URL (SPEC §1 "Transport").
     pub fn connect(client: OvClient, server_url: String, device_token: SecretBytes) -> Result<SelfHosted, OvError> {
-        todo!()
+        let token = crate::impls::util::secret_text(device_token, "device token")?;
+        SelfHosted::new_impl(client, server_url, token)
     }
 
     /// Claims a pairing code (`ABCD-EFGH`) for a device token and keeps the token in the
@@ -60,32 +61,32 @@ impl SelfHosted {
         device_name: String,
         cancel: CancelToken,
     ) -> Result<SelfHosted, OvError> {
-        todo!()
+        SelfHosted::pair_impl(client, server_url, &code, &device_name, &cancel).await
     }
 
     /// The server paired earlier, from the stored device token; `None` if not paired.
     pub async fn restore(client: OvClient, server_url: String) -> Result<Option<SelfHosted>, OvError> {
-        todo!()
+        SelfHosted::restore_impl(client, server_url).await
     }
 
     /// The server URL.
     pub fn server_url(&self) -> String {
-        todo!()
+        self.inner.server_url.clone()
     }
 
     /// `GET /health`, as JSON text.
     pub async fn health(&self, cancel: CancelToken) -> Result<String, OvError> {
-        todo!()
+        self.health_impl(&cancel).await
     }
 
     /// The databases on the server.
     pub async fn list_databases(&self, cancel: CancelToken) -> Result<Vec<BlobMeta>, OvError> {
-        todo!()
+        self.list_impl(&cancel).await
     }
 
     /// A pairing code for another device.
     pub async fn create_pairing_code(&self, cancel: CancelToken) -> Result<PairingCode, OvError> {
-        todo!()
+        self.pairing_code_impl(&cancel).await
     }
 
     /// Syncs a local database with `databases/<database_id>`, keeping the sync state in the
@@ -97,12 +98,14 @@ impl SelfHosted {
         credentials: KdbxCredentials,
         cancel: CancelToken,
     ) -> Result<SelfHostedSyncResult, OvError> {
-        todo!()
+        crate::impls::sync_glue::sync_database(self, &database_id, &kdbx, &credentials, &cancel).await
     }
 
     /// The legacy `event: database` stream
     /// ([`AccountEvent::DatabaseChanged`](crate::api::AccountEvent::DatabaseChanged)).
     pub async fn events(&self, cancel: CancelToken) -> Result<EventStream, OvError> {
-        todo!()
+        // W2-Y: the legacy `event: database` stream is ov_sync's.
+        cancel.check()?;
+        Err(crate::impls::sync_glue::needs_sync())
     }
 }

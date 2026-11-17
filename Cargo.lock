@@ -1585,6 +1585,14 @@ dependencies = [
 [[package]]
 name = "ov-vault"
 version = "0.0.0"
+dependencies = [
+ "ov-crypto",
+ "ov-error",
+ "ov-kdbx",
+ "ov-protocol",
+ "ov-testkit",
+ "zeroize",
+]
 
 [[package]]
 name = "ov-wasm"

@@ -1,6 +1,6 @@
 //! Account vaults on the facade: opening (online, offline, from history), creating, importing,
-//! renaming and deleting, pending edits and AutoFill edits (SPEC §7, §11, §20). Syncing goes
-//! through [`sync_glue`](super::sync_glue) and keyring work through [`vault_glue`](super::vault_glue).
+//! renaming and deleting, pending edits and AutoFill edits (SPEC §7, §11, §20). Syncing is
+//! `ov-sync`'s (through [`syncing`](super::syncing)); new vaults and grants are `ov-vault`'s.
 
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -9,25 +9,25 @@ use ov_crypto::encoding::to_hex;
 use ov_error::{OvError, OvErrorCode};
 use ov_kdbx::model::{Database, Uuid};
 use ov_kdbx::vault::{open_with_key_versions, vault_credentials, KeyVersion};
-use ov_protocol::sync::{
-    parse_blob_delete, parse_blob_get, parse_history, parse_revision, BlobPath, GetResult, SyncApi,
-};
-use ov_protocol::types as w;
 
 use super::kdbx_ops;
-use super::net::send;
-use super::sync_glue;
-use super::util::{lock, random_uuid, signed_out};
-use super::vault_glue::{key_array, seal_vault_key_to, verified_keys, VaultEntry};
+use super::keyring::VaultEntry;
+use super::util::{lock, signed_out};
 use crate::api::{
     Account, AutoFillEdit, AutoFillEdits, CancelToken, EntryRecord, ImportMode, ImportOutcome, KdbxCredentials,
     SyncOptions, Vault, VaultInfo, VaultVersion,
 };
-use crate::host::{CachedVault, Host, HttpRequest, HttpResponse};
+use crate::host::{CachedVault, Host};
 use crate::state::{VaultSource, VaultState};
 
 /// A vault handle over a working copy.
-pub(crate) fn new_vault(source: VaultSource, host: Option<Host>, db: Database, offline: bool) -> Vault {
+pub(crate) fn new_vault(
+    source: VaultSource,
+    host: Option<Host>,
+    db: Database,
+    offline: bool,
+    cache: Option<ov_sync::VaultCache>,
+) -> Vault {
     Vault {
         inner: Arc::new(VaultState {
             source,
@@ -36,8 +36,7 @@ pub(crate) fn new_vault(source: VaultSource, host: Option<Host>, db: Database, o
             offline: AtomicBool::new(offline),
             etag: Mutex::new(None),
             conflicts: Mutex::new(Vec::new()),
-            sync_state: Mutex::new(None),
-            base: Mutex::new(None),
+            session: futures::lock::Mutex::new(ov_sync::VaultSession::new(cache)),
         }),
     }
 }
@@ -60,52 +59,15 @@ pub(crate) fn newest_key(keys: &[KeyVersion]) -> Result<&KeyVersion, OvError> {
 }
 
 impl Account {
-    pub(crate) fn sync_api(&self) -> &SyncApi {
-        &self.inner.sync
-    }
-
-    /// A sync-server call with the account's token, retried once with a fresh token after a 401.
-    pub(crate) async fn sync_call(
-        &self,
-        cancel: &CancelToken,
-        build: impl Fn(&SyncApi, &str) -> HttpRequest,
-    ) -> Result<HttpResponse, OvError> {
-        let token = self.access_token(false, cancel).await?;
-        let mut res = send(self.host(), build(self.sync_api(), &token), cancel).await?;
-        if res.status == 401 {
-            let token = self.access_token(true, cancel).await?;
-            res = send(self.host(), build(self.sync_api(), &token), cancel).await?;
-        }
-        if let Some(server) = ov_protocol::sync::server_time_ms(&res) {
-            lock(&self.inner.inner).clock_offset_ms = Some(self.now_ms() - server);
-        }
-        Ok(res)
-    }
-
     fn account_vault(&self, info: VaultInfo, db: Database, offline: bool) -> Vault {
+        let cache = self.vault_cache(&info.id);
         new_vault(
             VaultSource::Account { account: self.clone(), info: Mutex::new(info) },
             Some(self.host().clone()),
             db,
             offline,
+            cache,
         )
-    }
-
-    /// Downloads a vault and opens it with the held keys. Returns the database, bytes and etag.
-    // W2-Y: the open becomes a full `ov_sync` sync (merging pending edits) once it merges.
-    async fn download(&self, e: &VaultEntry, cancel: &CancelToken) -> Result<(Database, Vec<u8>, String), OvError> {
-        let blob = BlobPath::vault(&e.info.id);
-        let res = self.sync_call(cancel, |s, t| s.build_blob_get(&blob, Some(t), None)).await?;
-        match parse_blob_get(&res)? {
-            GetResult::Ok { data, version } => {
-                let (db, _) = open_with_key_versions(&data, &e.keys)?;
-                Ok((db, data, version.etag))
-            }
-            _ => {
-                Err(OvError::new(OvErrorCode::NotFound, format!("vault {} has no data on the sync server", e.info.id))
-                    .with_status(404))
-            }
-        }
     }
 
     /// This device's copy: pending edits, else the server's bytes at the last sync.
@@ -121,15 +83,15 @@ impl Account {
         };
         let cached = cached.ok_or_else(not_offline)?;
         let mut db = match (&cached.pending, &cached.base) {
-            (Some(p), _) => match open_with_key_versions(p, &e.keys) {
+            (Some(p), _) => match open_with_key_versions(p, e.keys()) {
                 Ok((db, _)) => db,
-                Err(_) => open_with_key_versions(cached.base.as_ref().ok_or_else(not_offline)?, &e.keys)?.0,
+                Err(_) => open_with_key_versions(cached.base.as_ref().ok_or_else(not_offline)?, e.keys())?.0,
             },
-            (None, Some(b)) => open_with_key_versions(b, &e.keys)?.0,
+            (None, Some(b)) => open_with_key_versions(b, e.keys())?.0,
             (None, None) => return Err(not_offline()),
         };
         if with_autofill {
-            if let Some(edits) = self.autofill_from(&e.info.id, &cached, &e.keys)? {
+            if let Some(edits) = self.autofill_from(&e.info.id, &cached, e.keys())? {
                 let now = self.now_ms() / 1000;
                 for ed in &edits.entries {
                     kdbx_ops::upsert_record(&mut db, &ed.entry, &ed.group_path, now)?;
@@ -141,39 +103,7 @@ impl Account {
 
     pub(crate) async fn open_vault_impl(&self, vault_id: &str, cancel: &CancelToken) -> Result<Vault, OvError> {
         let e = self.entry(vault_id, cancel).await?;
-        let user = self.current_user();
-        let has_pending = match &user {
-            Some(u) if self.keeps_offline_data() => {
-                self.host().cache.load(u, vault_id).await?.is_some_and(|c| c.pending.is_some())
-            }
-            _ => false,
-        };
-        if sync_glue::AVAILABLE {
-            // W2-Y: start from the pending copy or an empty working copy and let ov_sync download/merge.
-        }
-        match self.download(&e, cancel).await {
-            Ok((db, data, etag)) => {
-                // Without ov-sync the pending copy can't be merged; it stays the working copy.
-                let db = if has_pending { self.local_copy(&e, false).await.unwrap_or(db) } else { db };
-                let v = self.account_vault(e.info.clone(), db, false);
-                *lock(&v.inner.etag) = Some(etag);
-                *lock(&v.inner.base) = Some(data);
-                self.set_offline(false);
-                Ok(v)
-            }
-            Err(err) if self.keeps_offline_data() && err.is_unreachable() => {
-                let db = self.local_copy(&e, false).await.map_err(|e2| {
-                    if e2.is(OvErrorCode::NotAvailableOffline) {
-                        e2
-                    } else {
-                        err.clone()
-                    }
-                })?;
-                self.set_offline(true);
-                Ok(self.account_vault(e.info, db, true))
-            }
-            Err(err) => Err(err),
-        }
+        super::syncing::open_session(self, &e, cancel).await
     }
 
     pub(crate) async fn open_offline_impl(&self, vault_id: &str, with_autofill: bool) -> Result<Vault, OvError> {
@@ -190,53 +120,27 @@ impl Account {
         org_id: Option<&str>,
         cancel: &CancelToken,
     ) -> Result<(VaultEntry, zeroize::Zeroizing<[u8; 32]>), OvError> {
-        let enc_pk = self.with_keyset(|ks| ks.public.enc_pk)?;
         let me = self.principal_str()?;
-        let id = random_uuid()?;
-        let key = ov_crypto::primitives::random_key()?;
-        let own = seal_vault_key_to(&enc_pk, &id, &key)?;
-        let mut grants = vec![w::Grant {
-            principal: me.clone(),
-            role: w::VaultRole::Manage,
-            key_version: 1,
-            sealed_key: own.clone(),
-        }];
-        if let Some(org) = org_id {
-            // W2-V: the org grant rule (ov_vault) replaces this loop.
-            let members =
-                self.call(cancel, |a, t| a.build_list_members(t, org), ov_protocol::auth::parse_members).await?;
-            for m in members.members {
-                let principal = format!("user:{}", m.user_id);
-                let manager = matches!(m.role, w::OrgRole::Owner | w::OrgRole::Admin);
-                let Some(public) = m.public.as_ref() else { continue };
-                if principal == me || !manager || m.status != w::MemberStatus::Confirmed {
-                    continue;
-                }
-                let pk = verified_keys(public)?;
-                grants.push(w::Grant {
-                    principal,
-                    role: w::VaultRole::Manage,
-                    key_version: 1,
-                    sealed_key: seal_vault_key_to(&pk.enc_pk, &id, &key)?,
-                });
-            }
-        }
-        let body = w::CreateVaultRequest {
-            id: id.clone(),
-            org_id: org_id.map(str::to_owned),
-            encrypted_name: ov_crypto::vault_name::encrypt_vault_name(&key, &id, name)?,
-            grants,
+        let members = match org_id {
+            Some(org) => Some(
+                self.call(cancel, |a, t| a.build_list_members(t, org), ov_protocol::auth::parse_members).await?.members,
+            ),
+            None => None,
         };
-        let mut created =
-            self.call(cancel, |a, t| a.build_create_vault(t, &body), ov_protocol::auth::parse_vault).await?;
-        if created.keys.is_empty() {
-            created.keys = vec![w::VaultKey { key_version: 1, sealed_key: own }];
-        }
-        self.cache_vault(&created).await?;
-        let entry = self.ingest(&created)?;
+        let nv = {
+            let g = lock(&self.inner.inner);
+            let ks = g.keyset.as_ref().ok_or_else(|| signed_out("the account is locked"))?;
+            let org = org_id.zip(members.as_deref());
+            ov_vault::new_vault(name, &me, ks, org)?
+        };
+        let created =
+            self.call(cancel, |a, t| a.build_create_vault(t, &nv.request), ov_protocol::auth::parse_vault).await?;
+        let listed = nv.listing(created);
+        self.cache_vault(&listed).await?;
+        let entry = self.ingest(&listed)?;
         // The new vault is only in the next token's vlt claim.
         self.refresh_token(cancel).await?;
-        Ok((entry, key))
+        Ok((entry, zeroize::Zeroizing::new(*nv.key)))
     }
 
     pub(crate) async fn create_vault_impl(
@@ -245,10 +149,6 @@ impl Account {
         org_id: Option<&str>,
         cancel: &CancelToken,
     ) -> Result<Vault, OvError> {
-        if !sync_glue::AVAILABLE {
-            // Don't create a vault on the server that this build can't upload.
-            return Err(sync_glue::needs_sync());
-        }
         let (entry, key) = self.register_vault(name, org_id, cancel).await?;
         let (db, _) = ov_kdbx::vault::create_vault_kdbx(name, &key[..], self.now_ms() / 1000)?;
         let v = self.account_vault(entry.info, db, false);
@@ -319,10 +219,7 @@ impl Account {
         cancel: &CancelToken,
     ) -> Result<VaultInfo, OvError> {
         let e = self.entry(vault_id, cancel).await?;
-        let key = e
-            .current_key()
-            .ok_or_else(|| OvError::new(OvErrorCode::NoVaultKey, "this account doesn't hold the current vault key"))?;
-        let enc = ov_crypto::vault_name::encrypt_vault_name(&*key_array(key)?, vault_id, name)?;
+        let enc = ov_crypto::vault_name::encrypt_vault_name(&*e.current_key_bytes()?, vault_id, name)?;
         let v =
             self.call(cancel, |a, t| a.build_rename_vault(t, vault_id, &enc), ov_protocol::auth::parse_vault).await?;
         self.cache_vault(&v).await?;
@@ -330,9 +227,8 @@ impl Account {
     }
 
     pub(crate) async fn delete_vault_impl(&self, vault_id: &str, cancel: &CancelToken) -> Result<(), OvError> {
-        let blob = BlobPath::vault(vault_id);
-        let res = self.sync_call(cancel, |s, t| s.build_blob_delete(&blob, Some(t), None)).await?;
-        match parse_blob_delete(&res) {
+        cancel.check()?;
+        match self.sync_client().vault(vault_id).delete(None).await {
             Ok(()) => {}
             Err(e) if e.is(OvErrorCode::NotFound) => {}
             Err(e) => return Err(e),
@@ -373,9 +269,8 @@ impl Account {
         vault_id: &str,
         cancel: &CancelToken,
     ) -> Result<Vec<VaultVersion>, OvError> {
-        let blob = BlobPath::vault(vault_id);
-        let res = self.sync_call(cancel, |s, t| s.build_history(&blob, Some(t))).await?;
-        let list = parse_history(&res)?;
+        cancel.check()?;
+        let list = self.sync_client().vault(vault_id).history().await?;
         let newest = list.iter().map(|b| b.revision).max();
         Ok(list
             .into_iter()
@@ -396,13 +291,12 @@ impl Account {
         cancel: &CancelToken,
     ) -> Result<Vault, OvError> {
         let e = self.entry(vault_id, cancel).await?;
-        let blob = BlobPath::vault(vault_id);
         let rev =
             i64::try_from(revision).map_err(|_| OvError::new(OvErrorCode::InvalidRequest, "revision out of range"))?;
-        let res = self.sync_call(cancel, |s, t| s.build_revision(&blob, Some(t), rev)).await?;
-        let r = parse_revision(&res)?;
-        let (db, _) = open_with_key_versions(&r.data, &e.keys)?;
-        let v = new_vault(VaultSource::Version { info: e.info }, Some(self.host().clone()), db, false);
+        cancel.check()?;
+        let r = self.sync_client().vault(vault_id).revision(rev).await?;
+        let (db, _) = open_with_key_versions(&r.data, e.keys())?;
+        let v = new_vault(VaultSource::Version { info: e.info }, Some(self.host().clone()), db, false, None);
         *lock(&v.inner.etag) = Some(r.version.etag);
         Ok(v)
     }
@@ -439,7 +333,7 @@ impl Account {
     ) -> Result<(), OvError> {
         let e = self.entry_offline(vault_id).await?;
         let user = self.current_user().ok_or_else(|| signed_out("not signed in"))?;
-        let key = newest_key(&e.keys)?;
+        let key = newest_key(e.keys())?;
         let now = self.now_ms() / 1000;
         let mut cached = self.host().cache.load(&user, vault_id).await?.unwrap_or(CachedVault {
             state: Vec::new(),
@@ -448,7 +342,7 @@ impl Account {
             autofill: None,
         });
         let mut db = match &cached.autofill {
-            Some(b) => open_with_key_versions(b, &e.keys)?.0,
+            Some(b) => open_with_key_versions(b, e.keys())?.0,
             None => ov_kdbx::vault::create_vault_kdbx("AutoFill", &key.key, now)?.0,
         };
         kdbx_ops::upsert_record(&mut db, &entry, group_path, now)?;
@@ -460,7 +354,7 @@ impl Account {
         let e = self.entry_offline(vault_id).await?;
         let user = self.current_user().ok_or_else(|| signed_out("not signed in"))?;
         match self.host().cache.load(&user, vault_id).await? {
-            Some(c) => self.autofill_from(vault_id, &c, &e.keys),
+            Some(c) => self.autofill_from(vault_id, &c, e.keys()),
             None => Ok(None),
         }
     }

@@ -266,7 +266,7 @@ impl Vault {
                 e
             }
         })?;
-        Ok(crate::impls::vaults::new_vault(crate::state::VaultSource::Local(credentials), None, db, false))
+        Ok(crate::impls::vaults::new_vault(crate::state::VaultSource::Local(credentials), None, db, false, None))
     }
 
     /// A new empty local database named `name` (KDBX 4, ChaCha20, Argon2id). TS `createNewKdbx`.
@@ -282,6 +282,7 @@ impl Vault {
             None,
             ov_kdbx::vault::create_kdbx(&name, 0)?,
             false,
+            None,
         );
         let now = v.now();
         let mut db = ov_kdbx::vault::create_kdbx(&name, now)?;
@@ -381,17 +382,17 @@ impl Vault {
     /// The entry an item reference names (`ov://<vault>/[<group>/…]<entry>`, SPEC §14; the vault
     /// segment is not checked here). `<entry>` is a UUID (hex, dashed or base64) or a unique title.
     pub fn find(&self, reference: String) -> Result<EntryRecord, OvError> {
-        // W2-V: `ov://` references are ov_vault's (vault/reference.ts).
-        let _ = reference;
-        Err(crate::impls::vault_glue::needs_vault())
+        let r = ov_vault::parse_item_reference(&reference)?;
+        let db = self.db();
+        let (e, _) = ov_vault::find_entry(&db, &r.group_path, &r.entry)?;
+        crate::impls::kdbx_ops::entry(&db, &crate::impls::convert::uuid_hex(&e.uuid))
     }
 
     /// The value a secret reference names (`ov://<vault>/[<group>/…]<entry>/<field>`, SPEC §14).
     /// TS `AccountVault.read`.
     pub fn read_field(&self, reference: String) -> Result<SecretBytes, OvError> {
-        // W2-V: `ov://` references are ov_vault's (vault/reference.ts).
-        let _ = reference;
-        Err(crate::impls::vault_glue::needs_vault())
+        let r = ov_vault::parse_reference(&reference)?;
+        Ok(ov_vault::read_field(&self.db(), &r)?.as_bytes().to_vec())
     }
 
     /// Older versions of an entry, oldest first.
@@ -430,10 +431,10 @@ impl Vault {
         create: bool,
         cancel: CancelToken,
     ) -> Result<SyncReport, OvError> {
-        // W2-V: `ov://` references are ov_vault's (vault/reference.ts); then sync.
-        let _ = (reference, value, create);
-        cancel.check()?;
-        Err(crate::impls::vault_glue::needs_vault())
+        let r = ov_vault::parse_reference(&reference)?;
+        let value = crate::impls::util::secret_text(value, "field value")?;
+        self.edit(|db, now| ov_vault::write_field(db, &r, &value, create, None, now).map(|_| ()))?;
+        self.sync(SyncOptions::default(), cancel).await
     }
 
     /// Sets several fields of the entry an item reference names, keeping history (TS
@@ -444,9 +445,25 @@ impl Vault {
         fields: Vec<FieldInput>,
         create: CreateMode,
     ) -> Result<SetFieldsResult, OvError> {
-        // W2-V: `ov://` references are ov_vault's (vault/reference.ts, TS setItemFields).
-        let _ = (reference, fields, create);
-        Err(crate::impls::vault_glue::needs_vault())
+        let r = ov_vault::parse_item_reference(&reference)?;
+        let updates = fields
+            .into_iter()
+            .map(|f| {
+                Ok(ov_vault::FieldUpdate {
+                    name: f.name,
+                    value: crate::impls::util::secret_text(f.value, "field value")?,
+                    protected: f.protected,
+                })
+            })
+            .collect::<Result<Vec<_>, OvError>>()?;
+        let mode = match create {
+            CreateMode::MustExist => ov_vault::CreateMode::MustExist,
+            CreateMode::CreateIfMissing => ov_vault::CreateMode::CreateIfMissing,
+            CreateMode::CreateOnly => ov_vault::CreateMode::CreateOnly,
+        };
+        let out = self.edit(|db, now| ov_vault::set_item_fields(db, &r, &updates, mode, now))?;
+        let entry = self.entry(crate::impls::convert::uuid_hex(&out.entry_id))?;
+        Ok(SetFieldsResult { entry, created: out.created })
     }
 
     /// Adds an entry to a group; returns its id.
@@ -588,7 +605,7 @@ impl Vault {
             crate::state::VaultSource::Local(_) => {
                 Err(OvError::new(ov_error::OvErrorCode::InvalidRequest, "a local file has no server; save it instead"))
             }
-            _ => crate::impls::sync_glue::sync_account_vault(self, options, None, &cancel).await,
+            _ => crate::impls::syncing::sync_vault(self, options, None, &cancel).await,
         }
     }
 

@@ -7,7 +7,6 @@ use ov_core::OvErrorCode;
 use servers_common::*;
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn register_vault_second_device_share_and_service_account() {
     let s = servers();
     let a = connect(&device(&s, false), &s).await;
@@ -108,7 +107,6 @@ async fn ends_the_login_once_the_server_drops_the_token_after_the_5th_wrong_code
 }
 
 #[tokio::test]
-#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn changes_the_password_same_keys_and_secret_key_vaults_still_open() {
     let s = servers();
     let a = connect(&device(&s, false), &s).await;

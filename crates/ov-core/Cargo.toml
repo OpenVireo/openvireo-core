@@ -18,6 +18,8 @@ ov-protocol = { path = "../ov-protocol" }
 ov-share = { path = "../ov-share" }
 ov-kdbx = { path = "../ov-kdbx" }
 ov-merge = { path = "../ov-merge" }
+ov-sync = { path = "../ov-sync" }
+ov-vault = { path = "../ov-vault" }
 async-trait.workspace = true
 futures.workspace = true
 rand_core = { workspace = true, features = ["getrandom"] }

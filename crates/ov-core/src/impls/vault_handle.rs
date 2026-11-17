@@ -51,33 +51,15 @@ impl Vault {
         match &self.inner.source {
             VaultSource::Local(_) => None,
             VaultSource::Account { info, .. } => Some(lock(info).clone()),
-            VaultSource::Version { info } | VaultSource::ServiceAccount { info } => Some(info.clone()),
+            VaultSource::Version { info } | VaultSource::ServiceAccount { info, .. } => Some(info.clone()),
         }
     }
 }
 
 impl Vault {
-    /// Keeps the working copy on this device, encrypted with the vault's newest key, as the pending
-    /// edits of the offline cache (SPEC §20). Local files and versions keep nothing.
+    /// Keeps the working copy on this device as the pending edits of the offline cache (SPEC §20).
+    /// Local files and versions keep nothing.
     pub(crate) async fn keep_edits_impl(&self) -> Result<(), OvError> {
-        let VaultSource::Account { account, info } = &self.inner.source else { return Ok(()) };
-        if !account.keeps_offline_data() {
-            return Ok(());
-        }
-        let vault_id = lock(info).id.clone();
-        let user = account.current_user().ok_or_else(|| super::util::signed_out("not signed in"))?;
-        let e = account.entry_offline(&vault_id).await?;
-        let key = super::vaults::newest_key(&e.keys)?;
-        let db = self.db().clone();
-        let bytes = ov_kdbx::write(&db, &ov_kdbx::vault::vault_credentials(&key.key)?)?;
-        let host = account.host();
-        let mut cached = host.cache.load(&user, &vault_id).await?.unwrap_or(crate::host::CachedVault {
-            state: Vec::new(),
-            base: lock(&self.inner.base).clone(),
-            pending: None,
-            autofill: None,
-        });
-        cached.pending = Some(bytes);
-        host.cache.save(&user, &vault_id, &cached).await
+        super::syncing::keep_edits(self).await
     }
 }

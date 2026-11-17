@@ -65,19 +65,16 @@ impl EventStream {
     /// The next event; `None` once the stream is closed. Connection errors while reconnecting are
     /// returned as `Err` and the stream keeps going.
     pub async fn next(&self, cancel: CancelToken) -> Result<Option<AccountEvent>, OvError> {
-        if self.inner.closed.load(std::sync::atomic::Ordering::SeqCst) {
-            return Ok(None);
-        }
-        crate::impls::sync_glue::next_event(self, &cancel).await
+        crate::impls::syncing::next_event(self, &cancel).await
     }
 
     /// Reconnects now (e.g. after the app returns to the foreground).
     pub fn reconnect(&self) {
-        self.inner.reconnect.store(true, std::sync::atomic::Ordering::SeqCst)
+        self.inner.stream.reconnect()
     }
 
     /// Closes the stream; pending and later [`next`](Self::next) calls return `None`.
     pub fn close(&self) {
-        self.inner.closed.store(true, std::sync::atomic::Ordering::SeqCst)
+        self.inner.stream.close()
     }
 }

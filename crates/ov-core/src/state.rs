@@ -14,8 +14,8 @@ use zeroize::Zeroizing;
 
 use crate::api::{ClientConfig, KdbxCredentials, ServerConfig, SyncConflict, VaultInfo};
 use crate::host::Host;
+use crate::impls::keyring::VaultEntry;
 use crate::impls::tokens::{SignedOutSignal, TokenManager};
-use crate::impls::vault_glue::VaultEntry;
 
 /// Behind [`OvClient`](crate::api::OvClient).
 pub(crate) struct ClientState {
@@ -39,8 +39,8 @@ pub(crate) struct AccountState {
 pub(crate) struct AccountInner {
     /// The unlocked keyset.
     pub(crate) keyset: Option<Keyset>,
-    /// Listed vaults with the keys this account holds (W2-V keyring).
-    pub(crate) vaults: HashMap<String, VaultEntry>,
+    /// Listed vaults with the keys this account holds.
+    pub(crate) vaults: ov_vault::Keyring,
     /// Working from the offline cache.
     pub(crate) offline: bool,
     /// Whose offline cache to drop when the session ends (the session is gone by then).
@@ -72,8 +72,8 @@ pub(crate) enum VaultSource {
     Account { account: crate::api::Account, info: Mutex<VaultInfo> },
     /// An old version from history (read-only).
     Version { info: VaultInfo },
-    /// A vault opened by a service account.
-    ServiceAccount { info: VaultInfo },
+    /// A vault opened by a service account (weak: the SA keeps its opened vaults).
+    ServiceAccount { sa: std::sync::Weak<ServiceAccountState>, info: VaultInfo },
 }
 
 /// Behind [`Vault`](crate::api::Vault).
@@ -85,18 +85,13 @@ pub(crate) struct VaultState {
     pub(crate) offline: AtomicBool,
     pub(crate) etag: Mutex<Option<String>>,
     pub(crate) conflicts: Mutex<Vec<SyncConflict>>,
-    /// The sync state as the core serialises it (W2-Y), when the vault has synced.
-    #[allow(dead_code)] // W2-Y: filled by ov_sync.
-    pub(crate) sync_state: Mutex<Option<Vec<u8>>>,
-    /// The server's bytes at the last sync (merge base).
-    pub(crate) base: Mutex<Option<Vec<u8>>>,
+    /// The sync session (state, pending edits, offline flag) of an account or SA vault.
+    pub(crate) session: futures::lock::Mutex<ov_sync::VaultSession>,
 }
 
 /// Behind [`ServiceAccount`](crate::api::ServiceAccount).
 pub(crate) struct ServiceAccountState {
     pub(crate) client: Arc<ClientState>,
-    #[allow(dead_code)] // W2-Y: the SA's sync needs the server config.
-    pub(crate) config: ServerConfig,
     pub(crate) auth: AuthApi,
     pub(crate) sync: SyncApi,
     pub(crate) sa_id: String,
@@ -123,6 +118,7 @@ pub(crate) struct SelfHostedState {
 
 /// Behind [`EventStream`](crate::api::EventStream).
 pub(crate) struct EventStreamState {
-    pub(crate) closed: AtomicBool,
-    pub(crate) reconnect: AtomicBool,
+    pub(crate) stream: ov_sync::EventStream,
+    /// The account that acts on `access` events (`None` for a self-hosted stream).
+    pub(crate) account: Option<crate::api::Account>,
 }

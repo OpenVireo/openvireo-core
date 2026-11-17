@@ -1,0 +1,412 @@
+//! Sync on the facade, over `ov-sync`: the token sources, account and service-account vault sync
+//! through `VaultSession`, self-hosted database sync, and the event streams.
+//!
+//! The Host has no timer, so the core never sleeps. When `ov_sync::EventStream` says
+//! `Waiting { retry_in_ms }`, [`EventStream::next`] returns `Err(network_error)` with
+//! `retry_after` (seconds, rounded up) and `details: {"retryInMs": n}`; the platform waits that long
+//! and calls `next` again (the contract's "connection errors while reconnecting are returned as
+//! `Err` and the stream keeps going").
+
+use std::sync::Arc;
+
+use ov_error::{OvError, OvErrorCode};
+use ov_kdbx::vault::{vault_credentials, KeyVersion};
+use ov_sync::{SessionSyncOptions, StreamItem, SyncClient, SyncEvent, TokenSource, VaultCache};
+use zeroize::Zeroizing;
+
+use super::convert::{merge_change, sync_conflict};
+use super::util::lock;
+use crate::api::{
+    Account, AccountEvent, CancelToken, EventStream, KdbxCredentials, SelfHosted, SelfHostedSyncResult, ServiceAccount,
+    SignedOutReason, SyncOptions, SyncOutcome, SyncReport, Vault,
+};
+use crate::state::VaultSource;
+
+/// The account's tokens for `ov-sync` (refreshing; a refused refresh ends the session here).
+pub(crate) struct AccountTokens(pub(crate) Account);
+
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+impl TokenSource for AccountTokens {
+    async fn access_token(&self, force_refresh: bool) -> Result<Option<String>, OvError> {
+        Ok(Some(self.0.access_token(force_refresh, &CancelToken::new()).await?.to_string()))
+    }
+}
+
+/// The token manager itself is a token source too (parked sessions, tests).
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+impl TokenSource for super::tokens::TokenManager {
+    async fn access_token(&self, force_refresh: bool) -> Result<Option<String>, OvError> {
+        Ok(Some(super::tokens::TokenManager::access_token(self, force_refresh, &CancelToken::new()).await?.to_string()))
+    }
+}
+
+/// A service account's JWT for `ov-sync` (re-exchanged before it expires).
+pub(crate) struct SaTokens(pub(crate) ServiceAccount);
+
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+impl TokenSource for SaTokens {
+    async fn access_token(&self, force_refresh: bool) -> Result<Option<String>, OvError> {
+        Ok(Some(self.0.access_token(force_refresh, &CancelToken::new()).await?.to_string()))
+    }
+}
+
+/// Wraps the facade's `CancelToken` for `ov-sync`.
+pub(crate) struct CancelWrap(pub(crate) CancelToken);
+
+impl ov_sync::Cancel for CancelWrap {
+    fn is_cancelled(&self) -> bool {
+        self.0.is_cancelled()
+    }
+}
+
+impl Account {
+    /// A sync client on the account's token.
+    pub(crate) fn sync_client(&self) -> SyncClient {
+        let h = self.host();
+        SyncClient::new(h.http.clone(), h.clock.clone(), self.inner.sync.clone(), Arc::new(AccountTokens(self.clone())))
+    }
+
+    /// The offline-cache record of a vault, when the cache is on.
+    pub(crate) fn vault_cache(&self, vault_id: &str) -> Option<VaultCache> {
+        let user = self.current_user()?;
+        self.keeps_offline_data().then(|| VaultCache::new(self.host().cache.clone(), user, vault_id))
+    }
+
+    fn note_clock(&self, offset: Option<i64>) {
+        if offset.is_some() {
+            lock(&self.inner.inner).clock_offset_ms = offset;
+        }
+    }
+}
+
+impl ServiceAccount {
+    pub(crate) fn sync_client(&self) -> SyncClient {
+        let h = &self.inner.client.host;
+        SyncClient::new(h.http.clone(), h.clock.clone(), self.inner.sync.clone(), Arc::new(SaTokens(self.clone())))
+    }
+}
+
+pub(crate) fn report(r: &ov_sync::SyncResult) -> SyncReport {
+    let conflicts: Vec<_> = r.conflicts.iter().map(sync_conflict).collect();
+    SyncReport {
+        outcome: match r.outcome {
+            ov_sync::SyncOutcome::Unchanged => SyncOutcome::Unchanged,
+            ov_sync::SyncOutcome::Pulled => SyncOutcome::Pulled,
+            ov_sync::SyncOutcome::Uploaded => SyncOutcome::Uploaded,
+            ov_sync::SyncOutcome::Created => SyncOutcome::Created,
+        },
+        conflicts,
+        changes: r.changes.iter().map(merge_change).collect(),
+        attempts: r.attempts,
+        etag: Some(r.state.etag.clone()).filter(|e| !e.is_empty()),
+        clock_offset_ms: r.clock_offset_ms,
+        clock_skewed: r.clock_skewed(),
+    }
+}
+
+/// The keys of the vault behind an account or SA vault handle, newest first.
+async fn vault_keys(v: &Vault) -> Result<(String, Vec<KeyVersion>), OvError> {
+    match &v.inner.source {
+        VaultSource::Account { account, info } => {
+            let id = lock(info).id.clone();
+            let e = account.entry_offline(&id).await?;
+            Ok((id, e.keys().to_vec()))
+        }
+        VaultSource::ServiceAccount { sa, info } => {
+            let sa = sa.upgrade().ok_or_else(|| super::util::signed_out("service account closed"))?;
+            let sa = ServiceAccount { inner: sa };
+            let e = sa.entry(&info.id, &CancelToken::new()).await?;
+            Ok((info.id.clone(), e.keys().to_vec()))
+        }
+        _ => Err(OvError::new(OvErrorCode::InvalidRequest, "this vault has no server")),
+    }
+}
+
+/// Syncs an account or SA vault (conditional PUT, merge and retry on 412), re-keying to `rekey_to`
+/// before the upload (rotation). The working copy, etag, conflicts and the account's clock offset
+/// follow the result. Offline, the working copy goes to the cache's pending edits.
+pub(crate) async fn sync_vault(
+    v: &Vault,
+    options: SyncOptions,
+    rekey_to: Option<&[u8; 32]>,
+    cancel: &CancelToken,
+) -> Result<SyncReport, OvError> {
+    cancel.check()?;
+    let (id, keys) = vault_keys(v).await?;
+    let client = match &v.inner.source {
+        VaultSource::Account { account, .. } => account.sync_client(),
+        VaultSource::ServiceAccount { sa, .. } => {
+            let sa = sa.upgrade().ok_or_else(|| super::util::signed_out("service account closed"))?;
+            ServiceAccount { inner: sa }.sync_client()
+        }
+        _ => return Err(OvError::new(OvErrorCode::InvalidRequest, "this vault has no server")),
+    };
+    let blob = client.vault(&id);
+    let mut session = v.inner.session.lock().await;
+    session.db = Some(v.db().clone());
+    if session.key.is_none() {
+        let newest = keys
+            .iter()
+            .max_by_key(|k| k.version)
+            .ok_or_else(|| OvError::new(OvErrorCode::NoVaultKey, "no vault key available"))?;
+        session.key = Some(vault_credentials(&newest.key)?);
+    }
+    let cw = CancelWrap(cancel.clone());
+    let rekey = rekey_to.map(|k| Zeroizing::new(k.to_vec()));
+    let opts = SessionSyncOptions {
+        local_changed: Some(options.local_changed),
+        accept_server_state: false,
+        rekey_to: rekey.as_deref().map(|k| &k[..]),
+        cancel: Some(&cw),
+    };
+    let result = session.sync(&blob, &keys, opts).await;
+    v.inner.offline.store(session.offline, std::sync::atomic::Ordering::SeqCst);
+    if let VaultSource::Account { account, .. } = &v.inner.source {
+        account.note_clock(blob.clock_offset_ms());
+        if let Err(e) = &result {
+            if e.is(OvErrorCode::SignedOut) && e.status.is_some() {
+                account.session_ended().await;
+            }
+            if e.is_unreachable() {
+                account.set_offline(true);
+            }
+        } else {
+            account.set_offline(false);
+        }
+    }
+    let r = result?;
+    if let Some(db) = &session.db {
+        *v.db() = db.clone();
+    }
+    *lock(&v.inner.etag) = Some(r.state.etag.clone());
+    let rep = report(&r);
+    *lock(&v.inner.conflicts) = rep.conflicts.clone();
+    Ok(rep)
+}
+
+/// Downloads (or, offline, opens this device's copy of) an account vault through a new session.
+pub(crate) async fn open_session(
+    account: &Account,
+    e: &super::keyring::VaultEntry,
+    cancel: &CancelToken,
+) -> Result<Vault, OvError> {
+    let v = super::vaults::new_vault(
+        VaultSource::Account { account: account.clone(), info: std::sync::Mutex::new(e.info.clone()) },
+        Some(account.host().clone()),
+        ov_kdbx::vault::create_kdbx("", 0)?,
+        false,
+        account.vault_cache(&e.info.id),
+    );
+    let client = account.sync_client();
+    let blob = client.vault(&e.info.id);
+    let cw = CancelWrap(cancel.clone());
+    let mut session = v.inner.session.lock().await;
+    let opts =
+        SessionSyncOptions { local_changed: None, accept_server_state: false, rekey_to: None, cancel: Some(&cw) };
+    match session.sync(&blob, e.keys(), opts).await {
+        Ok(r) => {
+            account.note_clock(blob.clock_offset_ms());
+            account.set_offline(false);
+            *lock(&v.inner.etag) = Some(r.state.etag.clone());
+            *lock(&v.inner.conflicts) = report(&r).conflicts;
+        }
+        Err(err) => {
+            if err.is(OvErrorCode::SignedOut) && err.status.is_some() {
+                account.session_ended().await;
+            }
+            if !(account.keeps_offline_data() && err.is_unreachable()) {
+                return Err(err);
+            }
+            session.open_local_copy(e.keys(), &e.info.name, &err).await?;
+            account.set_offline(true);
+        }
+    }
+    v.inner.offline.store(session.offline, std::sync::atomic::Ordering::SeqCst);
+    if let Some(db) = &session.db {
+        *v.db() = db.clone();
+    }
+    drop(session);
+    Ok(v)
+}
+
+/// Downloads a vault for a service account (no offline cache).
+pub(crate) async fn open_sa_session(
+    sa: &ServiceAccount,
+    e: &super::keyring::VaultEntry,
+    cancel: &CancelToken,
+) -> Result<Vault, OvError> {
+    let v = super::vaults::new_vault(
+        VaultSource::ServiceAccount { sa: Arc::downgrade(&sa.inner), info: e.info.clone() },
+        Some(sa.inner.client.host.clone()),
+        ov_kdbx::vault::create_kdbx("", 0)?,
+        false,
+        None,
+    );
+    let client = sa.sync_client();
+    let blob = client.vault(&e.info.id);
+    let cw = CancelWrap(cancel.clone());
+    let mut session = v.inner.session.lock().await;
+    let opts =
+        SessionSyncOptions { local_changed: None, accept_server_state: false, rekey_to: None, cancel: Some(&cw) };
+    let r = session.sync(&blob, e.keys(), opts).await?;
+    *lock(&v.inner.etag) = Some(r.state.etag.clone());
+    if let Some(db) = &session.db {
+        *v.db() = db.clone();
+    }
+    drop(session);
+    Ok(v)
+}
+
+/// One sync of a vault from its pending edits or the server's copy, re-keyed to `new_key` before
+/// the upload (rotation). `e` must already hold the new key.
+pub(crate) async fn rekey_sync(
+    account: &Account,
+    e: &super::keyring::VaultEntry,
+    new_key: &[u8],
+    cancel: &CancelToken,
+) -> Result<SyncReport, OvError> {
+    let client = account.sync_client();
+    let blob = client.vault(&e.info.id);
+    let cw = CancelWrap(cancel.clone());
+    let mut session = ov_sync::VaultSession::new(account.vault_cache(&e.info.id));
+    let opts = SessionSyncOptions {
+        local_changed: Some(true),
+        accept_server_state: false,
+        rekey_to: Some(new_key),
+        cancel: Some(&cw),
+    };
+    let r = session.sync(&blob, e.keys(), opts).await;
+    account.note_clock(blob.clock_offset_ms());
+    Ok(report(&r?))
+}
+
+/// Keeps the working copy as pending edits (Swift `keepEdits`).
+pub(crate) async fn keep_edits(v: &Vault) -> Result<(), OvError> {
+    if !matches!(v.inner.source, VaultSource::Account { .. }) {
+        return Ok(());
+    }
+    let (_, keys) = vault_keys(v).await?;
+    let mut session = v.inner.session.lock().await;
+    session.db = Some(v.db().clone());
+    if session.key.is_none() {
+        if let Some(k) = keys.iter().max_by_key(|k| k.version) {
+            session.key = Some(vault_credentials(&k.key)?);
+        }
+    }
+    session.keep_edits().await
+}
+
+/// Self-hosted whole-database sync (SPEC §13), the state kept in the BlobCache under the user
+/// `selfhosted:<url>`.
+pub(crate) async fn sync_database(
+    sh: &SelfHosted,
+    database_id: &str,
+    kdbx: &[u8],
+    credentials: &KdbxCredentials,
+    cancel: &CancelToken,
+) -> Result<SelfHostedSyncResult, OvError> {
+    cancel.check()?;
+    let host = &sh.inner.client.host;
+    let key = super::vaults::local_key(credentials)?;
+    let mut db = ov_kdbx::read(kdbx, &key)?;
+    let client = SyncClient::new(
+        host.http.clone(),
+        host.clock.clone(),
+        sh.inner.sync.clone(),
+        Arc::new(ov_sync::StaticToken(Some(sh.inner.token.to_string()))),
+    );
+    let blob = client.database(database_id);
+    let cache = VaultCache::new(host.cache.clone(), super::self_hosted::token_key(&sh.inner.server_url), database_id);
+    let state = cache.load_state().await?;
+    let creds = [key.clone()];
+    let cw = CancelWrap(cancel.clone());
+    let mut opts = ov_sync::SyncOptions::new(&key, &creds).state(state.as_ref());
+    opts.cancel = Some(&cw);
+    let r = ov_sync::sync_kdbx(&blob, &mut db, &opts).await?;
+    cache.save_state(&r.state).await?;
+    let out = ov_kdbx::write(&r.db, &r.key)?;
+    Ok(SelfHostedSyncResult { kdbx: out, report: report(&r) })
+}
+
+/// A new stream on a sync client.
+pub(crate) fn stream(client: SyncClient, account: Option<Account>) -> EventStream {
+    EventStream {
+        inner: Arc::new(crate::state::EventStreamState {
+            stream: ov_sync::EventStream::new(client, ov_sync::EventStreamOptions::default()),
+            account,
+        }),
+    }
+}
+
+fn rev(r: Option<i64>) -> Option<u64> {
+    r.and_then(|r| u64::try_from(r).ok())
+}
+
+/// The next event, after the account acted on it (`access`: refresh, reload the vault list,
+/// reconnect; deletion: end the session and close).
+pub(crate) async fn next_event(s: &EventStream, cancel: &CancelToken) -> Result<Option<AccountEvent>, OvError> {
+    loop {
+        cancel.check()?;
+        let item = {
+            let fut = s.inner.stream.next();
+            let c = cancel.cancelled();
+            futures::pin_mut!(fut, c);
+            match futures::future::select(fut, c).await {
+                futures::future::Either::Left((i, _)) => i,
+                futures::future::Either::Right(_) => return Err(OvError::new(OvErrorCode::Aborted, "cancelled")),
+            }
+        };
+        match item {
+            StreamItem::Connecting | StreamItem::Open => continue,
+            StreamItem::Closed { .. } => return Ok(None),
+            StreamItem::Waiting { retry_in_ms, error } => {
+                let base = error.unwrap_or_else(|| OvError::new(OvErrorCode::NetworkError, "the event stream ended"));
+                let mut e = OvError::new(OvErrorCode::NetworkError, base.message.clone());
+                e.status = base.status;
+                let secs = retry_in_ms.div_ceil(1000).min(u64::from(u32::MAX)) as u32;
+                return Err(e.with_retry_after(secs).with_details(format!("{{\"retryInMs\":{retry_in_ms}}}")));
+            }
+            StreamItem::Event(ev) => match ev {
+                SyncEvent::Vault { id, etag, revision, deleted } => {
+                    return Ok(Some(AccountEvent::VaultChanged {
+                        vault_id: id,
+                        etag,
+                        revision: rev(revision),
+                        deleted,
+                    }))
+                }
+                SyncEvent::Database { id, etag, revision, deleted } => {
+                    return Ok(Some(AccountEvent::DatabaseChanged {
+                        database_id: id,
+                        etag,
+                        revision: rev(revision),
+                        deleted,
+                    }))
+                }
+                SyncEvent::Access { change, at, .. } => {
+                    let Some(account) = &s.inner.account else { continue };
+                    let reason = match change.as_str() {
+                        "deletion_scheduled" => Some(SignedOutReason::DeletionScheduled),
+                        "account_deleted" => Some(SignedOutReason::AccountDeleted),
+                        _ => None,
+                    };
+                    if let Some(reason) = reason {
+                        s.inner.stream.close();
+                        if let Some(user) = account.user_id() {
+                            account.end_session(&user, reason).await?;
+                        }
+                        return Ok(Some(AccountEvent::SessionEnded { reason, at }));
+                    }
+                    account.refresh_token(cancel).await?;
+                    let vaults = account.load_vault_list(cancel).await?.0;
+                    s.inner.stream.reconnect();
+                    return Ok(Some(AccountEvent::VaultsChanged { vaults }));
+                }
+                SyncEvent::Unknown { .. } => continue,
+            },
+        }
+    }
+}

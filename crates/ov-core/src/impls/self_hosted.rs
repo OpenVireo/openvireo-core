@@ -1,6 +1,6 @@
 //! [`SelfHosted`] (SPEC §13 `standalone` mode), a port of the SDK's `self-hosted.ts`: a device token
 //! from a pairing code, kept in the SecureStore under `selfhosted:<url>`, and the legacy routes.
-//! Whole-database sync and the `event: database` stream are `ov-sync`'s (W2-Y).
+//! Whole-database sync and the `event: database` stream go through `ov-sync`.
 
 use std::sync::Arc;
 

@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ov_crypto::auk::{check_kdf_params, derive_auk, new_kdf_params_with, KDF_DEFAULTS};
-use ov_crypto::encoding::{b64u, ct_eq, from_b64u};
-use ov_crypto::keyset::{generate_keyset, keyset_from_secrets, trusted_public_keys, wrap_keyset};
+use ov_crypto::encoding::{b64u, from_b64u};
+use ov_crypto::keyset::{generate_keyset, wrap_keyset};
 use ov_crypto::secret_key::{format_secret_key, generate_secret_key};
 use ov_error::{OvError, OvErrorCode};
 use ov_protocol::auth::{parse_login_finish, parse_login_start, parse_register_start, parse_session};
@@ -260,19 +260,8 @@ impl Account {
     pub(crate) async fn resume_unlocked_impl(&self, secret: SecretBytes, cancel: &CancelToken) -> Result<(), OvError> {
         let secret = Zeroizing::new(secret);
         let session = self.inner.tokens.load().await?.ok_or_else(|| signed_out("not signed in"))?;
-        if secret.len() != 64 {
-            return Err(OvError::new(OvErrorCode::DecryptionFailed, "the sealed keyset has the wrong length"));
-        }
-        let mut enc = Zeroizing::new([0u8; 32]);
-        let mut sign = Zeroizing::new([0u8; 32]);
-        enc.copy_from_slice(&secret[..32]);
-        sign.copy_from_slice(&secret[32..]);
-        let ks = keyset_from_secrets(&enc, &sign);
         let (profile, offline) = self.unlock_profile(&session.user_id, cancel).await?;
-        let public = trusted_public_keys(&super::convert::crypto_wrapped(&profile.keyset).public())?;
-        if !ct_eq(&ks.public.enc_pk, &public.enc_pk) || !ct_eq(&ks.public.sign_pk, &public.sign_pk) {
-            return Err(OvError::new(OvErrorCode::InvalidPublicKeys, "the sealed keyset isn't this account's"));
-        }
+        let ks = ov_vault::resume_keyset(&secret, &ov_vault::keys::public_of_wrapped(&profile.keyset))?;
         if !offline {
             self.cache_profile(&session.user_id, &profile).await?;
         }

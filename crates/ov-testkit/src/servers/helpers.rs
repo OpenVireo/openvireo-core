@@ -48,22 +48,35 @@ impl TestServers {
         sync::store(&mut self.world(), &format!("databases/{id}"), data);
     }
 
+    fn rollback(&self, key: &str, to_revision: i64) {
+        let mut w = self.world();
+        if let Some(list) = w.sync.blobs.get_mut(key) {
+            list.retain(|v| v.revision <= to_revision);
+            if list.is_empty() {
+                w.sync.blobs.remove(key);
+            }
+        }
+    }
+
     /// The sync server was restored from a backup: the vault's versions after `to_revision` are
     /// gone (so its revision goes back), without any event. `to_revision` 0 drops them all.
     pub fn rollback_vault(&self, vault_id: &str, to_revision: i64) {
-        let key = format!("vaults/{vault_id}");
-        let mut w = self.world();
-        if let Some(list) = w.sync.blobs.get_mut(&key) {
-            list.retain(|v| v.revision <= to_revision);
-            if list.is_empty() {
-                w.sync.blobs.remove(&key);
-            }
-        }
+        self.rollback(&format!("vaults/{vault_id}"), to_revision);
+    }
+
+    /// [`rollback_vault`](Self::rollback_vault) for a legacy database.
+    pub fn rollback_database(&self, id: &str, to_revision: i64) {
+        self.rollback(&format!("databases/{id}"), to_revision);
     }
 
     /// The sync server lost the vault's blob and history, without any event.
     pub fn lose_vault(&self, vault_id: &str) {
         self.world().sync.blobs.remove(&format!("vaults/{vault_id}"));
+    }
+
+    /// The sync server lost a legacy database and its history, without any event.
+    pub fn lose_database(&self, id: &str) {
+        self.world().sync.blobs.remove(&format!("databases/{id}"));
     }
 
     /// The sync server lost every blob (a new, empty database), without any event.

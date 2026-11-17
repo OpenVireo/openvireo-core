@@ -187,8 +187,8 @@ impl std::fmt::Debug for BlobData {
     }
 }
 
-/// A hook run after the sync server answers a vault GET with 200, before the client can PUT
-/// ([`TestServers::set_after_get`]). It gets the servers and the vault id.
+/// A hook run after the sync server answers a vault or database GET with 200, before the client
+/// can PUT ([`TestServers::set_after_get`]). It gets the servers and the vault or database id.
 pub type AfterGet = Arc<dyn Fn(&TestServers, &str) + Send + Sync>;
 
 /// Everything both servers keep, behind one lock.
@@ -364,8 +364,9 @@ impl TestServers {
         self.world().live_access = live;
     }
 
-    /// Runs `hook` after every 200 GET of a vault blob (not HEAD), before the client can PUT: the
-    /// way to simulate another device uploading in between (TS `afterGet`). `None` removes it.
+    /// Runs `hook` after every 200 GET of a vault blob or legacy database (not HEAD), before the
+    /// client can PUT: the way to simulate another device uploading in between (TS `afterGet`).
+    /// The hook gets the vault or database id. `None` removes it.
     pub fn set_after_get(&self, hook: Option<AfterGet>) {
         *self.shared.after_get.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = hook;
     }
@@ -427,14 +428,15 @@ impl TestServers {
         let after_get = server == Server::Sync
             && req.method == Method::Get
             && res.status == 200
-            && route.as_deref() == Some("sync GET /vaults/{vault}");
+            && matches!(route.as_deref(), Some("sync GET /vaults/{vault}" | "sync GET /databases/{id}"));
         w.requests.push(Recorded { server, method: req.method, path: path.clone(), route, status: Some(res.status) });
         let res = self.finish(&w, req.method, res);
         drop(w);
         if after_get {
             let hook = self.shared.after_get.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
             if let Some(hook) = hook {
-                let id = http::percent_decode(path.trim_start_matches("/api/v1/vaults/"));
+                let rest = path.trim_start_matches("/api/v1/");
+                let id = http::percent_decode(rest.split_once('/').map_or(rest, |(_, id)| id));
                 hook(self, &id);
             }
         }

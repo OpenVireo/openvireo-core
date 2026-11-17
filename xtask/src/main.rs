@@ -299,7 +299,10 @@ fn unlinked() -> Result {
             return Err(format!("{}: no symbol names found, can't check", file.display()));
         }
         for (krate, advisory) in UNLINKED_CRATES {
-            if contains(&bytes, krate.as_bytes()) {
+            let defined =
+                symbols_mentioning(&bytes, krate).into_iter().filter(|sym| defined_in(sym, krate)).collect::<Vec<_>>();
+            if let Some(sym) = defined.first() {
+                eprintln!("{name}.wasm: {} function(s) defined in `{krate}`, e.g. {sym}", defined.len());
                 return Err(format!(
                     "{name}.wasm links code from `{krate}`, so the deny.toml ignore of {advisory} no longer holds"
                 ));
@@ -308,6 +311,62 @@ fn unlinked() -> Result {
         println!("{name}.wasm: no code from {}", UNLINKED_CRATES.map(|(k, _)| k).join(", "));
     }
     Ok(())
+}
+
+/// Every symbol name (a run of printable ASCII in the wasm name section) that mentions `krate`.
+fn symbols_mentioning(bytes: &[u8], krate: &str) -> Vec<String> {
+    let needle = krate.as_bytes();
+    let printable = |b: u8| b.is_ascii_graphic();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(pos) = bytes[i..].windows(needle.len()).position(|w| w == needle) {
+        let at = i + pos;
+        let start = bytes[..at].iter().rposition(|&b| !printable(b)).map_or(0, |p| p + 1);
+        let end = bytes[at..].iter().position(|&b| !printable(b)).map_or(bytes.len(), |p| at + p);
+        let sym = String::from_utf8_lossy(&bytes[start..end]).into_owned();
+        if !out.contains(&sym) {
+            out.push(sym);
+        }
+        i = end.max(at + 1);
+    }
+    out
+}
+
+/// Whether a mangled symbol is code *defined in* `krate`, not just generic code from another crate
+/// that `krate` instantiated (v0 names end with the instantiating crate, e.g. `subtle::black_box::<u8>`
+/// instantiated in crypto_bigint is `_RINvCs…_6subtle9black_boxhECs…_13crypto_bigint`).
+/// Legacy names: the path starts with the crate (`_ZN13crypto_bigint…`). v0 names: the first crate
+/// root (`C` + optional `s<disambiguator>_` + `<len><name>`) in the path is the defining crate.
+fn defined_in(sym: &str, krate: &str) -> bool {
+    let tagged = format!("{}{krate}", krate.len());
+    if let Some(rest) = sym.strip_prefix("_ZN").or_else(|| sym.strip_prefix("__ZN")) {
+        return rest.starts_with(&tagged);
+    }
+    let Some(v0) = sym.strip_prefix("_R").or_else(|| sym.strip_prefix("__R")) else {
+        // Not a mangled name (e.g. a data symbol or a demangled path): be strict.
+        return sym.contains(&format!("{krate}::")) || sym == krate;
+    };
+    let b = v0.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'C' {
+            let mut j = i + 1;
+            if b.get(j) == Some(&b's') {
+                while j < b.len() && b[j] != b'_' {
+                    j += 1;
+                }
+                j += 1;
+            }
+            let digits = b[j.min(b.len())..].iter().take_while(|c| c.is_ascii_digit()).count();
+            if digits > 0 {
+                let len: usize = v0[j..j + digits].parse().unwrap_or(0);
+                let name = v0.get(j + digits..j + digits + len).unwrap_or("");
+                return name == krate;
+            }
+        }
+        i += 1;
+    }
+    false
 }
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
@@ -334,4 +393,37 @@ fn size() -> Result {
         println!("{:<32} {:>12} {:>12}", format!("{name}.wasm"), bytes.len(), gz.len());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{defined_in, symbols_mentioning};
+
+    const K: &str = "crypto_bigint";
+
+    #[test]
+    fn generic_code_instantiated_by_the_crate_is_not_its_code() {
+        // The false positive W1-BW and W2-A hit: subtle::black_box::<u8>, instantiating crate crypto_bigint.
+        assert!(!defined_in("_RINvCs6rnVIDpdKnr_6subtle9black_boxhECs7c5HtyA5TvT_13crypto_bigint", K));
+        assert!(!defined_in("_RNvCs6rnVIDpdKnr_6subtle9black_box", K));
+        assert!(!defined_in("_ZN6subtle9black_box17h0123456789abcdefE", K));
+    }
+
+    #[test]
+    fn functions_defined_in_the_crate_are_found() {
+        assert!(defined_in("_ZN13crypto_bigint4uint3add17h0123456789abcdefE", K));
+        assert!(defined_in("_RNvNtNtCs1a2b3c_13crypto_bigint4uint3add7add_mod", K));
+        assert!(defined_in("_RNvMs_NtCs1a2b3c_13crypto_bigint4uintINtB4_4UintKj4_E7add_mod", K)); // inherent impl
+        assert!(defined_in("_RNvXs0_NtCs1a2b3c_13crypto_bigint4limbNtB5_4LimbNtNtCsX_4core3ops3Add3add", K)); // trait impl
+        assert!(defined_in("_RNvNtC13crypto_bigint4limb3add", K)); // crate root without disambiguator
+        assert!(defined_in("crypto_bigint::uint::Uint::add", K)); // already demangled
+    }
+
+    #[test]
+    fn symbols_are_cut_at_non_printable_bytes() {
+        let bytes = b"\x00\x05_RNvNtCs1_13crypto_bigint4limb3add\x01\x02other\x00_RINvCs2_6subtle9black_boxhECs3_13crypto_bigint\x00";
+        let syms = symbols_mentioning(bytes, K);
+        assert_eq!(syms.len(), 2);
+        assert_eq!(syms.iter().filter(|s| defined_in(s, K)).count(), 1);
+    }
 }

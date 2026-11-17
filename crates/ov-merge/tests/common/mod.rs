@@ -151,11 +151,7 @@ pub fn project(db: &Database) -> Projection {
     let not_default = |t: Timestamp| (t != t0).then(|| iso(t));
     let mut placed: Vec<(&Entry, &Group)> = Vec::new();
     let mut groups: Vec<ProjectedGroup> = Vec::new();
-    fn walk<'a>(
-        g: &'a Group,
-        placed: &mut Vec<(&'a Entry, &'a Group)>,
-        groups: &mut Vec<(&'a Group, &'a Group)>,
-    ) {
+    fn walk<'a>(g: &'a Group, placed: &mut Vec<(&'a Entry, &'a Group)>, groups: &mut Vec<(&'a Group, &'a Group)>) {
         placed.extend(g.entries.iter().map(|e| (e, g)));
         for c in &g.groups {
             groups.push((c, g));

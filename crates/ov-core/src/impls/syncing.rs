@@ -206,7 +206,13 @@ pub(crate) async fn open_session(
     let mut session = v.inner.session.lock().await;
     let opts =
         SessionSyncOptions { local_changed: None, accept_server_state: false, rekey_to: None, cancel: Some(&cw) };
-    match session.sync(&blob, e.keys(), opts).await {
+    let mut first = session.sync(&blob, e.keys(), opts).await;
+    if matches!(&first, Err(err) if err.is(OvErrorCode::Forbidden)) {
+        // A vault shared since the token was issued isn't in its `vlt` claim yet: refresh once.
+        account.refresh_token(cancel).await?;
+        first = session.sync(&blob, e.keys(), opts).await;
+    }
+    match first {
         Ok(r) => {
             account.note_clock(blob.clock_offset_ms());
             account.set_offline(false);

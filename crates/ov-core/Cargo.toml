@@ -29,6 +29,7 @@ zeroize.workspace = true
 ov-testkit = { path = "../ov-testkit" }
 ov-opaque = { path = "../ov-opaque", default-features = false, features = ["test-server"] }
 tokio = { workspace = true }
+base64.workspace = true
 
 [lints]
 workspace = true

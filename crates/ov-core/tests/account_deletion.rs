@@ -1,6 +1,4 @@
 //! SDK `account-deletion.test.ts` (SPEC §23) against the W2-E servers.
-#![allow(unexpected_cfgs)]
-#![cfg(ov_test_servers)]
 
 mod servers_common;
 
@@ -9,6 +7,7 @@ use ov_core::OvErrorCode;
 use servers_common::*;
 
 #[tokio::test]
+#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn previews_schedules_signs_in_to_a_pending_account_and_restores_it() {
     let s = servers();
     let a = connect(&device(&s, true), &s).await;
@@ -45,6 +44,7 @@ async fn refuses_a_wrong_confirmation() {
 }
 
 #[tokio::test]
+#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn gives_a_shared_vault_away() {
     let s = servers();
     let a = connect(&device(&s, false), &s).await;

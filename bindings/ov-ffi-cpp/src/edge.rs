@@ -84,6 +84,26 @@ where
     })
 }
 
+/// [`edge_blocking`] with the caller's token, which is also handed to the core call.
+pub(crate) fn run<T, F>(
+    cancel: &crate::handles::CancelToken,
+    make: impl FnOnce(CancelToken) -> F,
+) -> Result<T, FfiError>
+where
+    F: Future<Output = Result<T, OvError>>,
+{
+    let c = cancel.0.clone();
+    edge_blocking(&cancel.0, move || make(c))
+}
+
+/// [`edge_blocking`] for an async core call that takes no token (local store reads and writes).
+pub(crate) fn block<T, F>(make: impl FnOnce() -> F) -> Result<T, FfiError>
+where
+    F: Future<Output = Result<T, OvError>>,
+{
+    edge_blocking(&CancelToken::new(), make)
+}
+
 /// Maps an exception a C++ Host method threw. A `what()` that starts with a wire code and `": "`
 /// keeps that code; anything else is `internal`.
 pub(crate) fn host_exception(e: cxx::Exception) -> OvError {

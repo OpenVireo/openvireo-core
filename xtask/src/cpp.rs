@@ -2,7 +2,12 @@
 //!
 //! ```text
 //! cargo xtask cpp [--target <triple>]... [--out <dir>] [--debug]
+//! cargo xtask cpp --check-coverage
 //! ```
+//!
+//! `--check-coverage` builds nothing: it runs `bindings/ov-ffi-cpp/tests/coverage.rs`, which lists
+//! every public method and free function of `ov_core::api` without a bridged C++ function, and
+//! fails unless there are none.
 //!
 //! Builds `bindings/ov-ffi-cpp` as a static library and lays out one CMake package per target:
 //!
@@ -41,6 +46,12 @@ struct Options {
 }
 
 pub fn run(args: &[String]) -> Result {
+    if args.iter().any(|a| a == "--check-coverage") {
+        if args.len() != 1 {
+            return Err("--check-coverage takes no other arguments".into());
+        }
+        return check_coverage();
+    }
     let opts = parse(args)?;
     let version = core_version()?;
     for target in &opts.targets {
@@ -82,6 +93,13 @@ pub fn run(args: &[String]) -> Result {
     Ok(())
 }
 
+/// Runs the bridge coverage test with its report printed.
+fn check_coverage() -> Result {
+    let mut cmd = cargo();
+    cmd.args(["test", "--locked", "-p", PACKAGE, "--test", "coverage", "--", "--nocapture", "--test-threads=1"]);
+    crate::run("bridge coverage (ov_core::api vs bindings/ov-ffi-cpp/src/lib.rs)", &mut cmd)
+}
+
 fn parse(args: &[String]) -> Result<Options> {
     let mut targets = Vec::new();
     let mut out = root().join("target").join("ovcore-cpp");
@@ -97,6 +115,7 @@ fn parse(args: &[String]) -> Result<Options> {
             "--debug" => release = false,
             "-h" | "--help" => {
                 return Err("usage: cargo xtask cpp [--target <triple>]... [--out <dir>] [--debug]\n\
+                     \x20      cargo xtask cpp --check-coverage\n\
                      targets: universal-apple-darwin (macOS host), x86_64/aarch64-pc-windows-msvc,\n\
                      x86_64/aarch64-unknown-linux-gnu, or any triple rustup knows"
                     .into())

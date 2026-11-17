@@ -10,20 +10,31 @@
 //!   call throws `rust::Error` in C++; `ov::call()` (in `include/ovcore.h`) turns it into an
 //!   `ov::Error` carrying the whole OvError, read from `ffi::take_last_error`.
 //!
-//! `README.md` lists which facade methods are bridged so far.
+//! Every public method and free function of `ov_core::api` is bridged (`tests/coverage.rs` checks
+//! it); `README.md` lists the one deliberate exclusion.
 
 #![warn(missing_docs)]
 
+mod account_ext;
 mod convert;
 mod edge;
 mod handles;
 pub mod host;
+mod more;
 mod primitives;
+mod records;
 
 pub use edge::FfiError;
 pub use handles::{
     new_cancel_token, new_client, vault_create_local, vault_open_local, Account, CancelToken, Client, EventStream,
     LoginStep, TotpChallenge, Vault,
+};
+
+pub use more::{
+    default_share_fields, deletion_expired, entry_totp_uri, item_share_payload, parse_totp_uri, plan_has,
+    plan_has_billing, plan_limit, platform_as_str, self_hosted_connect, self_hosted_pair, self_hosted_restore,
+    service_account_from_token, shareable_fields, text_share_payload, totp_code, RestoredSelfHosted, SelfHosted,
+    ServiceAccount,
 };
 
 use edge::take_last_error;
@@ -354,6 +365,826 @@ pub mod ffi {
         at: String,
     }
 
+    // ------------------------------------------------------------------ optional results
+    //
+    // cxx can't return `Option<T>`; these carry a `has` flag instead. `Option<String>` results are
+    // an empty string.
+
+    /// An optional byte string (a secret when the call says so: wipe it with ov::wipe).
+    #[derive(Clone, Default)]
+    struct OptionalBytes {
+        has: bool,
+        value: Vec<u8>,
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    struct OptionalU64 {
+        has: bool,
+        value: u64,
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    struct OptionalI64 {
+        has: bool,
+        value: i64,
+    }
+
+    /// An optional OvError (`TotpChallenge::last_error`).
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct OptionalError {
+        has: bool,
+        error: ErrorInfo,
+    }
+
+    /// One byte string in a list (cxx has no `Vec<Vec<u8>>`).
+    #[derive(Clone, Default)]
+    struct Bytes {
+        value: Vec<u8>,
+    }
+
+    // ------------------------------------------------------------------ crypto, sessions
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct KdfParams {
+        alg: String,
+        salt: String,
+        m: u32,
+        t: u32,
+        p: u32,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct OptionalKdfParams {
+        has: bool,
+        value: KdfParams,
+    }
+
+    /// Rust `KdfOverrides`; all `has_*` false means the defaults (Rust `None`).
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    struct KdfOverrides {
+        has_m: bool,
+        m: u32,
+        has_t: bool,
+        t: u32,
+        has_p: bool,
+        p: u32,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct PublicKeys {
+        enc_pk: Vec<u8>,
+        sign_pk: Vec<u8>,
+        sig: Vec<u8>,
+        fingerprint: String,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct StoredSession {
+        issuer: String,
+        user_id: String,
+        email: String,
+        device_id: String,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct OptionalStoredSession {
+        has: bool,
+        value: StoredSession,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ParkedCheck {
+        Valid,
+        Ended,
+        NoAnswer,
+    }
+
+    /// Rust `RegisterInput`. The password moves into the core, which wipes it.
+    struct RegisterInput {
+        email: String,
+        password: Vec<u8>,
+        kdf: KdfOverrides,
+        trust_device: bool,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct EmergencyKit {
+        email: String,
+        issuer: String,
+        web: String,
+    }
+
+    /// Rust `NewAccount` (also the result of `recover`). Wipe `secret_key` and `auk` when done.
+    struct NewAccount {
+        user_id: String,
+        secret_key: Vec<u8>,
+        emergency_kit: EmergencyKit,
+        auk: Vec<u8>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct ReconnectResult {
+        vaults: Vec<VaultInfo>,
+        dropped: Vec<String>,
+    }
+
+    /// Rust `Option<Vec<VaultInfo>>` (`Account::cached_vaults`).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct OptionalVaultList {
+        has: bool,
+        vaults: Vec<VaultInfo>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct OptionalVaultInfo {
+        has: bool,
+        value: VaultInfo,
+    }
+
+    /// Rust `Option<HttpRequest>` (`Account::sign_out_on_unload`).
+    #[derive(Clone)]
+    struct OptionalHttpRequest {
+        has: bool,
+        value: HttpRequest,
+    }
+
+    // ---------------------------------------------------------------- settings (§16, §8)
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct PlanLimit {
+        name: String,
+        has_value: bool,
+        /// `-1` or no value means unlimited, as in Rust.
+        value: i64,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct Billing {
+        source: String,
+        interval: String,
+        status: String,
+        renews_at: String,
+        ends_at: String,
+        manage: String,
+    }
+
+    /// Rust `Plan`. Its helpers are the free functions `plan_limit`, `plan_has`, `plan_has_billing`.
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct Plan {
+        /// Empty on a server without billing.
+        id: String,
+        limits: Vec<PlanLimit>,
+        has_billing: bool,
+        billing: Billing,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct OptionalPlan {
+        has: bool,
+        value: Plan,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum OrgRole {
+        Owner,
+        Admin,
+        Member,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum MemberStatus {
+        Invited,
+        Accepted,
+        Confirmed,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ShareLinkPolicy {
+        On,
+        Managers,
+        Off,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct OrgMembership {
+        id: String,
+        name: String,
+        role: OrgRole,
+        status: MemberStatus,
+        has_plan: bool,
+        plan: Plan,
+        has_item_share_links: bool,
+        item_share_links: ShareLinkPolicy,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct Profile {
+        id: String,
+        email: String,
+        name: String,
+        totp_enabled: bool,
+        has_plan: bool,
+        plan: Plan,
+        orgs: Vec<OrgMembership>,
+        deletion_scheduled_for: String,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct Device {
+        id: String,
+        name: String,
+        platform: String,
+        created_at: String,
+        last_seen_at: String,
+        current: bool,
+    }
+
+    /// Rust `TotpSetup`. Wipe both when done.
+    #[derive(Clone)]
+    struct TotpSetup {
+        secret: Vec<u8>,
+        uri: Vec<u8>,
+    }
+
+    // ----------------------------------------------------------- recovery (§18), deletion (§23)
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct RecoveryReset {
+        email: String,
+        not_before: String,
+        expires_at: String,
+        archive_days: u32,
+        personal_vaults: u32,
+        shared_grants: u32,
+        sole_admin_orgs: Vec<String>,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct RecoveryStatus {
+        archived: bool,
+        email: String,
+        expires_at: String,
+        has_vaults: bool,
+        vaults: u32,
+        locked: bool,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct DeletionShare {
+        principal: String,
+        display: String,
+        role: VaultRole,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct DeletionVault {
+        id: String,
+        name: String,
+        shared_with: Vec<DeletionShare>,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum DeletionOutcome {
+        Leave,
+        Delete,
+        Blocked,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct DeletionCandidate {
+        id: String,
+        email: String,
+        role: OrgRole,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct DeletionOrg {
+        id: String,
+        name: String,
+        role: OrgRole,
+        outcome: DeletionOutcome,
+        members: Vec<DeletionCandidate>,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct DeletionSubscription {
+        plan: String,
+        period_end: String,
+        source: String,
+        manage: String,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct DeletionPreview {
+        scheduled_for: String,
+        erase_on: String,
+        vaults: Vec<DeletionVault>,
+        orgs: Vec<DeletionOrg>,
+        has_subscription: bool,
+        subscription: DeletionSubscription,
+        share_links: u32,
+        blocked: bool,
+    }
+
+    // -------------------------------------------------------------------------- plans (§19)
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct AppleEligibility {
+        eligible: bool,
+        reason: String,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct AppleTransactionResult {
+        subject: String,
+        plan: Plan,
+    }
+
+    // ------------------------------------------------------------------ vaults, history
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct VaultVersion {
+        revision: u64,
+        etag: String,
+        has_size: bool,
+        size: u64,
+        saved_at: String,
+        is_current: bool,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct BlobMeta {
+        id: String,
+        etag: String,
+        revision: u64,
+        size: u64,
+        updated_at: String,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ImportModeKind {
+        NewVault,
+        Merge,
+        Copies,
+    }
+
+    /// Rust `ImportMode`: `NewVault` uses `name` and `org_id` (empty = none); `Merge` and `Copies`
+    /// use `vault_id`.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct ImportMode {
+        kind: ImportModeKind,
+        name: String,
+        org_id: String,
+        vault_id: String,
+    }
+
+    /// Rust `ImportOutcome`.
+    struct ImportOutcome {
+        vault: Box<Vault>,
+        uploaded: bool,
+        has_upload_error: bool,
+        upload_error: ErrorInfo,
+        has_report: bool,
+        report: SyncReport,
+    }
+
+    /// One string field of an entry. Wipe `value` when done.
+    #[derive(Clone)]
+    struct FieldRecord {
+        name: String,
+        value: Vec<u8>,
+        /// Rust `protected` (a C++ keyword).
+        is_protected: bool,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct AttachmentInfo {
+        name: String,
+        size: u64,
+    }
+
+    /// Rust `EntryRecord`.
+    #[derive(Clone)]
+    struct EntryRecord {
+        id: String,
+        group_id: String,
+        group_path: Vec<String>,
+        fields: Vec<FieldRecord>,
+        tags: Vec<String>,
+        icon_id: u32,
+        custom_icon: String,
+        foreground_color: String,
+        background_color: String,
+        override_url: String,
+        created_at: i64,
+        modified_at: i64,
+        has_expires_at: bool,
+        expires_at: i64,
+        attachments: Vec<AttachmentInfo>,
+        history_count: u32,
+        quality_check: bool,
+    }
+
+    #[derive(Clone)]
+    struct AutoFillEdit {
+        entry: EntryRecord,
+        group_path: String,
+    }
+
+    #[derive(Clone, Default)]
+    struct AutoFillEdits {
+        vault_id: String,
+        entries: Vec<AutoFillEdit>,
+        version: String,
+    }
+
+    #[derive(Clone, Default)]
+    struct OptionalAutoFillEdits {
+        has: bool,
+        value: AutoFillEdits,
+    }
+
+    /// Rust `FieldInput`. `has_protected == false` uses the default for the field.
+    struct FieldInput {
+        name: String,
+        value: Vec<u8>,
+        has_protected: bool,
+        is_protected: bool,
+    }
+
+    /// `Keep`, `Never` or `At` (for `EntryExpiry` and `ExpiryChange`).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ExpiryKind {
+        Keep,
+        Never,
+        At,
+    }
+
+    /// Rust `EntryExpiry`; `at` (Unix seconds) is read for `At`.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct EntryExpiry {
+        kind: ExpiryKind,
+        at: i64,
+    }
+
+    /// Rust `EntryInput`.
+    struct EntryInput {
+        fields: Vec<FieldInput>,
+        remove_fields: Vec<String>,
+        has_tags: bool,
+        tags: Vec<String>,
+        has_icon_id: bool,
+        icon_id: u32,
+        expiry: EntryExpiry,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum CreateMode {
+        MustExist,
+        CreateIfMissing,
+        CreateOnly,
+    }
+
+    #[derive(Clone)]
+    struct SetFieldsResult {
+        entry: EntryRecord,
+        created: bool,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum VersionDifference {
+        Same,
+        Changed,
+        Deleted,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ExportFormat {
+        Csv,
+        Json,
+    }
+
+    // ------------------------------------------------------------- sharing, orgs (§7, §12)
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct VaultMember {
+        principal: String,
+        role: VaultRole,
+        display: String,
+        key_version: u32,
+        is_you: bool,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct ShareRecipient {
+        principal: String,
+        email: String,
+        name: String,
+        public_keys: PublicKeys,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum GranteeKind {
+        Email,
+        Principal,
+    }
+
+    /// Rust `Grantee`: an email or a principal (`user:<id>`, `sa:<id>`) in `value`.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct Grantee {
+        kind: GranteeKind,
+        value: String,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct GrantResult {
+        principal: String,
+        fingerprint: String,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct VaultGrantRequest {
+        vault_id: String,
+        role: VaultRole,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct Org {
+        id: String,
+        name: String,
+        role: OrgRole,
+        has_plan: bool,
+        plan: Plan,
+        has_item_share_links: bool,
+        item_share_links: ShareLinkPolicy,
+        created_at: String,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct Member {
+        user_id: String,
+        email: String,
+        name: String,
+        role: OrgRole,
+        status: MemberStatus,
+        has_public_keys: bool,
+        public_keys: PublicKeys,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct Invitation {
+        id: String,
+        email: String,
+        role: OrgRole,
+        expires_at: String,
+        invited_by: String,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct RotationFailure {
+        vault_id: String,
+        error: ErrorInfo,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct RotationReport {
+        rotated: Vec<String>,
+        failed: Vec<RotationFailure>,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct AuditEvent {
+        id: String,
+        at: String,
+        actor: String,
+        action: String,
+        target: String,
+        ip: String,
+        /// A JSON object string, or empty.
+        details: String,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct AuditPage {
+        events: Vec<AuditEvent>,
+        /// The cursor for the next page, or empty.
+        next: String,
+    }
+
+    // --------------------------------------------------------- service accounts (§9, §15)
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct ServiceAccountInfo {
+        id: String,
+        org_id: String,
+        name: String,
+        has_public_keys: bool,
+        public_keys: PublicKeys,
+        created_by: String,
+        created_at: String,
+        expires_at: String,
+        disabled: bool,
+    }
+
+    /// Rust `NewServiceAccount`; empty strings are `None`.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct NewServiceAccount {
+        name: String,
+        vaults: Vec<VaultGrantRequest>,
+        expires_at: String,
+        secret_name: String,
+    }
+
+    /// Rust `CreatedServiceAccount`. Show `token` once, then wipe it.
+    struct CreatedServiceAccount {
+        service_account: ServiceAccountInfo,
+        token: Vec<u8>,
+    }
+
+    /// Rust `IssuedSecret`. Show `token` once, then wipe it.
+    struct IssuedSecret {
+        token: Vec<u8>,
+        id: String,
+        prefix: String,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct SaSecretInfo {
+        id: String,
+        prefix: String,
+        name: String,
+        created_at: String,
+        last_used_at: String,
+        expires_at: String,
+    }
+
+    /// Rust `ExpiryChange`; `at` (RFC 3339) is read for `At`.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct ExpiryChange {
+        kind: ExpiryKind,
+        at: String,
+    }
+
+    /// Rust `ServiceAccountUpdate`; an empty `name` keeps it.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct ServiceAccountUpdate {
+        name: String,
+        expires_at: ExpiryChange,
+        has_disabled: bool,
+        disabled: bool,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct SaVault {
+        id: String,
+        name: String,
+        role: VaultRole,
+    }
+
+    /// Rust `Injected`. Wipe `text` and every secret when done.
+    struct Injected {
+        text: Vec<u8>,
+        secrets: Vec<Bytes>,
+    }
+
+    // ------------------------------------------------------------------ self-hosted (§13)
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct PairingCode {
+        code: String,
+        expires_at: String,
+    }
+
+    /// Rust `SelfHostedSyncResult`: save `kdbx` as the local file.
+    struct SelfHostedSyncResult {
+        kdbx: Vec<u8>,
+        report: SyncReport,
+    }
+
+    // ------------------------------------------------------------------ share links (§22)
+
+    /// Rust `ShareOptions`; empty `vault_id` / `entry_id` are `None` (text shares).
+    struct ShareOptions {
+        expires_in: u32,
+        has_max_opens: bool,
+        max_opens: u32,
+        has_passcode: bool,
+        passcode: Vec<u8>,
+        vault_id: String,
+        entry_id: String,
+    }
+
+    /// Rust `CreatedShare`. `url` holds the key in its fragment: treat it as a secret.
+    struct CreatedShare {
+        id: String,
+        url: Vec<u8>,
+        expires_at: String,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct ShareRef {
+        vault: String,
+        entry: String,
+        title: String,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct ShareListing {
+        id: String,
+        vault_id: String,
+        has_reference: bool,
+        reference: ShareRef,
+        passcode: bool,
+        has_max_opens: bool,
+        max_opens: u32,
+        opens: u32,
+        opened_at: Vec<String>,
+        created_at: String,
+        expires_at: String,
+        status: String,
+        ended_at: String,
+        end_reason: String,
+    }
+
+    #[derive(Clone)]
+    struct ShareField {
+        k: String,
+        label: String,
+        value: Vec<u8>,
+        is_protected: bool,
+    }
+
+    /// Rust `SharePayload`; empty `title` / `shared_by` are `None`.
+    #[derive(Clone)]
+    struct SharePayload {
+        v: u32,
+        kind: String,
+        title: String,
+        shared_by: String,
+        fields: Vec<ShareField>,
+    }
+
+    #[derive(Clone)]
+    struct ShareableField {
+        name: String,
+        kind: String,
+        label: String,
+        value: Vec<u8>,
+        is_protected: bool,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct ShareInfo {
+        expires_at: String,
+        has_opens_left: bool,
+        opens_left: u32,
+        has_kdf: bool,
+        kdf: KdfParams,
+    }
+
+    /// The link and optional parts of `OvClient::open_share`. `passcode` is read when `has_passcode`,
+    /// `info` (from `share_info`, saves a request) when `has_info`. Both secrets move into the core.
+    struct OpenShareInput {
+        link: Vec<u8>,
+        has_passcode: bool,
+        passcode: Vec<u8>,
+        has_info: bool,
+        info: ShareInfo,
+    }
+
+    #[derive(Clone)]
+    struct OpenedShare {
+        payload: SharePayload,
+        has_opens_left: bool,
+        opens_left: u32,
+    }
+
+    // ------------------------------------------------------------------------------ TOTP
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum TotpAlgorithm {
+        Sha1,
+        Sha256,
+        Sha512,
+    }
+
+    /// Rust `TotpParams`; an empty `encoder` is `None`. Wipe `secret` when done.
+    #[derive(Clone)]
+    struct TotpParams {
+        secret: Vec<u8>,
+        digits: u32,
+        period: u32,
+        algorithm: TotpAlgorithm,
+        encoder: String,
+    }
+
+    /// Rust `TotpCode`. Wipe `code` when done.
+    #[derive(Clone)]
+    struct TotpCode {
+        code: Vec<u8>,
+        remaining: u32,
+    }
+
     // ------------------------------------------------------------------- the Host, in C++
 
     unsafe extern "C++" {
@@ -491,13 +1322,388 @@ pub mod ffi {
             cancel: &CancelToken,
         ) -> Result<SyncReport>;
         fn sync(self: &Vault, local_changed: bool, cancel: &CancelToken) -> Result<SyncReport>;
-        /// Every group.
-        fn export_kdbx(self: &Vault, credentials: KdbxCredentials, cancel: &CancelToken) -> Result<Vec<u8>>;
+        /// An empty `group_ids` exports every group.
+        fn export_kdbx(
+            self: &Vault,
+            credentials: KdbxCredentials,
+            group_ids: Vec<String>,
+            cancel: &CancelToken,
+        ) -> Result<Vec<u8>>;
 
         // ---- EventStream
         type EventStream;
         fn next(self: &EventStream, cancel: &CancelToken) -> Result<AccountEvent>;
         fn reconnect(self: &EventStream) -> Result<()>;
         fn close(self: &EventStream) -> Result<()>;
+
+        // ---- facade free functions and record helpers
+        /// `Platform::as_str`: the wire name, e.g. `qt-macos`.
+        fn platform_as_str(platform: Platform) -> Result<String>;
+        /// `Plan::limit`: the limit's value; `has == false` when absent or unlimited.
+        fn plan_limit(plan: &Plan, name: &str) -> Result<OptionalI64>;
+        /// `Plan::has`.
+        fn plan_has(plan: &Plan, name: &str) -> Result<bool>;
+        /// `Plan::has_billing`.
+        fn plan_has_billing(plan: &Plan) -> Result<bool>;
+        /// An empty `scheduled_for` is none.
+        fn deletion_expired(scheduled_for: &str, now_ms: i64) -> Result<bool>;
+        fn default_share_fields() -> Result<Vec<String>>;
+        fn shareable_fields(entry: &EntryRecord) -> Result<Vec<ShareableField>>;
+        fn item_share_payload(entry: &EntryRecord, names: Vec<String>, shared_by: &str) -> Result<SharePayload>;
+        fn text_share_payload(text: Vec<u8>, title: &str, shared_by: &str) -> Result<SharePayload>;
+        fn parse_totp_uri(uri: Vec<u8>) -> Result<TotpParams>;
+        fn totp_code(params: TotpParams, now_ms: i64) -> Result<TotpCode>;
+        fn entry_totp_uri(fields: Vec<FieldRecord>, label: &str) -> Result<OptionalBytes>;
+
+        // ---- CancelToken (more)
+        /// `aborted` once cancelled.
+        fn check(self: &CancelToken) -> Result<()>;
+
+        // ---- OvClient (more)
+        fn config(self: &Client) -> Result<ClientConfig>;
+        fn remember_account(self: &Client, email: &str, issuer: &str, user_id: &str) -> Result<()>;
+        /// An empty `at` clears it.
+        fn set_remembered_deletion(self: &Client, issuer: &str, user_id: &str, at: &str) -> Result<()>;
+        fn mark_remembered_checked(self: &Client, issuer: &str, user_id: &str) -> Result<()>;
+        fn share_info(self: &Client, api: &str, share_id: &str, cancel: &CancelToken) -> Result<ShareInfo>;
+        fn open_share(self: &Client, api: &str, input: OpenShareInput, cancel: &CancelToken) -> Result<OpenedShare>;
+
+        // ---- TotpChallenge (more)
+        fn last_error(self: &TotpChallenge) -> Result<OptionalError>;
+
+        // ---- Account: state and sessions
+        /// Empty when not pending deletion.
+        fn deletion_scheduled_for(self: &Account) -> Result<String>;
+        fn principal(self: &Account) -> Result<String>;
+        fn fingerprint(self: &Account) -> Result<String>;
+        fn clock_offset_ms(self: &Account) -> Result<OptionalI64>;
+        fn stored_session(self: &Account) -> Result<OptionalStoredSession>;
+        fn verify_session(self: &Account, cancel: &CancelToken) -> Result<()>;
+        /// Blocks until the server ends this session; loop on it from a worker.
+        fn signed_out(self: &Account, cancel: &CancelToken) -> Result<SignedOutReason>;
+        fn has_secret_key(self: &Account, email: &str) -> Result<bool>;
+        fn stored_secret_key(self: &Account, email: &str) -> Result<OptionalBytes>;
+        /// Rust `Account::register` (`register` is a C++ keyword).
+        fn register_account(self: &Account, input: RegisterInput, cancel: &CancelToken) -> Result<NewAccount>;
+        fn unlock_with_auk(self: &Account, auk: Vec<u8>, cancel: &CancelToken) -> Result<()>;
+        fn unlocked_keyset_secret(self: &Account) -> Result<Vec<u8>>;
+        fn resume_unlocked(self: &Account, keyset_secret: Vec<u8>, cancel: &CancelToken) -> Result<()>;
+        fn sign_out_on_unload(self: &Account) -> Result<OptionalHttpRequest>;
+        fn forget_device(self: &Account, email: &str) -> Result<()>;
+        fn reconnect(self: &Account, cancel: &CancelToken) -> Result<ReconnectResult>;
+        fn cached_kdf(self: &Account) -> Result<OptionalKdfParams>;
+        fn park_session(self: &Account) -> Result<bool>;
+        fn resume_session(self: &Account, user_id: &str) -> Result<bool>;
+        fn check_parked_session(self: &Account, user_id: &str, cancel: &CancelToken) -> Result<ParkedCheck>;
+        fn sign_out_parked(self: &Account, user_id: &str, cancel: &CancelToken) -> Result<()>;
+
+        // ---- Account: vaults, history, AutoFill
+        fn cached_vaults(self: &Account) -> Result<OptionalVaultList>;
+        fn open_offline(self: &Account, vault_id: &str) -> Result<Box<Vault>>;
+        fn open_copy(self: &Account, vault_id: &str) -> Result<Box<Vault>>;
+        /// An empty `org_id` makes a personal vault.
+        fn create_vault(self: &Account, name: &str, org_id: &str, cancel: &CancelToken) -> Result<Box<Vault>>;
+        fn import_kdbx(
+            self: &Account,
+            kdbx: Vec<u8>,
+            credentials: KdbxCredentials,
+            mode: &ImportMode,
+            cancel: &CancelToken,
+        ) -> Result<ImportOutcome>;
+        fn import_vault(
+            self: &Account,
+            source: &Vault,
+            mode: &ImportMode,
+            cancel: &CancelToken,
+        ) -> Result<ImportOutcome>;
+        fn rename_vault(self: &Account, vault_id: &str, name: &str, cancel: &CancelToken) -> Result<VaultInfo>;
+        fn delete_vault(self: &Account, vault_id: &str, cancel: &CancelToken) -> Result<()>;
+        fn has_any_pending_edits(self: &Account) -> Result<bool>;
+        fn has_pending_edits(self: &Account, vault_id: &str) -> Result<bool>;
+        fn vault_history(self: &Account, vault_id: &str, cancel: &CancelToken) -> Result<Vec<VaultVersion>>;
+        fn open_vault_version(
+            self: &Account,
+            vault_id: &str,
+            revision: u64,
+            cancel: &CancelToken,
+        ) -> Result<Box<Vault>>;
+        fn keep_autofill_edit(self: &Account, vault_id: &str, entry: &EntryRecord, group_path: &str) -> Result<()>;
+        fn autofill_edits(self: &Account, vault_id: &str) -> Result<OptionalAutoFillEdits>;
+        fn clear_autofill_edits(self: &Account, edits: &AutoFillEdits) -> Result<()>;
+
+        // ---- Account: settings, two-step, devices (§16, §8)
+        fn me(self: &Account, cancel: &CancelToken) -> Result<Profile>;
+        /// Returns the new AUK (wipe it).
+        fn change_password(
+            self: &Account,
+            current: Vec<u8>,
+            next: Vec<u8>,
+            kdf: KdfOverrides,
+            cancel: &CancelToken,
+        ) -> Result<Vec<u8>>;
+        fn request_email_change(self: &Account, email: &str, cancel: &CancelToken) -> Result<()>;
+        fn change_email(self: &Account, email: &str, code: &str, password: Vec<u8>, cancel: &CancelToken)
+            -> Result<()>;
+        fn secret_key(self: &Account) -> Result<OptionalBytes>;
+        /// An empty `next` opens the site's home. The link is a secret (wipe it).
+        fn web_session_url(self: &Account, next: &str, cancel: &CancelToken) -> Result<Vec<u8>>;
+        fn start_two_step(self: &Account, cancel: &CancelToken) -> Result<TotpSetup>;
+        fn confirm_two_step(self: &Account, code: &str, cancel: &CancelToken) -> Result<()>;
+        fn disable_two_step(self: &Account, code: &str, cancel: &CancelToken) -> Result<()>;
+        fn devices(self: &Account, cancel: &CancelToken) -> Result<Vec<Device>>;
+        fn revoke_device(self: &Account, device_id: &str, cancel: &CancelToken) -> Result<()>;
+
+        // ---- Account: recovery (§18), deletion (§23)
+        fn recover_info(self: &Account, token: Vec<u8>, cancel: &CancelToken) -> Result<RecoveryReset>;
+        fn recover(
+            self: &Account,
+            token: Vec<u8>,
+            password: Vec<u8>,
+            kdf: KdfOverrides,
+            trust_device: bool,
+            cancel: &CancelToken,
+        ) -> Result<NewAccount>;
+        fn recovery_status(self: &Account, cancel: &CancelToken) -> Result<RecoveryStatus>;
+        fn restore_from_archive(
+            self: &Account,
+            old_password: Vec<u8>,
+            old_secret_key: Vec<u8>,
+            cancel: &CancelToken,
+        ) -> Result<u32>;
+        fn deletion_preview(self: &Account, cancel: &CancelToken) -> Result<DeletionPreview>;
+        /// Returns the erase date.
+        fn delete_account(self: &Account, password: Vec<u8>, confirm: &str, cancel: &CancelToken) -> Result<String>;
+        fn restore_account(self: &Account, password: Vec<u8>, cancel: &CancelToken) -> Result<()>;
+        fn transfer_vault(self: &Account, vault_id: &str, to: &str, cancel: &CancelToken) -> Result<()>;
+
+        // ---- Account: plans (§19)
+        fn plan(self: &Account, cancel: &CancelToken) -> Result<OptionalPlan>;
+        fn vault_quota(self: &Account, vault_id: &str) -> Result<OptionalU64>;
+        /// Empty when there is nowhere to go.
+        fn upgrade_url(self: &Account, error: &ErrorInfo) -> Result<String>;
+        /// An empty `org_id` asks for this user.
+        fn apple_eligibility(self: &Account, org_id: &str, cancel: &CancelToken) -> Result<AppleEligibility>;
+        fn report_apple_transaction(self: &Account, jws: &str, cancel: &CancelToken) -> Result<AppleTransactionResult>;
+
+        // ---- Account: vault sharing (§7)
+        fn members(self: &Account, vault_id: &str, cancel: &CancelToken) -> Result<Vec<VaultMember>>;
+        fn verified_public_keys(self: &Account, principal: &str, cancel: &CancelToken) -> Result<PublicKeys>;
+        fn look_up(self: &Account, email: &str, cancel: &CancelToken) -> Result<ShareRecipient>;
+        /// An empty `display` is none.
+        fn recipient(self: &Account, principal: &str, display: &str, cancel: &CancelToken) -> Result<ShareRecipient>;
+        fn share_vault(
+            self: &Account,
+            vault_id: &str,
+            grantee: &Grantee,
+            role: VaultRole,
+            cancel: &CancelToken,
+        ) -> Result<GrantResult>;
+        fn change_role(
+            self: &Account,
+            vault_id: &str,
+            principal: &str,
+            role: VaultRole,
+            cancel: &CancelToken,
+        ) -> Result<()>;
+        fn revoke(self: &Account, vault_id: &str, principals: Vec<String>, cancel: &CancelToken) -> Result<SyncReport>;
+        fn rotate_vault_key(
+            self: &Account,
+            vault_id: &str,
+            remove: Vec<String>,
+            cancel: &CancelToken,
+        ) -> Result<SyncReport>;
+
+        // ---- Account: orgs (§12)
+        fn orgs(self: &Account, cancel: &CancelToken) -> Result<Vec<OrgMembership>>;
+        fn create_org(self: &Account, name: &str, cancel: &CancelToken) -> Result<Org>;
+        fn org(self: &Account, org_id: &str, cancel: &CancelToken) -> Result<Org>;
+        fn rename_org(self: &Account, org_id: &str, name: &str, cancel: &CancelToken) -> Result<Org>;
+        fn set_org_share_links(
+            self: &Account,
+            org_id: &str,
+            policy: ShareLinkPolicy,
+            cancel: &CancelToken,
+        ) -> Result<Org>;
+        fn delete_org(self: &Account, org_id: &str, cancel: &CancelToken) -> Result<()>;
+        fn org_members(self: &Account, org_id: &str, cancel: &CancelToken) -> Result<Vec<Member>>;
+        fn invitations(self: &Account, org_id: &str, cancel: &CancelToken) -> Result<Vec<Invitation>>;
+        fn invite(self: &Account, org_id: &str, email: &str, role: OrgRole, cancel: &CancelToken)
+            -> Result<Invitation>;
+        fn cancel_invitation(self: &Account, org_id: &str, invitation_id: &str, cancel: &CancelToken) -> Result<()>;
+        fn accept_invitation(self: &Account, token: Vec<u8>, cancel: &CancelToken) -> Result<Member>;
+        fn confirm_member(
+            self: &Account,
+            org_id: &str,
+            member: &Member,
+            vaults: Vec<VaultGrantRequest>,
+            cancel: &CancelToken,
+        ) -> Result<Member>;
+        fn set_member_role(
+            self: &Account,
+            org_id: &str,
+            member: &Member,
+            role: OrgRole,
+            cancel: &CancelToken,
+        ) -> Result<Member>;
+        fn remove_member(self: &Account, org_id: &str, user_id: &str, cancel: &CancelToken) -> Result<RotationReport>;
+        fn rotate_flagged(self: &Account, org_id: &str, cancel: &CancelToken) -> Result<RotationReport>;
+        fn managed_org_vaults(self: &Account, org_id: &str, cancel: &CancelToken) -> Result<Vec<VaultInfo>>;
+        /// An empty `before` starts at the newest; `limit` is read when `has_limit`.
+        fn audit_log(
+            self: &Account,
+            org_id: &str,
+            before: &str,
+            has_limit: bool,
+            limit: u32,
+            cancel: &CancelToken,
+        ) -> Result<AuditPage>;
+
+        // ---- Account: service-account admin (§9)
+        fn service_accounts(self: &Account, org_id: &str, cancel: &CancelToken) -> Result<Vec<ServiceAccountInfo>>;
+        fn create_service_account(
+            self: &Account,
+            org_id: &str,
+            input: &NewServiceAccount,
+            cancel: &CancelToken,
+        ) -> Result<CreatedServiceAccount>;
+        /// Empty `name` / `expires_at` are none.
+        fn issue_service_account_secret(
+            self: &Account,
+            sa_id: &str,
+            name: &str,
+            expires_at: &str,
+            cancel: &CancelToken,
+        ) -> Result<IssuedSecret>;
+        fn service_account_secrets(self: &Account, sa_id: &str, cancel: &CancelToken) -> Result<Vec<SaSecretInfo>>;
+        fn set_secret_expiry(
+            self: &Account,
+            sa_id: &str,
+            secret_id: &str,
+            expires_at: &ExpiryChange,
+            cancel: &CancelToken,
+        ) -> Result<SaSecretInfo>;
+        fn revoke_secret(self: &Account, sa_id: &str, secret_id: &str, cancel: &CancelToken) -> Result<()>;
+        fn update_service_account(
+            self: &Account,
+            sa_id: &str,
+            update: &ServiceAccountUpdate,
+            cancel: &CancelToken,
+        ) -> Result<ServiceAccountInfo>;
+        fn delete_service_account(self: &Account, sa_id: &str, cancel: &CancelToken) -> Result<()>;
+
+        // ---- Account: share links (§22)
+        /// Empty when unknown.
+        fn share_base(self: &Account) -> Result<String>;
+        /// Empty when allowed; an empty `org_id` is a personal vault.
+        fn share_blocked_reason(self: &Account, org_id: &str) -> Result<String>;
+        fn create_share(
+            self: &Account,
+            payload: SharePayload,
+            options: ShareOptions,
+            cancel: &CancelToken,
+        ) -> Result<CreatedShare>;
+        fn list_shares(self: &Account, cancel: &CancelToken) -> Result<Vec<ShareListing>>;
+        fn revoke_share(self: &Account, share_id: &str, cancel: &CancelToken) -> Result<()>;
+
+        // ---- Vault (more)
+        fn info(self: &Vault) -> Result<OptionalVaultInfo>;
+        fn conflicts(self: &Vault) -> Result<Vec<SyncConflict>>;
+        fn root_group_id(self: &Vault) -> Result<String>;
+        fn entry(self: &Vault, entry_id: &str) -> Result<EntryRecord>;
+        fn find(self: &Vault, reference: &str) -> Result<EntryRecord>;
+        fn history(self: &Vault, entry_id: &str) -> Result<Vec<EntryRecord>>;
+        fn attachment(self: &Vault, entry_id: &str, name: &str) -> Result<Vec<u8>>;
+        fn custom_icon(self: &Vault, icon_id: &str) -> Result<Vec<u8>>;
+        /// Empty when there is no such group.
+        fn group_id_at(self: &Vault, path: &str) -> Result<String>;
+        fn is_in_recycle_bin(self: &Vault, id: &str) -> Result<bool>;
+        fn set_fields(
+            self: &Vault,
+            reference: &str,
+            fields: Vec<FieldInput>,
+            create: CreateMode,
+        ) -> Result<SetFieldsResult>;
+        fn add_entry(self: &Vault, group_id: &str, input: EntryInput) -> Result<String>;
+        fn edit_entry(self: &Vault, entry_id: &str, input: EntryInput) -> Result<()>;
+        fn move_entry(self: &Vault, entry_id: &str, group_id: &str) -> Result<()>;
+        fn delete_entry(self: &Vault, entry_id: &str) -> Result<()>;
+        fn restore_from_recycle_bin(self: &Vault, id: &str) -> Result<()>;
+        fn empty_recycle_bin(self: &Vault) -> Result<()>;
+        fn set_attachment(self: &Vault, entry_id: &str, name: &str, data: Vec<u8>) -> Result<()>;
+        fn remove_attachment(self: &Vault, entry_id: &str, name: &str) -> Result<()>;
+        fn add_custom_icon(self: &Vault, png: Vec<u8>) -> Result<String>;
+        /// An empty `parent_id` is the root.
+        fn add_group(self: &Vault, parent_id: &str, name: &str) -> Result<String>;
+        fn ensure_group(self: &Vault, path: &str) -> Result<String>;
+        fn rename_group(self: &Vault, group_id: &str, name: &str) -> Result<()>;
+        fn set_group_icon(self: &Vault, group_id: &str, icon_id: u32) -> Result<()>;
+        fn move_group(self: &Vault, group_id: &str, parent_id: &str) -> Result<()>;
+        fn delete_group(self: &Vault, group_id: &str) -> Result<()>;
+        fn version_difference(self: &Vault, version: &Vault, entry_id: &str) -> Result<VersionDifference>;
+        fn restore_entry(self: &Vault, version: &Vault, entry_id: &str, group_path: &str) -> Result<()>;
+        fn apply_autofill_edits(self: &Vault, edits: &AutoFillEdits) -> Result<bool>;
+        fn keep_edits(self: &Vault) -> Result<()>;
+        fn has_pending_edits(self: &Vault) -> Result<bool>;
+        /// An empty `group_ids` exports every group. The result is unencrypted: wipe it.
+        fn export_plain(self: &Vault, format: ExportFormat, group_ids: Vec<String>) -> Result<Vec<u8>>;
+
+        // ---- ServiceAccount (§9, §15)
+        type ServiceAccount;
+        fn service_account_from_token(
+            client: &Client,
+            token: Vec<u8>,
+            cancel: &CancelToken,
+        ) -> Result<Box<ServiceAccount>>;
+        fn sa_id(self: &ServiceAccount) -> Result<String>;
+        fn principal(self: &ServiceAccount) -> Result<String>;
+        fn vaults(self: &ServiceAccount, refresh: bool, cancel: &CancelToken) -> Result<Vec<SaVault>>;
+        fn vault(self: &ServiceAccount, id_or_name: &str, cancel: &CancelToken) -> Result<SaVault>;
+        fn open_vault(
+            self: &ServiceAccount,
+            id_or_name: &str,
+            refresh: bool,
+            cancel: &CancelToken,
+        ) -> Result<Box<Vault>>;
+        fn pull(self: &ServiceAccount, id_or_name: &str, cancel: &CancelToken) -> Result<Box<Vault>>;
+        fn read(self: &ServiceAccount, reference: &str, cancel: &CancelToken) -> Result<Vec<u8>>;
+        fn inject(self: &ServiceAccount, tmpl: Vec<u8>, cancel: &CancelToken) -> Result<Injected>;
+        fn write(
+            self: &ServiceAccount,
+            reference: &str,
+            value: Vec<u8>,
+            create: bool,
+            cancel: &CancelToken,
+        ) -> Result<()>;
+        fn close(self: &ServiceAccount) -> Result<()>;
+
+        // ---- SelfHosted (§13)
+        type SelfHosted;
+        fn self_hosted_connect(client: &Client, server_url: &str, device_token: Vec<u8>) -> Result<Box<SelfHosted>>;
+        fn self_hosted_pair(
+            client: &Client,
+            server_url: &str,
+            code: &str,
+            device_name: &str,
+            cancel: &CancelToken,
+        ) -> Result<Box<SelfHosted>>;
+        /// Rust `Option<SelfHosted>`: check `is_paired()`, then `take()`.
+        fn self_hosted_restore(client: &Client, server_url: &str) -> Result<Box<RestoredSelfHosted>>;
+        fn server_url(self: &SelfHosted) -> Result<String>;
+        fn health(self: &SelfHosted, cancel: &CancelToken) -> Result<String>;
+        fn list_databases(self: &SelfHosted, cancel: &CancelToken) -> Result<Vec<BlobMeta>>;
+        fn create_pairing_code(self: &SelfHosted, cancel: &CancelToken) -> Result<PairingCode>;
+        fn sync_database(
+            self: &SelfHosted,
+            database_id: &str,
+            kdbx: Vec<u8>,
+            credentials: KdbxCredentials,
+            cancel: &CancelToken,
+        ) -> Result<SelfHostedSyncResult>;
+        fn events(self: &SelfHosted, cancel: &CancelToken) -> Result<Box<EventStream>>;
+
+        type RestoredSelfHosted;
+        fn is_paired(self: &RestoredSelfHosted) -> bool;
+        /// The server, when paired (call once); else `invalid_request`.
+        fn take(self: &mut RestoredSelfHosted) -> Result<Box<SelfHosted>>;
     }
 }

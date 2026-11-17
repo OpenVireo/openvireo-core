@@ -1,8 +1,6 @@
 //! `sync.test.ts` and `deletions.test.ts` against W2-E's `ov_testkit::servers` fake sync server
 //! (legacy `databases/` routes with `DEVICE_TOKEN`), plus the special states through E's fault
-//! helpers. Gated until W2-E merges: the lead removes the two lines below and reruns.
-#![allow(unexpected_cfgs)]
-#![cfg(ov_test_servers)]
+//! helpers.
 
 mod common;
 mod scenarios;
@@ -51,9 +49,7 @@ impl World for E {
         self.s.database_blob(id).map(|b| b.data)
     }
     fn set_after_get(&self, f: Option<Box<dyn Fn() + Send + Sync>>) {
-        self.s.set_after_get(
-            f.map(|f| Box::new(move |_: &TestServers, _: &str| f()) as Box<dyn Fn(&TestServers, &str) + Send + Sync>),
-        );
+        self.s.set_after_get(f.map(|f| Arc::new(move |_: &TestServers, _: &str| f()) as ov_testkit::servers::AfterGet));
     }
     fn lose_all(&self) {
         self.s.lose_all_blobs();
@@ -153,7 +149,7 @@ fn precondition_retry_with_after_get() {
     let e = E::new();
     let (mut local, state) = synced(&e);
     let other = Mutex::new(Some(ov_kdbx::read(&e.latest("db").unwrap(), &creds()).unwrap()));
-    e.s.set_after_get(Some(Box::new(move |s: &TestServers, _key: &str| {
+    e.s.set_after_get(Some(Arc::new(move |s: &TestServers, _key: &str| {
         if let Some(mut db) = other.lock().unwrap().take() {
             edit(&mut db, "A", &[("Notes", "theirs")], 250);
             s.put_database_blob("db", &ov_kdbx::write(&db, &creds()).unwrap());

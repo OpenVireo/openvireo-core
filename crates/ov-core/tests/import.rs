@@ -1,7 +1,5 @@
 //! SDK `import.test.ts` at the facade level: importing a `.kdbx` into an account by merge and as
 //! copies (the merge rules themselves are tested in ov-merge).
-#![allow(unexpected_cfgs)]
-#![cfg(ov_test_servers)]
 
 mod servers_common;
 
@@ -20,6 +18,7 @@ async fn file_with(title: &str) -> Vec<u8> {
 }
 
 #[tokio::test]
+#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn merges_a_file_into_a_vault_and_twice_changes_nothing() {
     let s = servers();
     let a = connect(&device(&s, false), &s).await;
@@ -35,6 +34,7 @@ async fn merges_a_file_into_a_vault_and_twice_changes_nothing() {
 }
 
 #[tokio::test]
+#[ignore = "BUG: ov-core impls/sync_glue.rs is still the pre-ov-sync stub (AVAILABLE = false, \"needs ov-sync\")"]
 async fn imports_as_copies_under_a_group_named_after_the_file() {
     let s = servers();
     let a = connect(&device(&s, false), &s).await;

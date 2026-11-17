@@ -16,6 +16,7 @@ pub mod clock;
 pub mod kdbx;
 pub mod merge;
 pub mod opaque;
+pub mod servers;
 pub mod test_vectors;
 
 pub use clock::{FixedClock, ManualClock};

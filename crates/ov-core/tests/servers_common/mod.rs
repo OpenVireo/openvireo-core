@@ -1,5 +1,4 @@
-//! Helpers for the tests against W2-E's in-memory servers (`ov_testkit::servers`). Only compiled
-//! with `--cfg ov_test_servers` until W2-E merges.
+//! Helpers for the tests against W2-E's in-memory servers (`ov_testkit::servers`).
 
 #![allow(dead_code)]
 

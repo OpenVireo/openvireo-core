@@ -1575,11 +1575,21 @@ dependencies = [
 name = "ov-testkit"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
  "base64 0.22.1",
  "hex",
+ "ov-crypto",
+ "ov-error",
  "ov-host",
+ "ov-opaque",
+ "ov-protocol",
+ "ov-share",
+ "rand_chacha",
+ "rand_core 0.6.4",
  "serde",
  "serde_json",
+ "sha2",
+ "zeroize",
 ]
 
 [[package]]

@@ -1,7 +1,5 @@
 //! SDK `share.test.ts` end-to-end cases (SPEC §22) against the W2-E servers. The crypto vectors are
 //! ov-share's.
-#![allow(unexpected_cfgs)]
-#![cfg(ov_test_servers)]
 
 mod servers_common;
 

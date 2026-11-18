@@ -9,3 +9,10 @@ help.txt is `ov --help` from the TS CLI, captured byte for byte:
 same SDK commit), the store `ov login` uses, with fake values:
   storage.set("session", …), set("device:srv_test:usr_test", …), set("secret_key:srv_test:usr_test", …),
   set("cli:issuer", "https://accounts.example.com")
+
+ts-transcript.txt is the TS CLI's side of the golden diff, recorded with
+  node bins/ov/tests/golden/diff.mjs --record
+against openvireo-sdk e1e82ef (develop, @openvireo/cli 0.11.0; SDK, connect and CLI built in place
+with `npm run build -w @openvireo/sdk -w @openvireo/connect -w @openvireo/cli`). Random values are
+normalised (<uuid>, <hex32>, <share-url>, <time>, …). `diff.mjs` runs both CLIs live by default;
+`--rust-only` compares the Rust binary with this file when the SDK isn't at hand.

@@ -85,6 +85,8 @@ fn ov_binary(relay: &str, dir: &Path, argv: &[&str], env: &[(&str, &str)], stdin
     cmd.args(argv)
         .env_clear()
         .env("PATH", std::env::var("PATH").unwrap_or_default())
+        // Windows sockets need SystemRoot even with a cleared environment.
+        .envs(std::env::var("SYSTEMROOT").ok().map(|v| ("SYSTEMROOT", v)))
         .env("OPENVIREO_CONFIG_DIR", dir.join("config"))
         .env("OPENVIREO_TEST_RELAY", relay)
         .envs(env.iter().copied())

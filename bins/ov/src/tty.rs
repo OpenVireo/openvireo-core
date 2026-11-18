@@ -3,7 +3,7 @@
 //! `gethostname`, contract-v1.4).
 #![allow(unsafe_code)]
 
-use std::io::{BufRead, IsTerminal, Read, Write};
+use std::io::{BufRead, IsTerminal, Write};
 
 use ov_error::{OvError, OvErrorCode};
 
@@ -53,6 +53,7 @@ impl Drop for Restore {
 /// Backspace and Ctrl-U edit it, Ctrl-C cancels, Ctrl-D on an empty line cancels.
 #[cfg(unix)]
 fn read_hidden() -> Result<String, OvError> {
+    use std::io::Read;
     // SAFETY: termios is plain data; tcgetattr fills it or fails (then we don't use it).
     let mut t: libc::termios = unsafe { std::mem::zeroed() };
     // SAFETY: fd 0 is valid for the life of the process; `t` is a valid out-pointer.

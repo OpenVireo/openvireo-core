@@ -138,6 +138,56 @@ impl ByteStream for ReqwestStream {
     }
 }
 
+/// The header carrying the real URL of a request sent through the test relay.
+pub const RELAY_URL_HEADER: &str = "x-ov-relay-url";
+
+/// Debug builds only: with `OPENVIREO_TEST_RELAY=http://127.0.0.1:<port>`, every request goes to
+/// that loopback relay instead, with its real URL in [`RELAY_URL_HEADER`]. The black-box tests and
+/// the golden diff (`tests/golden/`) use it to run the `ov` binary against the in-memory test
+/// servers (`https://auth.test`, `https://sync.test`), which have no network address. Release
+/// builds don't have it.
+#[cfg(debug_assertions)]
+pub fn test_relay(env: &crate::session::Env) -> Option<std::sync::Arc<dyn HttpTransport>> {
+    let base = env.get("OPENVIREO_TEST_RELAY").filter(|u| u.starts_with("http://127.0.0.1:"))?;
+    let inner = ReqwestTransport::new().ok()?;
+    Some(std::sync::Arc::new(RelayTransport { inner, base: base.trim_end_matches('/').to_string() }))
+}
+
+/// Release builds: no relay.
+#[cfg(not(debug_assertions))]
+pub fn test_relay(_env: &crate::session::Env) -> Option<std::sync::Arc<dyn HttpTransport>> {
+    None
+}
+
+/// See [`test_relay`].
+#[cfg(debug_assertions)]
+struct RelayTransport {
+    inner: ReqwestTransport,
+    base: String,
+}
+
+#[cfg(debug_assertions)]
+impl RelayTransport {
+    fn rewrite(&self, mut req: HttpRequest) -> HttpRequest {
+        let path = req.url.split_once("://").and_then(|(_, rest)| rest.find('/').map(|i| rest[i..].to_string()));
+        let original = std::mem::replace(&mut req.url, format!("{}{}", self.base, path.unwrap_or_else(|| "/".into())));
+        req.headers.push((RELAY_URL_HEADER.to_string(), original));
+        req
+    }
+}
+
+#[cfg(debug_assertions)]
+#[async_trait::async_trait]
+impl HttpTransport for RelayTransport {
+    async fn send(&self, req: HttpRequest) -> Result<HttpResponse, TransportError> {
+        self.inner.send(self.rewrite(req)).await
+    }
+
+    async fn open_stream(&self, req: HttpRequest) -> Result<Box<dyn ByteStream>, TransportError> {
+        self.inner.open_stream(self.rewrite(req)).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

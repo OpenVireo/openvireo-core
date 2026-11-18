@@ -2,7 +2,10 @@
 //!
 //! A secret reference is `ov://<vault>/[<group>/…]<entry>/<field>`; an item reference drops the
 //! field. Segments are percent-decoded.
-// TODO(W3-L3): use ov-core's reference parser instead, if the facade exposes one.
+//!
+//! The facade has no reference parser of its own (`Vault::find` and `Vault::read_field` parse the
+//! text they are given), and the TS checks a reference before signing in, so `ov` parses it here
+//! first for the same errors in the same order; the core then parses the same text again.
 
 use ov_error::{OvError, OvErrorCode};
 

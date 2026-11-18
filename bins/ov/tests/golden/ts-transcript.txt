@@ -1,0 +1,953 @@
+$ ov --help
+exit 0
+--- stdout
+ov 0.11.0: OpenVireo vault secrets for scripts, CI and servers
+
+Usage:
+  ov read <ov://vault/[group/…]entry/field> [-n] [-o file]
+  ov inject [-i template] [-o file]          replace ov:// references ({{ ov://… }} or bare)
+  ov run [--env-file .env.tpl]… [--no-masking] -- <command> [args…]
+  ov item get <ov://vault/[group/…]entry> [--reveal] [--json]
+  ov item list <vault> [--json]
+  ov item create <ov://vault/[group/…]title> [field=value…] [--generate [--length N] [--charset S]] [--stdin-field F]
+  ov item edit <ov://vault/[group/…]entry> [field=value…] [--generate [--length N] [--charset S]] [--stdin-field F]
+  ov rotate <ov://vault/[group/…]entry/field> (--generate [--length N] [--charset S] | --stdin) [--print]
+  ov vault list [--json]
+  ov share <ov://vault/[group/…]entry> [--field F]… [--expires 7d] [--once | --max-opens N] [--passcode]
+  ov share --text [--title T] [--expires 7d] [--once | --max-opens N] [--passcode]   text from stdin
+  ov share list [--json]
+  ov share revoke <id>                       share links open without an account (users only)
+  ov login [--issuer URL] [--email E] [--secret-key K1-…]
+  ov logout [--forget]                       --forget also removes the Secret Key from this machine
+  ov whoami
+  ov account delete [--yes --email E]        lock the account and erase it after 30 days
+  ov account restore                         keep an account scheduled for deletion
+  ov connect [serve | token …]               the REST server (see ov connect --help)
+  ov version
+
+Credentials: OPENVIREO_SERVICE_ACCOUNT_TOKEN (or OPENVIREO_SERVICE_ACCOUNT_TOKEN_FILE), else the session from
+`ov login` unlocked with OPENVIREO_PASSWORD or a prompt. Charsets: letters, lower, upper, digits, symbols.
+--- stderr
+
+$ ov 
+exit 2
+--- stdout
+ov 0.11.0: OpenVireo vault secrets for scripts, CI and servers
+
+Usage:
+  ov read <ov://vault/[group/…]entry/field> [-n] [-o file]
+  ov inject [-i template] [-o file]          replace ov:// references ({{ ov://… }} or bare)
+  ov run [--env-file .env.tpl]… [--no-masking] -- <command> [args…]
+  ov item get <ov://vault/[group/…]entry> [--reveal] [--json]
+  ov item list <vault> [--json]
+  ov item create <ov://vault/[group/…]title> [field=value…] [--generate [--length N] [--charset S]] [--stdin-field F]
+  ov item edit <ov://vault/[group/…]entry> [field=value…] [--generate [--length N] [--charset S]] [--stdin-field F]
+  ov rotate <ov://vault/[group/…]entry/field> (--generate [--length N] [--charset S] | --stdin) [--print]
+  ov vault list [--json]
+  ov share <ov://vault/[group/…]entry> [--field F]… [--expires 7d] [--once | --max-opens N] [--passcode]
+  ov share --text [--title T] [--expires 7d] [--once | --max-opens N] [--passcode]   text from stdin
+  ov share list [--json]
+  ov share revoke <id>                       share links open without an account (users only)
+  ov login [--issuer URL] [--email E] [--secret-key K1-…]
+  ov logout [--forget]                       --forget also removes the Secret Key from this machine
+  ov whoami
+  ov account delete [--yes --email E]        lock the account and erase it after 30 days
+  ov account restore                         keep an account scheduled for deletion
+  ov connect [serve | token …]               the REST server (see ov connect --help)
+  ov version
+
+Credentials: OPENVIREO_SERVICE_ACCOUNT_TOKEN (or OPENVIREO_SERVICE_ACCOUNT_TOKEN_FILE), else the session from
+`ov login` unlocked with OPENVIREO_PASSWORD or a prompt. Charsets: letters, lower, upper, digits, symbols.
+--- stderr
+
+$ ov version
+exit 0
+--- stdout
+ov 0.11.0
+--- stderr
+
+$ ov frobnicate
+exit 2
+--- stdout
+--- stderr
+ov: unknown command "frobnicate" (see ov help)
+
+$ ov read
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov read <ov://vault/entry/field>
+
+$ ov read a b
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov read <ov://vault/entry/field>
+
+$ ov read --bogus x
+exit 2
+--- stdout
+--- stderr
+ov: Unknown option '--bogus'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- "--bogus"
+
+$ ov item
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov item get|list|create|edit …
+
+$ ov item get
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov item get <ov://vault/[group/…]entry>
+
+$ ov vault
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov vault list [--json]
+
+$ ov rotate ov://v/e/f
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov rotate <ov://vault/entry/field> (--generate | --stdin) [--print]
+
+$ ov share --once --max-opens 2 ov://v/e
+exit 2
+--- stdout
+--- stderr
+ov: use --once or --max-opens, not both
+
+$ ov share --max-opens x ov://v/e
+exit 2
+--- stdout
+--- stderr
+ov: --max-opens must be a number: x
+
+$ ov share --expires 3w ov://v/e
+exit 2
+--- stdout
+--- stderr
+ov: --expires takes hours or days, like 1h or 7d: 3w
+
+$ ov account
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov account delete|restore
+
+$ ov login extra
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov login [--issuer URL] [--email E]
+
+$ ov logout --nope
+exit 2
+--- stdout
+--- stderr
+ov: Unknown option '--nope'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- "--nope"
+
+$ ov read ov://a/b/c
+exit 1
+--- stdout
+--- stderr
+ov: not signed in: set OPENVIREO_SERVICE_ACCOUNT_TOKEN or run `ov login`
+
+$ ov whoami
+exit 1
+--- stdout
+--- stderr
+ov: not signed in: set OPENVIREO_SERVICE_ACCOUNT_TOKEN or run `ov login`
+
+$ ov logout
+exit 0
+--- stdout
+--- stderr
+Not signed in
+
+$ ov account restore
+exit 1
+--- stdout
+--- stderr
+ov: not signed in: run `ov login`
+
+$ ov read ov://Team%20Infra/GitHub/password   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+s3cret
+--- stderr
+
+$ ov read -n ov://<uuid>/Deploy/Database/username   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+app--- stderr
+
+$ ov read ov://Team%20Infra/Deploy/Database/notes   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+multi
+line
+--- stderr
+
+$ ov read ov://Team%20Infra/GitHub   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: expected ov://<vault>/<entry>/<field>: ov://Team%20Infra/GitHub
+
+$ ov read https://x/y/z   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: not a ov:// reference: https://x/y/z
+
+$ ov read ov://Team%20Infra/Nope/password   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: entry "Nope" not found
+
+$ ov read ov://Team%20Infra/GitHub/nope   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: field "nope" not found
+
+$ ov read ov://Team%20Infra/Nowhere/GitHub/password   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: group "Nowhere" not found
+
+$ ov read ov://Private/Bank/password   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: vault "Private" not found or not shared with this service account
+
+$ ov read ov://Team%20Infra/GitHub/password   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: malformed service account token
+
+$ ov read ov://Team%20Infra/GitHub/password   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: not a service account token (ov_sa_…)
+
+$ ov item get ov://Team%20Infra/GitHub   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+GitHub  (<hex32>)
+  Title: GitHub
+  UserName: ci
+  URL: https://github.com
+  Notes: 
+  Password: <concealed>
+--- stderr
+
+$ ov item get ov://Team%20Infra/GitHub --reveal   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+GitHub  (<hex32>)
+  Title: GitHub
+  UserName: ci
+  Password: s3cret
+  URL: https://github.com
+  Notes: 
+--- stderr
+
+$ ov item get ov://Team%20Infra/GitHub --json   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+{
+  "id": "<hex32>",
+  "title": "GitHub",
+  "group": [],
+  "fields": {
+    "Title": "GitHub",
+    "UserName": "ci",
+    "URL": "https://github.com",
+    "Notes": ""
+  },
+  "protected": [
+    "Password"
+  ],
+  "tags": [],
+  "updatedAt": "<time>"
+}
+--- stderr
+
+$ ov item get ov://Team%20Infra/Deploy/Database --json --reveal   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+{
+  "id": "<hex32>",
+  "title": "Database",
+  "group": [
+    "Deploy"
+  ],
+  "fields": {
+    "Title": "Database",
+    "UserName": "app",
+    "Password": "pg-pa$$word",
+    "URL": "",
+    "Notes": "multi\nline"
+  },
+  "protected": [
+    "Password"
+  ],
+  "tags": [],
+  "updatedAt": "<time>"
+}
+--- stderr
+
+$ ov item get ov://Team%20Infra/GitHub x=y   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov item get <ov://vault/[group/…]entry> [--reveal] [--json]
+
+$ ov item list Team Infra   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+<hex32>  GitHub
+<hex32>  Deploy/Database
+--- stderr
+
+$ ov item list Team Infra --json   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+[
+  {
+    "id": "<hex32>",
+    "title": "GitHub",
+    "group": [],
+    "fields": {},
+    "protected": [
+      "Password"
+    ],
+    "tags": [],
+    "updatedAt": "<time>"
+  },
+  {
+    "id": "<hex32>",
+    "title": "Database",
+    "group": [
+      "Deploy"
+    ],
+    "fields": {},
+    "protected": [
+      "Password"
+    ],
+    "tags": [],
+    "updatedAt": "<time>"
+  }
+]
+--- stderr
+
+$ ov item list Nope   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: vault "Nope" not found or not shared with this service account
+
+$ ov inject   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+user: app
+dsn: postgres://app:pg-pa$$word@db/app
+plain
+--- stderr
+
+$ ov inject -i <dir>/missing.tpl   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: ENOENT: no such file or directory, open '<dir>/missing.tpl'
+
+$ ov vault list   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+<uuid>  read    Team Infra
+--- stderr
+
+$ ov vault list --json   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+[
+  {
+    "id": "<uuid>",
+    "name": "Team Infra",
+    "role": "read"
+  }
+]
+--- stderr
+
+$ ov whoami   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+kind: service-account
+principal: sa:<uuid>
+issuer: https://auth.test
+--- stderr
+
+$ ov rotate ov://Team%20Infra/GitHub/password --generate   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: this service account can only read vault "Team Infra"
+
+$ ov item edit ov://Team%20Infra/GitHub username=x   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: this service account can only read vault "Team Infra"
+
+$ ov item create ov://Team%20Infra/New password=x   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: this service account can only read vault "Team Infra"
+
+$ ov item create ov://Team%20Infra/Apps/Stripe username=billing url=https://stripe.com api_key=sk_live_1 --json   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+{
+  "id": "<hex32>",
+  "title": "Stripe",
+  "group": [
+    "Apps"
+  ],
+  "fields": {
+    "Title": "Stripe",
+    "UserName": "billing",
+    "URL": "https://stripe.com",
+    "Notes": ""
+  },
+  "protected": [
+    "Password",
+    "api_key"
+  ],
+  "tags": [],
+  "updatedAt": "<time>"
+}
+--- stderr
+Created Apps/Stripe (<hex32>)
+
+$ ov item create ov://Team%20Infra/Apps/Stripe x=y   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: entry "Stripe" already exists
+
+$ ov item edit ov://Team%20Infra/Apps/Nope x=y   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: entry "Nope" not found
+
+$ ov item edit ov://Team%20Infra/Apps/Stripe   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 2
+--- stdout
+--- stderr
+ov: nothing to change: give field=value, --generate or --stdin-field
+
+$ ov item edit ov://Team%20Infra/Apps/Stripe noequals   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 2
+--- stdout
+--- stderr
+ov: expected field=value, got "noequals"
+
+$ ov item edit ov://Team%20Infra/Apps/Stripe username=billing2 --stdin-field api_key   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+--- stderr
+Updated Apps/Stripe (<hex32>)
+
+$ ov item get ov://Team%20Infra/Apps/Stripe --reveal --json   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+{
+  "id": "<hex32>",
+  "title": "Stripe",
+  "group": [
+    "Apps"
+  ],
+  "fields": {
+    "Title": "Stripe",
+    "UserName": "billing2",
+    "Password": "",
+    "URL": "https://stripe.com",
+    "Notes": "",
+    "api_key": "sk_live_2"
+  },
+  "protected": [
+    "api_key"
+  ],
+  "tags": [],
+  "updatedAt": "<time>"
+}
+--- stderr
+
+$ ov item get ov://Team%20Infra/Apps/Stripe   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+Apps/Stripe  (<hex32>)
+  Title: Stripe
+  UserName: billing2
+  Password: 
+  URL: https://stripe.com
+  Notes: 
+  api_key: <concealed>
+--- stderr
+
+$ ov item create ov://Team%20Infra/Gen --generate --length 20 --charset letters,digits   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+--- stderr
+Created Gen (<hex32>)
+
+$ ov item create ov://Team%20Infra/Gen2 --generate --charset emoji   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: unknown charset "emoji" (use letters, lower, upper, digits, symbols)
+
+$ ov item list Team Infra   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+<hex32>  GitHub
+<hex32>  Gen
+<hex32>  Deploy/Database
+<hex32>  Apps/Stripe
+--- stderr
+
+$ ov rotate ov://Team%20Infra/Deploy/Database/password --stdin   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+--- stderr
+Rotated ov://Team%20Infra/Deploy/Database/password
+
+$ ov read ov://Team%20Infra/Deploy/Database/password   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+from-stdin
+--- stderr
+
+$ ov rotate ov://Team%20Infra/Deploy/Database/password --generate --print   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+<32 characters>
+--- stderr
+Rotated ov://Team%20Infra/Deploy/Database/password
+
+$ ov rotate ov://Team%20Infra/Deploy/Database/password   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov rotate <ov://vault/entry/field> (--generate | --stdin) [--print]
+
+$ ov rotate ov://Team%20Infra/Deploy/Database/password --stdin   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 2
+--- stdout
+--- stderr
+ov: the new value is empty
+
+$ ov rotate ov://Team%20Infra/Deploy/Database/nofield --stdin   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+--- stderr
+Rotated ov://Team%20Infra/Deploy/Database/nofield
+
+$ ov rotate ov://Team%20Infra/GitHub/password --stdin --print   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+known-value
+--- stderr
+Rotated ov://Team%20Infra/GitHub/password
+
+$ ov run --env-file <dir>/.env.tpl -- /bin/sh -c "p=\"$DB_PASSWORD\"…"   [OPENVIREO_SERVICE_ACCOUNT_TOKEN GH]
+exit 3
+--- stdout
+pw=<concealed by openvireo>
+half=<concealed by openvireo>
+token-in-env=none len=32
+--- stderr
+stderr <concealed by openvireo> user=<concealed by openvireo> plain=hello
+
+$ ov run -- /bin/sh -c echo "ok $Y"   [Y]
+exit 0
+--- stdout
+ok y
+--- stderr
+
+$ ov run -- /nonexistent/cmd
+exit 1
+--- stdout
+--- stderr
+ov: spawn /nonexistent/cmd ENOENT
+
+$ ov run --env-file <dir>/bad.env -- true
+exit 1
+--- stdout
+--- stderr
+ov: <dir>/bad.env:1: expected KEY=value
+
+$ ov run   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov run [--env-file file]… -- <command> [args…]
+
+$ ov login --email alice@example.com   [OPENVIREO_ISSUER OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+ov: Secret Key (K1-…) is needed, but there is no terminal to ask on
+
+$ ov login --email alice@example.com --secret-key K1-WRONG   [OPENVIREO_ISSUER OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+ov: a Secret Key has 26 characters after K1
+
+$ ov login --email alice@example.com --secret-key <secret-key>   [OPENVIREO_ISSUER OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+ov: wrong email or password
+
+$ ov login --email alice@example.com --secret-key <secret-key>   [OPENVIREO_ISSUER OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+--- stderr
+Signed in to https://auth.test as alice@example.com
+
+$ ov read ov://Team%20Infra/GitHub/username   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+ci
+--- stderr
+
+$ ov vault list   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+<uuid>  manage  Team Infra
+<uuid>  manage  Private
+--- stderr
+
+$ ov vault list --json   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+[
+  {
+    "id": "<uuid>",
+    "name": "Team Infra",
+    "role": "manage"
+  },
+  {
+    "id": "<uuid>",
+    "name": "Private",
+    "role": "manage"
+  }
+]
+--- stderr
+
+$ ov read ov://Private/Bank/password   [OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+ov: wrong password or Secret Key
+
+$ ov read ov://a/b/c
+exit 1
+--- stdout
+--- stderr
+ov: Master password for alice@example.com is needed, but there is no terminal to ask on
+
+$ ov rotate ov://Private/Bank/password --stdin   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+--- stderr
+Rotated ov://Private/Bank/password
+
+$ ov read ov://Private/Bank/password   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+by-human
+--- stderr
+
+$ ov item list Private   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+<hex32>  Bank
+--- stderr
+
+$ ov whoami
+exit 0
+--- stdout
+kind: user
+principal: user:<uuid>
+email: alice@example.com
+issuer: https://auth.test
+--- stderr
+
+$ ov vault list   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 0
+--- stdout
+<uuid>  read    Team Infra
+--- stderr
+
+$ ov share ov://Team%20Infra/GitHub --field UserName --field Password --once   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+<share-url>
+--- stderr
+Expires <time>, opens once. Anyone with the link can open it.
+
+$ ov share --text --title Door --passcode --expires 1h   [OPENVIREO_PASSWORD OPENVIREO_SHARE_PASSCODE]
+exit 0
+--- stdout
+<share-url>
+--- stderr
+Expires <time>. Anyone with the link can open it.
+
+$ ov share --text --passcode   [OPENVIREO_PASSWORD]
+exit 2
+--- stdout
+--- stderr
+ov: --passcode needs OPENVIREO_SHARE_PASSCODE or a terminal to ask on
+
+$ ov share --text   [OPENVIREO_PASSWORD]
+exit 2
+--- stdout
+--- stderr
+ov: nothing to share: pipe the text to stdin
+
+$ ov share ov://Team%20Infra/GitHub --max-opens 3 --expires 2d   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+<share-url>
+--- stderr
+Expires <time>, opens 3 times. Anyone with the link can open it.
+
+$ ov share list   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+<id22>  GitHub                    0/3 opens   until <time>
+<id22>  Door                      0 opens     until <time>
+<id22>  GitHub                    0/1 opens   until <time>
+--- stderr
+
+$ ov share list --json   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+[
+  {
+    "id": "<id22>",
+    "vaultId": "<uuid>",
+    "ref": {
+      "vault": "<uuid>",
+      "entry": "<hex32>",
+      "title": "GitHub"
+    },
+    "passcode": false,
+    "maxOpens": 3,
+    "opens": 0,
+    "openedAt": [],
+    "createdAt": "<time>",
+    "expiresAt": "<time>",
+    "status": "active",
+    "endedAt": null,
+    "endReason": null
+  },
+  {
+    "id": "<id22>",
+    "vaultId": null,
+    "ref": {
+      "vault": null,
+      "entry": null,
+      "title": "Door"
+    },
+    "passcode": true,
+    "maxOpens": null,
+    "opens": 0,
+    "openedAt": [],
+    "createdAt": "<time>",
+    "expiresAt": "<time>",
+    "status": "active",
+    "endedAt": null,
+    "endReason": null
+  },
+  {
+    "id": "<id22>",
+    "vaultId": "<uuid>",
+    "ref": {
+      "vault": "<uuid>",
+      "entry": "<hex32>",
+      "title": "GitHub"
+    },
+    "passcode": false,
+    "maxOpens": 1,
+    "opens": 0,
+    "openedAt": [],
+    "createdAt": "<time>",
+    "expiresAt": "<time>",
+    "status": "active",
+    "endedAt": null,
+    "endReason": null
+  }
+]
+--- stderr
+
+$ ov share revoke <id22>   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+--- stderr
+Revoked <id22>
+
+$ ov share revoke   [OPENVIREO_PASSWORD]
+exit 2
+--- stdout
+--- stderr
+ov: usage: ov share revoke <id>
+
+$ ov share ov://Team%20Infra/GitHub --field Nope   [OPENVIREO_PASSWORD]
+exit 2
+--- stdout
+--- stderr
+ov: GitHub has no Nope to share
+
+$ ov share ov://Team%20Infra/GitHub --expires soon   [OPENVIREO_PASSWORD]
+exit 2
+--- stdout
+--- stderr
+ov: --expires takes hours or days, like 1h or 7d: soon
+
+$ ov share ov://Team%20Infra/GitHub   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: share links are made by users, not service accounts
+
+$ ov share list   [OPENVIREO_SERVICE_ACCOUNT_TOKEN]
+exit 1
+--- stdout
+--- stderr
+ov: share links are made by users, not service accounts
+
+$ ov account delete --yes   [OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+Deleting alice@example.com locks it now and erases it on <date>. Until then, `ov account restore` keeps it.
+  Acme is deleted with you
+  2 share links stop working now
+ov: --yes needs --email <the account email>
+
+$ ov account delete --yes --email bob@example.com   [OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+Deleting alice@example.com locks it now and erases it on <date>. Until then, `ov account restore` keeps it.
+  Acme is deleted with you
+  2 share links stop working now
+ov: that isn't this account's email; nothing was deleted
+
+$ ov account delete   [OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+Deleting alice@example.com locks it now and erases it on <date>. Until then, `ov account restore` keeps it.
+  Acme is deleted with you
+  2 share links stop working now
+ov: Type alice@example.com to delete it is needed, but there is no terminal to ask on
+
+$ ov account delete --yes --email alice@example.com   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+--- stderr
+Deleting alice@example.com locks it now and erases it on <date>. Until then, `ov account restore` keeps it.
+  Acme is deleted with you
+  2 share links stop working now
+alice@example.com is locked and will be deleted on <date>. To keep it, run `ov login` and `ov account restore` before then.
+
+$ ov vault list   [OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+ov: the saved session has ended: run `ov login` again
+
+$ ov login --email alice@example.com   [OPENVIREO_ISSUER OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+--- stderr
+Signed in to https://auth.test as alice@example.com
+
+$ ov vault list   [OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+ov: scheduled for deletion
+
+$ ov account delete --yes --email alice@example.com   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+--- stderr
+alice@example.com is already scheduled for deletion on <date>
+
+$ ov account restore   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+--- stderr
+alice@example.com was restored
+
+$ ov vault list   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+<uuid>  manage  Team Infra
+<uuid>  manage  Private
+--- stderr
+
+$ ov account restore   [OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+--- stderr
+alice@example.com isn't scheduled for deletion
+
+$ ov logout
+exit 0
+--- stdout
+--- stderr
+Signed out
+
+$ ov read ov://a/b/c   [OPENVIREO_PASSWORD]
+exit 1
+--- stdout
+--- stderr
+ov: not signed in: set OPENVIREO_SERVICE_ACCOUNT_TOKEN or run `ov login`
+
+$ ov logout --forget
+exit 0
+--- stdout
+--- stderr
+Not signed in
+
+$ ov login --email alice@example.com   [OPENVIREO_ISSUER OPENVIREO_PASSWORD]
+exit 0
+--- stdout
+--- stderr
+Signed in to https://auth.test as alice@example.com
+
+$ ov logout --forget
+exit 0
+--- stdout
+--- stderr
+Signed out, and the Secret Key was removed from this machine
+

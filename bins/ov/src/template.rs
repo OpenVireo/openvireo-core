@@ -141,7 +141,7 @@ pub fn substitute(text: &str, values: &HashMap<String, String>) -> String {
 /// `readReference`.
 pub async fn read_reference(src: &dyn VaultSource, reference: &str) -> Result<String, OvError> {
     let r = parse_reference(reference)?;
-    src.read_field(&r).await
+    src.read(&r.vault, reference).await
 }
 
 /// `resolveTemplate`: replaces every reference; returns the text and the values (to mask).

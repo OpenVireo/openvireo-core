@@ -117,6 +117,18 @@ fn utc_day(iso: &str) -> Option<(i64, usize, i64)> {
     Some(civil_from_days(days_from_civil(y, m, d) + minutes.div_euclid(24 * 60)))
 }
 
+/// `new Date(unix_s * 1000).toISOString()`, e.g. `2026-11-17T09:30:00.000Z`.
+pub fn iso_from_unix_s(unix_s: i64) -> String {
+    let (y, m, d) = civil_from_days(unix_s.div_euclid(86_400));
+    let t = unix_s.rem_euclid(86_400);
+    let year = if (0..=9999).contains(&y) {
+        format!("{y:04}")
+    } else {
+        format!("{}{:06}", if y < 0 { "-" } else { "+" }, y.abs())
+    };
+    format!("{year}-{:02}-{d:02}T{:02}:{:02}:{:02}.000Z", m + 1, t / 3600, t / 60 % 60, t % 60)
+}
+
 /// `longDay`: e.g. `22 November 2026`.
 fn long_day(iso: &str) -> String {
     match utc_day(iso) {

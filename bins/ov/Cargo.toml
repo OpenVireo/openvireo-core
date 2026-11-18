@@ -8,7 +8,8 @@ rust-version.workspace = true
 repository.workspace = true
 publish = false
 
-# The library holds the CLI logic so tests (and W3-L3) can drive it without spawning the binary.
+# The library holds the CLI logic so tests can drive it in-process (tests/commands.rs) as well as
+# through the binary (tests/binary.rs, tests/cli.rs).
 [lib]
 name = "ov_cli"
 path = "src/lib.rs"
@@ -29,6 +30,16 @@ serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["io-std", "io-util", "process", "signal", "sync", "time"] }
 zeroize.workspace = true
+
+[dev-dependencies]
+# The in-memory auth and sync servers (W2-E) the CLI tests run against.
+ov-testkit = { path = "../../crates/ov-testkit" }
+ov-protocol = { path = "../../crates/ov-protocol" }
+tokio = { workspace = true, features = ["io-std", "io-util", "net", "process", "signal", "sync", "time", "macros"] }
+
+[target.'cfg(unix)'.dependencies]
+# No-echo prompts (termios) and the host name; only in src/tty.rs (contract-v1.4).
+libc.workspace = true
 
 [lints]
 workspace = true

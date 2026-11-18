@@ -113,9 +113,19 @@ async fn reads_a_session_written_by_the_ts_cli() {
     }
     assert_eq!(std::fs::read(dir.join("session.json")).unwrap(), fixture_bytes);
 
-    // With a saved session, commands get past "not signed in" (to the core, W3-L3).
-    let out = ov(&["whoami"], &home);
+    // With a saved session, commands get past "not signed in" to the server (here a closed port,
+    // through the debug-build relay, so nothing leaves the machine).
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let out = Command::new(env!("CARGO_BIN_EXE_ov"))
+        .arg("whoami")
+        .env_clear()
+        .env("HOME", &home)
+        .env("OPENVIREO_TEST_RELAY", format!("http://127.0.0.1:{closed}"))
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
     assert_eq!(out.status.code(), Some(1));
-    assert!(String::from_utf8(out.stderr).unwrap().contains("not implemented yet"));
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.starts_with("ov: ") && !stderr.contains("not signed in"), "{stderr}");
     std::fs::remove_dir_all(home).unwrap();
 }

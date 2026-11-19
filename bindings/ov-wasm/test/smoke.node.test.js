@@ -83,11 +83,13 @@ async function asPlainNode(fn) {
 }
 
 describe("panics become OvError { code: internal }", () => {
-  it("synchronous: a todo!() stub throws internal, then the instance is poisoned", async () => {
+  const hooks = (core) => core[Symbol.for("@openvireo/core-wasm/test-hooks")];
+
+  it("synchronous: a panic throws internal, then the instance is poisoned", async () => {
     const core = await loadCore({ fresh: true });
     let err;
     try {
-      core.deletionExpired(undefined, 0);
+      hooks(core).__testPanic("not yet implemented");
     } catch (e) {
       err = e;
     }
@@ -102,8 +104,7 @@ describe("panics become OvError { code: internal }", () => {
 
   it("asynchronous: a panic inside a future rejects the pending promise with internal", async () => {
     const core = await loadCore({ fresh: true });
-    const client = new core.OvClient(config, host());
-    const err = await asPlainNode(() => client.discover("https://accounts.example").catch((e) => e));
+    const err = await asPlainNode(() => hooks(core).__testPanicAsync("not yet implemented").catch((e) => e));
     expect(err).toBeInstanceOf(OvError);
     expect(err.code).toBe("internal");
     expect(err.message).toMatch(/not yet implemented/);
@@ -115,8 +116,8 @@ describe("panics become OvError { code: internal }", () => {
     const client = new core.OvClient(config, host());
     const ac = new AbortController();
     ac.abort();
-    // The stub panics before it looks at the token; the call still settles.
-    const err = await asPlainNode(() => client.connect("https://accounts.example", ac.signal).catch((e) => e));
+    // The call settles (aborted, or the host's failing transport) instead of hanging.
+    const err = await client.connect("https://accounts.example", ac.signal).catch((e) => e);
     expect(err).toBeInstanceOf(OvError);
   });
 });

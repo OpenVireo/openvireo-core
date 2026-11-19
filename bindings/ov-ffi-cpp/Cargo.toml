@@ -12,15 +12,35 @@ publish = false
 # staticlib: libovcore.a for the desktop (Corrosion or `cargo xtask cpp`); rlib: Rust tests.
 crate-type = ["staticlib", "rlib"]
 
+[features]
+# opaque-ke's server half and the seeded OPAQUE client steps (`ov::opaque_server_*`,
+# `ov::opaque_*_seeded`), for the desktop's tests only. Off by default: without it those functions
+# are still declared (the header doesn't change) but fail with `internal`. Corrosion turns it on
+# with `corrosion_import_crate(... FEATURES test-server)`, `cargo xtask cpp --features test-server`
+# for the prebuilt package (README.md, "Test server").
+test-server = ["ov-opaque/test-server", "dep:rand_chacha"]
+
 [dependencies]
 ov-core = { path = "../../crates/ov-core" }
 ov-crypto = { path = "../../crates/ov-crypto" }
 ov-error = { path = "../../crates/ov-error" }
+ov-kdbx = { path = "../../crates/ov-kdbx" }
+ov-merge = { path = "../../crates/ov-merge" }
+# No `legacy-c-abi`: its `ov_*` C symbols would end up in libovcore.
+ov-opaque = { path = "../../crates/ov-opaque", default-features = false }
+rand_core = { workspace = true, features = ["getrandom"] }
+rand_chacha = { workspace = true, optional = true }
 async-trait.workspace = true
 cxx.workspace = true
 # `executor` for block_on: the bridge's calls block their (worker) thread, see README.md.
 futures = { workspace = true, features = ["executor"] }
 zeroize.workspace = true
+
+[dev-dependencies]
+ov-testkit = { path = "../../crates/ov-testkit" }
+# tests/merge_kdbx.rs builds the merge fixtures with ov-merge's own test helper, which needs these.
+base64.workspace = true
+hex = { workspace = true, features = ["std"] }
 
 [build-dependencies]
 cxx-build.workspace = true

@@ -1440,12 +1440,20 @@ name = "ov-ffi-cpp"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "cxx",
  "cxx-build",
  "futures",
+ "hex",
  "ov-core",
  "ov-crypto",
  "ov-error",
+ "ov-kdbx",
+ "ov-merge",
+ "ov-opaque",
+ "ov-testkit",
+ "rand_chacha",
+ "rand_core 0.6.4",
  "zeroize",
 ]
 

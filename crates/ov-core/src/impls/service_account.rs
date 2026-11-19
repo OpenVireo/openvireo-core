@@ -50,6 +50,7 @@ impl ServiceAccount {
         let expires = host.clock.now_unix_ms() + ex.expires_in.saturating_mul(1000);
         let state = ServiceAccountState {
             client: client.inner.clone(),
+            config,
             auth,
             sync,
             sa_id: t.sa_id.clone(),

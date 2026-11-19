@@ -10,8 +10,9 @@ use zeroize::Zeroizing;
 
 use super::convert::blob_meta;
 use super::net::send;
-use crate::api::{BlobMeta, CancelToken, OvClient, PairingCode, SelfHosted};
-use crate::state::SelfHostedState;
+use super::util::lock;
+use crate::api::{BlobMeta, CancelToken, KdbxCredentials, OvClient, PairingCode, SelfHosted, Vault, VaultVersion};
+use crate::state::{SelfHostedState, VaultSource};
 
 /// The SecureStore key of a paired server (TS `SelfHostedSync.tokenKey`).
 pub(crate) fn token_key(url: &str) -> String {
@@ -61,6 +62,46 @@ impl SelfHosted {
     pub(crate) async fn list_impl(&self, cancel: &CancelToken) -> Result<Vec<BlobMeta>, OvError> {
         let req = self.inner.sync.build_list_databases(&self.inner.token);
         Ok(parse_list_databases(&send(&self.inner.client.host, req, cancel).await?)?.iter().map(blob_meta).collect())
+    }
+
+    fn sync_client(&self) -> ov_sync::SyncClient {
+        let h = &self.inner.client.host;
+        ov_sync::SyncClient::new(
+            h.http.clone(),
+            h.clock.clone(),
+            self.inner.sync.clone(),
+            Arc::new(ov_sync::StaticToken(Some(self.inner.token.to_string()))),
+        )
+    }
+
+    pub(crate) async fn history_impl(
+        &self,
+        database_id: &str,
+        cancel: &CancelToken,
+    ) -> Result<Vec<VaultVersion>, OvError> {
+        cancel.check()?;
+        let list = self.sync_client().database(database_id).history().await?;
+        Ok(super::vaults::versions(list))
+    }
+
+    pub(crate) async fn open_version_impl(
+        &self,
+        database_id: &str,
+        revision: u64,
+        credentials: KdbxCredentials,
+        cancel: &CancelToken,
+    ) -> Result<Vault, OvError> {
+        let rev = i64::try_from(revision)
+            .map_err(|_| OvError::new(ov_error::OvErrorCode::InvalidRequest, "revision out of range"))?;
+        let key = super::vaults::local_key(&credentials)?;
+        cancel.check()?;
+        let r = self.sync_client().database(database_id).revision(rev).await?;
+        cancel.check()?;
+        let db = ov_kdbx::read(&r.data, &key)?;
+        let host = self.inner.client.host.clone();
+        let v = super::vaults::new_vault(VaultSource::Version { info: None }, Some(host), db, false, None);
+        *lock(&v.inner.etag) = Some(r.version.etag);
+        Ok(v)
     }
 
     pub(crate) async fn pairing_code_impl(&self, cancel: &CancelToken) -> Result<PairingCode, OvError> {

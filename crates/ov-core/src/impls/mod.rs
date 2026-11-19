@@ -6,6 +6,7 @@ pub(crate) mod client;
 pub(crate) mod convert;
 pub(crate) mod kdbx_ops;
 pub(crate) mod keyring;
+pub(crate) mod local_meta;
 pub(crate) mod net;
 pub(crate) mod plan;
 pub(crate) mod remembered;

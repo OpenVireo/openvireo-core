@@ -89,6 +89,65 @@ pub fn apply_vault_kdf(db: &mut Database) -> Result<(), OvError> {
     Ok(())
 }
 
+/// KeePassXC's default Argon2d memory for new databases: 64 MiB, in bytes.
+pub const DATABASE_DEFAULT_KDF_MEMORY: u64 = 64 * 1024 * 1024;
+/// KeePassXC's default Argon2d iterations for new databases.
+pub const DATABASE_DEFAULT_KDF_ITERATIONS: u64 = 10;
+/// KeePassXC's default Argon2d lanes for new databases.
+pub const DATABASE_DEFAULT_KDF_PARALLELISM: u32 = 2;
+
+/// An Argon2 KDF with a fresh 32-byte salt. `memory` is in bytes (a multiple of 1 KiB, at least 8 KiB
+/// per lane), `iterations` at least 1, `parallelism` 1 to 255; `invalid_request` otherwise.
+pub fn argon2_kdf(kind: Argon2Type, memory: u64, iterations: u64, parallelism: u32) -> Result<Kdf, OvError> {
+    let bad = |m: &str| Err(OvError::new(OvErrorCode::InvalidRequest, m.to_owned()));
+    if !(1..=255).contains(&parallelism) {
+        return bad("Argon2 parallelism must be 1 to 255");
+    }
+    if iterations == 0 || iterations > u64::from(u32::MAX) {
+        return bad("Argon2 iterations must be at least 1");
+    }
+    if !memory.is_multiple_of(1024) || memory / 1024 > u64::from(u32::MAX) || memory < 8 * 1024 * u64::from(parallelism)
+    {
+        return bad("Argon2 memory must be whole KiB, at least 8 KiB per lane");
+    }
+    Ok(Kdf::Argon2 {
+        kind,
+        salt: primitives::random_bytes(32)?.to_vec(),
+        memory,
+        iterations,
+        parallelism,
+        version: 0x13,
+        secret: None,
+        associated_data: None,
+    })
+}
+
+/// KeePassXC's default KDF for new databases (Argon2d, 64 MiB, 10 iterations, 2 lanes), fresh salt.
+pub fn database_default_kdf() -> Result<Kdf, OvError> {
+    argon2_kdf(
+        Argon2Type::D,
+        DATABASE_DEFAULT_KDF_MEMORY,
+        DATABASE_DEFAULT_KDF_ITERATIONS,
+        DATABASE_DEFAULT_KDF_PARALLELISM,
+    )
+}
+
+/// AES-KDF with `rounds` (at least 1) and a fresh 32-byte seed.
+pub fn aes_kdf(rounds: u64) -> Result<Kdf, OvError> {
+    if rounds == 0 {
+        return Err(OvError::new(OvErrorCode::InvalidRequest, "AES-KDF rounds must be at least 1"));
+    }
+    Ok(Kdf::AesKdf { rounds, seed: primitives::random_bytes(32)?.to_vec() })
+}
+
+/// Sets the database's KDF. Argon2 needs KDBX 4, so a KDBX 3.1 database is upgraded first.
+pub fn set_kdf(db: &mut Database, kdf: Kdf) {
+    if matches!(kdf, Kdf::Argon2 { .. }) && db.header.version.major < 4 {
+        db.header.version = crate::write_version(db);
+    }
+    db.header.kdf = kdf;
+}
+
 /// The KDF settings in the TS shape: `kdf` is `"argon2id"`, `"argon2d"`, `"aes"` or `"other"`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KdfSettings {

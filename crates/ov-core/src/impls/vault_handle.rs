@@ -51,7 +51,8 @@ impl Vault {
         match &self.inner.source {
             VaultSource::Local(_) => None,
             VaultSource::Account { info, .. } => Some(lock(info).clone()),
-            VaultSource::Version { info } | VaultSource::ServiceAccount { info, .. } => Some(info.clone()),
+            VaultSource::Version { info } => info.clone(),
+            VaultSource::ServiceAccount { info, .. } => Some(info.clone()),
         }
     }
 }

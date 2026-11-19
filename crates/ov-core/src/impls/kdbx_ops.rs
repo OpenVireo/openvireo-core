@@ -73,6 +73,7 @@ fn attachments(db: &Database, e: &Entry) -> Vec<AttachmentInfo> {
         .map(|b| AttachmentInfo {
             name: b.name.clone(),
             size: db.binaries.get(b.index as usize).map_or(0, |x| x.data.len() as u64),
+            protected: db.binaries.get(b.index as usize).is_some_and(|x| x.protected),
         })
         .collect()
 }
@@ -99,7 +100,18 @@ pub(crate) fn record(db: &Database, e: &Entry, g: &Group, path: Vec<String>) -> 
         attachments: attachments(db, e),
         history_count: e.history.len() as u32,
         quality_check: e.quality_check.unwrap_or(true),
+        last_access_at: last_access(e),
+        usage_count: usage_count(e),
     }
+}
+
+/// `LastAccessTime` when the entry was ever used.
+fn last_access(e: &Entry) -> Option<i64> {
+    (e.times.usage_count > 0).then_some(e.times.last_access)
+}
+
+fn usage_count(e: &Entry) -> u32 {
+    u32::try_from(e.times.usage_count).unwrap_or(u32::MAX)
 }
 
 fn summary(db: &Database, e: &Entry, g: &Group, path: Vec<String>) -> EntrySummary {
@@ -117,6 +129,8 @@ fn summary(db: &Database, e: &Entry, g: &Group, path: Vec<String>) -> EntrySumma
         modified_at: e.times.last_modification,
         expires_at: e.times.expires.then_some(e.times.expiry),
         in_recycle_bin: in_recycle_bin(db, g.uuid),
+        last_access_at: last_access(e),
+        usage_count: usage_count(e),
     }
 }
 
@@ -125,6 +139,14 @@ pub(crate) fn entries(db: &Database, include_recycle_bin: bool) -> Vec<EntrySumm
         .into_iter()
         .filter(|(_, g, _)| include_recycle_bin || !in_recycle_bin(db, g.uuid))
         .map(|(e, g, p)| summary(db, e, g, p))
+        .collect()
+}
+
+pub(crate) fn entry_records(db: &Database, include_recycle_bin: bool) -> Vec<EntryRecord> {
+    all_entries(db)
+        .into_iter()
+        .filter(|(_, g, _)| include_recycle_bin || !in_recycle_bin(db, g.uuid))
+        .map(|(e, g, p)| record(db, e, g, p))
         .collect()
 }
 
@@ -232,8 +254,54 @@ fn default_protected(key: &str) -> bool {
     !matches!(key, "Title" | "UserName" | "URL" | "Notes")
 }
 
-/// Applies an input to an entry (no history, no times).
-fn apply_input(e: &mut Entry, input: EntryInput) -> Result<(), OvError> {
+/// `#RRGGBB` or empty.
+fn check_color(c: &str) -> Result<(), OvError> {
+    let ok = c.is_empty() || (c.len() == 7 && c.starts_with('#') && c[1..].bytes().all(|b| b.is_ascii_hexdigit()));
+    if ok {
+        Ok(())
+    } else {
+        Err(OvError::new(OvErrorCode::InvalidRequest, format!("not a colour (#RRGGBB or empty): {c}")))
+    }
+}
+
+/// Checks the parts of an input that depend on the database (colours, the custom icon) before
+/// anything changes; returns the custom icon change as a UUID.
+fn check_input(db: &Database, input: &EntryInput) -> Result<Option<Option<Uuid>>, OvError> {
+    for c in [&input.foreground_color, &input.background_color].into_iter().flatten() {
+        check_color(c)?;
+    }
+    match &input.custom_icon {
+        None => Ok(None),
+        Some(None) => Ok(Some(None)),
+        Some(Some(id)) => {
+            let uid = parse_id(id)?;
+            if !db.meta.custom_icons.iter().any(|i| i.uuid == uid) {
+                return Err(OvError::new(OvErrorCode::NotFound, "no such custom icon"));
+            }
+            Ok(Some(Some(uid)))
+        }
+    }
+}
+
+/// Puts the custom fields in `order` after the standard fields; the rest follow as they were.
+fn reorder_fields(e: &mut Entry, order: &[String]) {
+    let order: Vec<String> = order.iter().map(|n| field_key(n)).collect();
+    let rank = |key: &str| -> (u8, usize) {
+        if ov_kdbx::model::STANDARD_FIELDS.contains(&key) {
+            (0, 0)
+        } else {
+            match order.iter().position(|o| o == key) {
+                Some(i) => (1, i),
+                None => (2, 0),
+            }
+        }
+    };
+    // A stable sort keeps the standard fields and the unnamed custom fields in their order.
+    e.strings.sort_by_key(|f| rank(&f.key));
+}
+
+/// Applies an input to an entry (no history, no times). `icon` is [`check_input`]'s result.
+fn apply_input(e: &mut Entry, input: EntryInput, icon: Option<Option<Uuid>>) -> Result<(), OvError> {
     for f in input.fields {
         let FieldInput { name, value, protected } = f;
         let key = field_key(&name);
@@ -260,16 +328,58 @@ fn apply_input(e: &mut Entry, input: EntryInput) -> Result<(), OvError> {
             e.times.expiry = t;
         }
     }
+    if let Some(c) = input.foreground_color {
+        e.foreground_color = c;
+    }
+    if let Some(c) = input.background_color {
+        e.background_color = c;
+    }
+    if let Some(icon) = icon {
+        e.custom_icon = icon;
+    }
+    if let Some(order) = input.field_order {
+        reorder_fields(e, &order);
+    }
     Ok(())
 }
 
 pub(crate) fn add_entry(db: &mut Database, group: &str, input: EntryInput, now: Timestamp) -> Result<String, OvError> {
+    add_new_entry(db, ov_kdbx::vault::new_uuid()?, group, input, now)
+}
+
+fn add_new_entry(
+    db: &mut Database,
+    id: Uuid,
+    group: &str,
+    input: EntryInput,
+    now: Timestamp,
+) -> Result<String, OvError> {
     let gid = parse_id(group)?;
-    let mut e = Entry::new(ov_kdbx::vault::new_uuid()?, now);
-    apply_input(&mut e, input)?;
-    let id = e.uuid;
+    find_group(&db.root, gid).ok_or_else(group_not_found)?;
+    let icon = check_input(db, &input)?;
+    let mut e = Entry::new(id, now);
+    apply_input(&mut e, input, icon)?;
     find_group_mut(&mut db.root, gid).ok_or_else(group_not_found)?.entries.push(e);
     Ok(uuid_hex(&id))
+}
+
+pub(crate) fn add_entry_with_id(
+    db: &mut Database,
+    id: &str,
+    group: &str,
+    input: EntryInput,
+    now: Timestamp,
+) -> Result<String, OvError> {
+    let uid = parse_id(id)?;
+    if uid.is_nil() {
+        return Err(OvError::new(OvErrorCode::InvalidRequest, "an entry id can't be the nil UUID"));
+    }
+    if find_entry(&db.root, uid).is_some() {
+        return Err(OvError::new(OvErrorCode::Conflict, format!("an entry with id {} exists", uuid_hex(&uid))));
+    }
+    let out = add_new_entry(db, uid, group, input, now)?;
+    db.deleted_objects.retain(|d| d.uuid != uid);
+    Ok(out)
 }
 
 /// Pushes the entry's current state to its history and applies the history limits afterwards.
@@ -295,7 +405,9 @@ pub(crate) fn edit_with_history(
 
 pub(crate) fn edit_entry(db: &mut Database, id: &str, input: EntryInput, now: Timestamp) -> Result<(), OvError> {
     let uid = parse_uuid_string(id).ok_or_else(entry_not_found)?;
-    edit_with_history(db, uid, now, |e| apply_input(e, input))
+    find_entry(&db.root, uid).ok_or_else(entry_not_found)?;
+    let icon = check_input(db, &input)?;
+    edit_with_history(db, uid, now, |e| apply_input(e, input, icon))
 }
 
 fn detach_entry(g: &mut Group, id: Uuid) -> Option<Entry> {
@@ -377,11 +489,20 @@ pub(crate) fn set_attachment(
     id: &str,
     name: &str,
     data: SecretBytes,
+    protected: Option<bool>,
     now: Timestamp,
 ) -> Result<(), OvError> {
     let uid = parse_uuid_string(id).ok_or_else(entry_not_found)?;
+    let e = find_entry(&db.root, uid).ok_or_else(entry_not_found)?;
+    let protected = protected.unwrap_or_else(|| {
+        e.binaries
+            .iter()
+            .find(|b| b.name == name)
+            .and_then(|b| db.binaries.get(b.index as usize))
+            .is_none_or(|b| b.protected)
+    });
     let index = db.binaries.len() as u32;
-    db.binaries.push(Binary { data: Zeroizing::new(data), protected: true });
+    db.binaries.push(Binary { data: Zeroizing::new(data), protected });
     let r = edit_with_history(db, uid, now, |e| {
         e.binaries.retain(|b| b.name != name);
         e.binaries.push(BinaryRef { name: name.to_owned(), index });

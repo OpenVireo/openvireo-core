@@ -139,3 +139,11 @@ impl FromJs for OvError {
         Ok(e)
     }
 }
+
+/// Test hook: panics synchronously, so the loader's panic handling can be tested. Hidden from the
+/// loaded API.
+#[doc(hidden)]
+#[wasm_bindgen(js_name = "__testPanic")]
+pub fn test_panic(message: String) {
+    panic!("{message}");
+}

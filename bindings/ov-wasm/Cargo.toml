@@ -1,6 +1,6 @@
 [package]
 name = "ov-wasm"
-description = "wasm-bindgen binding of the ov-core facade"
+description = "wasm-bindgen binding of openvireo-core (the full module of @openvireo/core-wasm)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,8 +17,18 @@ crate-type = ["cdylib", "rlib"]
 ov-core = { path = "../../crates/ov-core" }
 ov-crypto = { path = "../../crates/ov-crypto" }
 ov-error = { path = "../../crates/ov-error" }
+ov-kdbx = { path = "../../crates/ov-kdbx" }
+ov-merge = { path = "../../crates/ov-merge" }
+# The opaque-ke test server backs the SDK's public `opaqueServerForTests`. No default features: the
+# default `legacy-c-abi` would add the old `ov_*` C exports to this module.
+ov-opaque = { path = "../../crates/ov-opaque", default-features = false, features = ["test-server"] }
+ov-share = { path = "../../crates/ov-share" }
 async-trait.workspace = true
 js-sys.workspace = true
+rand_chacha.workspace = true
+rand_core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 zeroize.workspace = true

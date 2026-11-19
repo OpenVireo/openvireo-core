@@ -1,19 +1,56 @@
 {
   "name": "@openvireo/core-wasm",
   "version": "0.0.0-template",
-  "description": "openvireo-core (the shared Rust core) compiled to WebAssembly, with JS host adapters",
+  "description": "openvireo-core (the shared Rust core) compiled to WebAssembly: the full module, a lite primitives + share-link module, and JS host adapters",
   "private": true,
   "license": "MIT OR Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/openvireo/openvireo-core", "directory": "bindings/ov-wasm" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openvireo/openvireo-core",
+    "directory": "bindings/ov-wasm"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./index.js",
   "types": "./index.d.ts",
   "exports": {
-    ".": { "types": "./index.d.ts", "default": "./index.js" },
-    "./host": { "types": "./host/index.d.ts", "default": "./host/index.js" },
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./sync": {
+      "types": "./sync.d.ts",
+      "default": "./sync.js"
+    },
+    "./lite": {
+      "types": "./lite.d.ts",
+      "default": "./lite.js"
+    },
+    "./lite-sync": {
+      "types": "./lite-sync.d.ts",
+      "default": "./lite-sync.js"
+    },
+    "./host": {
+      "types": "./host/index.d.ts",
+      "default": "./host/index.js"
+    },
     "./ov_wasm_bg.wasm": "./gen/ov_wasm_bg.wasm",
+    "./ov_wasm_lite_bg.wasm": "./gen/lite/ov_wasm_lite_bg.wasm",
     "./package.json": "./package.json"
   },
-  "files": ["index.js", "index.d.ts", "host/", "gen/"]
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "sync.js",
+    "sync.d.ts",
+    "lite.js",
+    "lite.d.ts",
+    "lite-sync.js",
+    "lite-sync.d.ts",
+    "error.js",
+    "error.d.ts",
+    "internal.js",
+    "host/",
+    "gen/"
+  ]
 }

@@ -1,0 +1,24 @@
+[package]
+name = "ov-wasm-lite"
+description = "The lite module of @openvireo/core-wasm: primitives, share links and TOTP only"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+# cdylib: `cargo xtask wasm` turns it into the package's lite module. rlib: for host clippy/tests.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ov-crypto = { path = "../../crates/ov-crypto" }
+ov-error = { path = "../../crates/ov-error" }
+ov-share = { path = "../../crates/ov-share" }
+js-sys.workspace = true
+wasm-bindgen.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true

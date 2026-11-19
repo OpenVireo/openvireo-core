@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { loadCore, OvError } from "../pkg/index.js";
+import { loadLite } from "../pkg/lite.js";
+import { loadLiteSync } from "../pkg/lite-sync.js";
 import { SHA256_ABC, hex } from "./helpers.js";
 
 describe("@openvireo/core-wasm in a browser-like environment (jsdom)", () => {
@@ -21,5 +23,13 @@ describe("@openvireo/core-wasm in a browser-like environment (jsdom)", () => {
     expect(r).toBeInstanceOf(Uint8Array);
     expect(r.length).toBe(32);
     expect(() => core.argon2id(new Uint8Array([1]), new Uint8Array(16), 1, 1, 1)).toThrow(OvError);
+  });
+
+  it("loads the lite module, async and sync", async () => {
+    const lite = await loadLite();
+    expect(lite).toBe(loadLiteSync());
+    expect(lite.version()).toBe("0.0.0");
+    expect(hex(lite.sha256(new Uint8Array([0x61, 0x62, 0x63])))).toBe(SHA256_ABC);
+    expect(lite.randomBytes(8).length).toBe(8);
   });
 });

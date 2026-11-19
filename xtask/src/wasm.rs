@@ -1,14 +1,19 @@
 //! `cargo xtask wasm`: build the @openvireo/core-wasm package. Owned by W1-BW (only that task edits this file).
 //!
+//! The package holds two modules: **full** (`ov-wasm`: the facade and every low-level export) and
+//! **lite** (`ov-wasm-lite`: primitives, share links and TOTP, for the public share page).
+//!
 //! Steps:
-//! 1. release-build `ov-wasm` for wasm32 (symbols kept, so wasm-bindgen can see the target
-//!    features; wasm-opt strips them later), in its own target dir so `xtask size` keeps its cache;
-//! 2. `wasm-bindgen --target web` (the CLI must be exactly the `wasm-bindgen` crate's version);
-//! 3. `wasm-opt -Oz`, stripping debug info and producers;
-//! 4. assemble `bindings/ov-wasm/pkg/`: the `npm/` template (loader, OvError, host adapters,
-//!    `.d.ts`), the glue in `gen/`, the `.wasm`, and `gen/wasm-base64.js` (the module as base64,
-//!    which the loader imports by default, like the SDK's opaque module);
-//! 5. print the size report (raw and gzip -9) before and after wasm-opt.
+//! 1. release-build `ov-wasm` and `ov-wasm-lite` for wasm32 (symbols kept, so wasm-bindgen can see
+//!    the target features; wasm-opt strips them later), in `$CARGO_TARGET_DIR/wasm-pkg` (default
+//!    `target/wasm-pkg`) so `xtask size` keeps its cache;
+//! 2. `wasm-bindgen --target web` for each (the CLI must be exactly the `wasm-bindgen` crate's
+//!    version): full into `gen/`, lite into `gen/lite/`;
+//! 3. `wasm-opt -Oz` on each, stripping debug info and producers;
+//! 4. assemble `bindings/ov-wasm/pkg/`: the `npm/` template (loaders, OvError, host adapters,
+//!    `.d.ts`), the glue, the `.wasm` files, and a `wasm-base64.js` next to each (the module as
+//!    base64, which the loaders use by default, like the SDK's opaque module);
+//! 5. print the size report (raw and gzip -9) of both modules before and after wasm-opt.
 //!
 //! Options: `--skip-opt` (no wasm-opt, for quick iterations).
 
@@ -29,6 +34,27 @@ const WASM_FEATURES: [&str; 6] = [
     "--enable-multivalue",
 ];
 
+/// One module of the package: the crate, its wasm-bindgen out-name and its folder under `pkg/`.
+struct Module {
+    label: &'static str,
+    package: &'static str,
+    out_name: &'static str,
+    dir: &'static str,
+}
+
+const MODULES: [Module; 2] = [
+    Module { label: "full", package: "ov-wasm", out_name: "ov_wasm", dir: "gen" },
+    Module { label: "lite", package: "ov-wasm-lite", out_name: "ov_wasm_lite", dir: "gen/lite" },
+];
+
+/// Sizes of one module: wasm-bindgen output, after wasm-opt, and the JS glue.
+struct Sizes {
+    label: &'static str,
+    before: Vec<u8>,
+    after: Vec<u8>,
+    glue: Vec<u8>,
+}
+
 pub fn run(args: &[String]) -> Result {
     let mut skip_opt = false;
     for a in args {
@@ -41,45 +67,80 @@ pub fn run(args: &[String]) -> Result {
     let root = root();
     let crate_dir = root.join("bindings").join("ov-wasm");
     let pkg = crate_dir.join("pkg");
-    let gen = pkg.join("gen");
-    let target_dir = root.join("target").join("wasm-pkg");
+    let target_dir = target_root(&root).join("wasm-pkg");
     let target_dir_s = target_dir.to_str().ok_or("non-UTF-8 target dir")?;
 
     check_wasm_bindgen_version(&root)?;
 
+    let mut build = cargo();
+    build.args(["build", "--locked", "--release", "--target", WASM_TARGET]);
+    for m in &MODULES {
+        build.args(["-p", m.package]);
+    }
     crate::run(
-        "wasm: release wasm32 build of ov-wasm",
-        cargo().args(["build", "--locked", "--release", "--target", WASM_TARGET, "-p", "ov-wasm"]).args([
-            "--config",
-            "profile.release.strip=false",
-            "--target-dir",
-            target_dir_s,
-        ]),
+        "wasm: release wasm32 build of ov-wasm and ov-wasm-lite",
+        build.args(["--config", "profile.release.strip=false", "--target-dir", target_dir_s]),
     )?;
-    let built = target_dir.join(WASM_TARGET).join("release").join("ov_wasm.wasm");
 
     if pkg.exists() {
         fs::remove_dir_all(&pkg).map_err(|e| format!("{}: {e}", pkg.display()))?;
     }
     copy_dir(&crate_dir.join("npm"), &pkg)?;
-    fs::create_dir_all(&gen).map_err(|e| e.to_string())?;
 
+    let mut sizes = Vec::new();
+    for m in &MODULES {
+        let built = target_dir.join(WASM_TARGET).join("release").join(format!("{}.wasm", m.package.replace('-', "_")));
+        sizes.push(module(m, &built, &pkg.join(m.dir), skip_opt)?);
+    }
+
+    // The package version follows the crate's.
+    let manifest = pkg.join("package.json");
+    let text = fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    let text = text.replace("\"0.0.0-template\"", &format!("\"{}\"", env!("CARGO_PKG_VERSION")));
+    fs::write(&manifest, text).map_err(|e| e.to_string())?;
+
+    println!("\n{:<38} {:>12} {:>12}", "wasm package size report", "raw bytes", "gzip -9");
+    for s in &sizes {
+        let name = format!("{}_bg.wasm", if s.label == "full" { "ov_wasm" } else { "ov_wasm_lite" });
+        println!(
+            "{:<38} {:>12} {:>12}",
+            format!("{} {name} (wasm-bindgen)", s.label),
+            s.before.len(),
+            gzip_len(&s.before)?
+        );
+        println!("{:<38} {:>12} {:>12}", format!("{} {name} (final)", s.label), s.after.len(), gzip_len(&s.after)?);
+        println!("{:<38} {:>12} {:>12}", format!("{} glue .js", s.label), s.glue.len(), gzip_len(&s.glue)?);
+        let b64 = base64(&s.after);
+        println!(
+            "{:<38} {:>12} {:>12}",
+            format!("{} wasm-base64.js (embedded)", s.label),
+            b64.len() + 18,
+            gzip_len(b64.as_bytes())?
+        );
+    }
+    println!("\npackage: {}", pkg.display());
+    Ok(())
+}
+
+/// wasm-bindgen, wasm-opt and the base64 copy for one module, into `out` (`gen/` or `gen/lite/`).
+fn module(m: &Module, built: &Path, out: &Path, skip_opt: bool) -> Result<Sizes> {
+    fs::create_dir_all(out).map_err(|e| e.to_string())?;
     crate::run(
-        "wasm: wasm-bindgen --target web",
+        &format!("wasm: wasm-bindgen --target web ({})", m.label),
         Command::new("wasm-bindgen")
-            .args(["--target", "web", "--out-name", "ov_wasm", "--out-dir"])
-            .arg(&gen)
-            .arg(&built),
+            .args(["--target", "web", "--out-name", m.out_name, "--out-dir"])
+            .arg(out)
+            .arg(built),
     )?;
 
-    let bg = gen.join("ov_wasm_bg.wasm");
+    let bg = out.join(format!("{}_bg.wasm", m.out_name));
     let before = fs::read(&bg).map_err(|e| format!("{}: {e}", bg.display()))?;
     if skip_opt {
         println!("\n==> wasm: wasm-opt skipped (--skip-opt)");
     } else {
-        let opt = gen.join("ov_wasm_bg.opt.wasm");
+        let opt = out.join(format!("{}_bg.opt.wasm", m.out_name));
         crate::run(
-            "wasm: wasm-opt -Oz",
+            &format!("wasm: wasm-opt -Oz ({})", m.label),
             Command::new("wasm-opt")
                 .arg("-Oz")
                 .args(WASM_FEATURES)
@@ -92,26 +153,22 @@ pub fn run(args: &[String]) -> Result {
     }
     let after = fs::read(&bg).map_err(|e| format!("{}: {e}", bg.display()))?;
 
-    // The module as base64 in an ES module, so `loadCore()` works the same in Node, browsers,
+    // The module as base64 in an ES module, so the loaders work the same in Node, browsers,
     // bundlers and Bun without resolving a .wasm path.
     let b64 = base64(&after);
-    fs::write(gen.join("wasm-base64.js"), format!("export default \"{b64}\";\n")).map_err(|e| e.to_string())?;
-    fs::write(gen.join("wasm-base64.d.ts"), "declare const wasm: string;\nexport default wasm;\n")
+    fs::write(out.join("wasm-base64.js"), format!("export default \"{b64}\";\n")).map_err(|e| e.to_string())?;
+    fs::write(out.join("wasm-base64.d.ts"), "declare const wasm: string;\nexport default wasm;\n")
         .map_err(|e| e.to_string())?;
+    let glue = fs::read(out.join(format!("{}.js", m.out_name))).map_err(|e| e.to_string())?;
+    Ok(Sizes { label: m.label, before, after, glue })
+}
 
-    // The package version follows the crate's.
-    let manifest = pkg.join("package.json");
-    let text = fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
-    let text = text.replace("\"0.0.0-template\"", &format!("\"{}\"", env!("CARGO_PKG_VERSION")));
-    fs::write(&manifest, text).map_err(|e| e.to_string())?;
-
-    println!("\n{:<36} {:>12} {:>12}", "wasm package size report", "raw bytes", "gzip -9");
-    println!("{:<36} {:>12} {:>12}", "ov_wasm_bg.wasm (wasm-bindgen)", before.len(), gzip_len(&before)?);
-    println!("{:<36} {:>12} {:>12}", "ov_wasm_bg.wasm (final)", after.len(), gzip_len(&after)?);
-    let glue = fs::read(gen.join("ov_wasm.js")).map_err(|e| e.to_string())?;
-    println!("{:<36} {:>12} {:>12}", "ov_wasm.js (glue)", glue.len(), gzip_len(&glue)?);
-    println!("\npackage: {}", pkg.display());
-    Ok(())
+/// `$CARGO_TARGET_DIR` (relative to the workspace root when relative), else `<root>/target`.
+fn target_root(root: &Path) -> std::path::PathBuf {
+    match std::env::var_os("CARGO_TARGET_DIR") {
+        Some(d) if !d.is_empty() => root.join(d),
+        _ => root.join("target"),
+    }
 }
 
 /// The CLI must match the `wasm-bindgen` crate in Cargo.lock exactly, or the glue is incompatible.

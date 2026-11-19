@@ -1271,61 +1271,14 @@ pub fn deletion_expired(scheduled_for: Option<String>, now_ms: f64) -> Result<bo
     Ok(api::deletion_expired(scheduled_for, now))
 }
 
-/// The fields an item share includes by default.
-#[wasm_bindgen(js_name = defaultShareFields)]
-pub fn default_share_fields() -> Vec<String> {
-    api::default_share_fields()
-}
+// The share-link and TOTP helpers (`shareableFields`, `itemSharePayload`, `textSharePayload`,
+// `defaultShareFields`, `parseTotpUri`, `totpCode`, `entryTotpUri`) are in `share.rs`, shared with the
+// lite module.
 
-/// The fields of an entry that can be shared.
-#[wasm_bindgen(js_name = shareableFields, unchecked_return_type = "ShareableField[]")]
-pub fn shareable_fields(
-    #[wasm_bindgen(unchecked_param_type = "EntryRecord")] entry: JsValue,
-) -> Result<JsValue, JsValue> {
-    let entry = arg(&entry, "entry").map_err(arg_err)?;
-    Ok(api::shareable_fields(entry).to_js())
-}
-
-/// The payload of an item share.
-#[wasm_bindgen(js_name = itemSharePayload, unchecked_return_type = "SharePayload")]
-pub fn item_share_payload(
-    #[wasm_bindgen(unchecked_param_type = "EntryRecord")] entry: JsValue,
-    names: Vec<String>,
-    shared_by: Option<String>,
-) -> Result<JsValue, JsValue> {
-    let entry = arg(&entry, "entry").map_err(arg_err)?;
-    Ok(api::item_share_payload(entry, names, shared_by).to_js())
-}
-
-/// The payload of a text share.
-#[wasm_bindgen(js_name = textSharePayload, unchecked_return_type = "SharePayload")]
-pub fn text_share_payload(text: Vec<u8>, title: Option<String>, shared_by: Option<String>) -> JsValue {
-    api::text_share_payload(text, title, shared_by).to_js()
-}
-
-/// Parses an `otpauth://` URI.
-#[wasm_bindgen(js_name = parseTotpUri, unchecked_return_type = "TotpParams")]
-pub fn parse_totp_uri(uri: Vec<u8>) -> Result<JsValue, JsValue> {
-    error::js(api::parse_totp_uri(uri))
-}
-
-/// The TOTP code at `nowMs`.
-#[wasm_bindgen(js_name = totpCode, unchecked_return_type = "TotpCode")]
-pub fn totp_code(
-    #[wasm_bindgen(unchecked_param_type = "TotpParams")] params: JsValue,
-    now_ms: f64,
-) -> Result<JsValue, JsValue> {
-    let params = arg(&params, "params").map_err(arg_err)?;
-    let now = i64_arg(now_ms, "nowMs").map_err(arg_err)?;
-    Ok(api::totp_code(params, now).to_js())
-}
-
-/// An entry's TOTP URI, from its fields (KeePassXC and KeePass conventions).
-#[wasm_bindgen(js_name = entryTotpUri, unchecked_return_type = "Uint8Array | undefined")]
-pub fn entry_totp_uri(
-    #[wasm_bindgen(unchecked_param_type = "FieldRecord[]")] fields: JsValue,
-    label: String,
-) -> Result<JsValue, JsValue> {
-    let fields = arg(&fields, "fields").map_err(arg_err)?;
-    Ok(api::entry_totp_uri(fields, label).to_js())
+/// Test hook: panics inside a future, so the loader's async panic handling can be tested. Hidden
+/// from the loaded API.
+#[doc(hidden)]
+#[wasm_bindgen(js_name = "__testPanicAsync")]
+pub fn test_panic_async(message: String) -> Promise {
+    future_to_promise(async move { panic!("{message}") })
 }

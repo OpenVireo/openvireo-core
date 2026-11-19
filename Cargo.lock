@@ -1615,8 +1615,28 @@ dependencies = [
  "ov-core",
  "ov-crypto",
  "ov-error",
+ "ov-kdbx",
+ "ov-merge",
+ "ov-opaque",
+ "ov-share",
+ "rand_chacha",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "zeroize",
+]
+
+[[package]]
+name = "ov-wasm-lite"
+version = "0.0.0"
+dependencies = [
+ "js-sys",
+ "ov-crypto",
+ "ov-error",
+ "ov-share",
+ "wasm-bindgen",
  "zeroize",
 ]
 

@@ -3,6 +3,9 @@
 //! Plain records go through [`record!`]/[`unit_enum!`]; enums with data become tagged objects
 //! (`{ kind: "...", ... }`) written by hand below. Handles inside records (`ImportOutcome.vault`,
 //! `LoginStep.challenge`) become the wasm-bindgen classes from `handles.rs`.
+//!
+//! The records marked `@no_ts` have the same JS shape as a domain type a shared module declares
+//! (`share.rs`: `SharePayload`, `TotpParams`, `KdfParams`, …), so their TypeScript comes from there.
 
 use ov_core::api::*;
 use ov_core::host::{CachedVault, HttpRequest, HttpResponse, Level, Method};
@@ -29,7 +32,7 @@ record!(ServerConfig => ServerConfig {
     opaque: opaque ": OpaqueConfig", kdf_min: kdfMin "?: KdfMin", web: web "?: string", share: share "?: string",
 });
 record!(OpaqueConfig => OpaqueConfig { lib: lib ": string", version: version ": string", context: context ": string", ids: ids ": string" });
-record!(KdfMin => KdfMin { m: m ": number", t: t ": number" });
+record!(@no_ts KdfMin => KdfMin { m: m ": number", t: t ": number" });
 unit_enum!(Platform => Platform {
     QtLinux => "qt-linux", QtMacos => "qt-macos", QtWindows => "qt-windows", Web => "web", Cli => "cli",
     Connect => "connect", Ios => "ios",
@@ -39,7 +42,7 @@ record!(ClientConfig => ClientConfig { device: device ": DeviceInfo", offline: o
 
 // ------------------------------------------------------------------------------------ crypto
 
-record!(KdfParams => KdfParams { alg: alg ": string", salt: salt ": string", m: m ": number", t: t ": number", p: p ": number" });
+record!(@no_ts KdfParams => KdfParams { alg: alg ": string", salt: salt ": string", m: m ": number", t: t ": number", p: p ": number" });
 record!(KdfOverrides => KdfOverrides { m: m "?: number", t: t "?: number", p: p "?: number" });
 record!(PublicKeys => PublicKeys { enc_pk: encPk ": Uint8Array", sign_pk: signPk ": Uint8Array", sig: sig ": Uint8Array", fingerprint: fingerprint ": string" });
 
@@ -179,9 +182,9 @@ record!(SelfHostedSyncResult => SelfHostedSyncResult { kdbx: kdbx ": Uint8Array"
 
 // ------------------------------------------------------------------------------------- TOTP
 
-unit_enum!(TotpAlgorithm => TotpAlgorithm { Sha1 => "SHA1", Sha256 => "SHA256", Sha512 => "SHA512" });
-record!(TotpParams => TotpParams { secret: secret ": Uint8Array", digits: digits ": number", period: period ": number", algorithm: algorithm ": TotpAlgorithm", encoder: encoder "?: string" });
-record!(TotpCode => TotpCode { code: code ": Uint8Array", remaining: remaining ": number" });
+unit_enum!(@no_ts TotpAlgorithm => TotpAlgorithm { Sha1 => "SHA1", Sha256 => "SHA256", Sha512 => "SHA512" });
+record!(@no_ts TotpParams => TotpParams { secret: secret ": Uint8Array", digits: digits ": number", period: period ": number", algorithm: algorithm ": TotpAlgorithm", encoder: encoder "?: string" });
+record!(@no_ts TotpCode => TotpCode { code: code ": Uint8Array", remaining: remaining ": number" });
 
 // ------------------------------------------------------------------------------- share links
 
@@ -190,15 +193,15 @@ record!(ShareOptions => ShareOptions {
     vault_id: vaultId "?: string", entry_id: entryId "?: string",
 });
 record!(CreatedShare => CreatedShare { id: id ": string", url: url ": Uint8Array", expires_at: expiresAt ": Rfc3339" });
-record!(ShareRef => ShareRef { vault: vault "?: string", entry: entry "?: string", title: title ": string" });
+record!(@no_ts ShareRef => ShareRef { vault: vault "?: string", entry: entry "?: string", title: title ": string" });
 record!(ShareListing => ShareListing {
     id: id ": string", vault_id: vaultId "?: string", reference: reference "?: ShareRef", passcode: passcode ": boolean",
     max_opens: maxOpens "?: number", opens: opens ": number", opened_at: openedAt ": Rfc3339[]", created_at: createdAt ": Rfc3339",
     expires_at: expiresAt ": Rfc3339", status: status ": string", ended_at: endedAt "?: Rfc3339", end_reason: endReason "?: string",
 });
-record!(SharePayload => SharePayload { v: v ": number", kind: kind ": string", title: title "?: string", shared_by: sharedBy "?: string", fields: fields ": ShareField[]" });
-record!(ShareField => ShareField { k: k ": string", label: label ": string", value: value ": Uint8Array", protected: protected ": boolean" });
-record!(ShareableField => ShareableField { name: name ": string", kind: kind ": string", label: label ": string", value: value ": Uint8Array", protected: protected ": boolean" });
+record!(@no_ts SharePayload => SharePayload { v: v ": number", kind: kind ": string", title: title "?: string", shared_by: sharedBy "?: string", fields: fields ": ShareField[]" });
+record!(@no_ts ShareField => ShareField { k: k ": string", label: label ": string", value: value ": Uint8Array", protected: protected ": boolean" });
+record!(@no_ts ShareableField => ShareableField { name: name ": string", kind: kind ": string", label: label ": string", value: value ": Uint8Array", protected: protected ": boolean" });
 record!(ShareInfo => ShareInfo { expires_at: expiresAt ": Rfc3339", opens_left: opensLeft "?: number", kdf: kdf "?: KdfParams" });
 record!(OpenedShare => OpenedShare { payload: payload ": SharePayload", opens_left: opensLeft "?: number" });
 
@@ -210,7 +213,7 @@ record!(EntrySummary => EntrySummary {
     url: url ": string", tags: tags ": string[]", protected_fields: protectedFields ": string[]", icon_id: iconId ": number",
     custom_icon: customIcon "?: string", modified_at: modifiedAt ": number", expires_at: expiresAt "?: number", in_recycle_bin: inRecycleBin ": boolean",
 });
-record!(FieldRecord => FieldRecord { name: name ": string", value: value ": Uint8Array", protected: protected ": boolean" });
+record!(@no_ts FieldRecord => FieldRecord { name: name ": string", value: value ": Uint8Array", protected: protected ": boolean" });
 record!(AttachmentInfo => AttachmentInfo { name: name ": string", size: size ": number" });
 record!(EntryRecord => EntryRecord {
     id: id ": string", group_id: groupId ": string", group_path: groupPath ": string[]", fields: fields ": FieldRecord[]", tags: tags ": string[]",

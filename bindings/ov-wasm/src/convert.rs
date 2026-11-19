@@ -4,10 +4,22 @@
 //! wire strings, bytes as `Uint8Array`, `Option` as `undefined` (and `null` on input), integers as
 //! `number`. The [`record!`] and [`unit_enum!`] macros write both directions and the matching
 //! TypeScript declaration (a `typescript_custom_section`), so the `.d.ts` can't drift from the code.
+//!
+//! Shared with `bindings/ov-wasm-lite` (included there with `#[path]`), so both modules convert values
+//! the same way; each crate gets its own copy of the traits.
+//!
+//! ## Secrets in linear memory
+//!
+//! wasm-bindgen copies a `&[u8]` argument into the module's memory and frees it unzeroed after the
+//! call. Exports therefore take secret arguments as owned `Vec<u8>`/`String` (or read them from a
+//! `JsValue`) and wrap them in [`Zeroizing`] at once, so the copy is wiped before it is freed; and
+//! they return secrets as a `Uint8Array` built straight from a `Zeroizing` buffer ([`out`]), so no
+//! unzeroed copy stays behind. The caller still owns (and wipes) the JS-side arrays.
 
 use js_sys::{Array, Object, Reflect, Uint8Array};
 use ov_error::{OvError, OvErrorCode};
 use wasm_bindgen::{JsCast, JsValue};
+use zeroize::Zeroizing;
 
 /// A Rust value that becomes a JS value.
 pub(crate) trait ToJs {
@@ -182,6 +194,88 @@ impl FromJs for (String, String) {
 }
 impl Elem for (String, String) {}
 
+// ------------------------------------------------------------------------------------ secrets
+
+/// Bytes as a fresh `Uint8Array`, copied straight out of linear memory (the caller then drops, and
+/// so wipes, its `Zeroizing` buffer).
+pub(crate) fn out(bytes: &[u8]) -> Uint8Array {
+    Uint8Array::from(bytes)
+}
+
+impl ToJs for Zeroizing<Vec<u8>> {
+    fn to_js(&self) -> JsValue {
+        out(self).into()
+    }
+}
+impl FromJs for Zeroizing<Vec<u8>> {
+    fn from_js(v: &JsValue, path: &str) -> Result<Self, OvError> {
+        v.dyn_ref::<Uint8Array>().map(|a| Zeroizing::new(a.to_vec())).ok_or_else(|| bad(path, "a Uint8Array"))
+    }
+}
+
+impl<const N: usize> ToJs for Zeroizing<[u8; N]> {
+    fn to_js(&self) -> JsValue {
+        out(&self[..]).into()
+    }
+}
+impl<const N: usize> FromJs for Zeroizing<[u8; N]> {
+    fn from_js(v: &JsValue, path: &str) -> Result<Self, OvError> {
+        let b = Zeroizing::<Vec<u8>>::from_js(v, path)?;
+        fixed(&b, path)
+    }
+}
+
+/// A secret as text: a JS string, or a `Uint8Array` of UTF-8. Text secrets (passwords, passcodes,
+/// links, tokens) are accepted either way; outputs are always `Uint8Array`.
+pub(crate) struct SecretText(pub(crate) Zeroizing<String>);
+
+impl std::ops::Deref for SecretText {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromJs for SecretText {
+    fn from_js(v: &JsValue, path: &str) -> Result<Self, OvError> {
+        if let Some(s) = v.as_string() {
+            return Ok(SecretText(Zeroizing::new(s)));
+        }
+        let mut b = Zeroizing::<Vec<u8>>::from_js(v, path).map_err(|_| bad(path, "a string or a Uint8Array"))?;
+        utf8_owned(std::mem::take(&mut *b), path).map(SecretText)
+    }
+}
+
+impl ToJs for Zeroizing<String> {
+    fn to_js(&self) -> JsValue {
+        out(self.as_bytes()).into()
+    }
+}
+
+/// `bytes` as UTF-8 text; the bytes are wiped either way.
+pub(crate) fn utf8_owned(bytes: Vec<u8>, path: &str) -> Result<Zeroizing<String>, OvError> {
+    String::from_utf8(bytes).map(Zeroizing::new).map_err(|e| {
+        drop(Zeroizing::new(e.into_bytes()));
+        bad(path, "UTF-8 text")
+    })
+}
+
+/// Exactly `N` bytes, copied into a `Zeroizing` array.
+pub(crate) fn fixed<const N: usize>(b: &[u8], path: &str) -> Result<Zeroizing<[u8; N]>, OvError> {
+    if b.len() != N {
+        return Err(OvError::new(OvErrorCode::InvalidRequest, format!("{path}: expected {N} bytes, got {}", b.len())));
+    }
+    let mut a = Zeroizing::new([0u8; N]);
+    a.copy_from_slice(b);
+    Ok(a)
+}
+
+/// A non-secret fixed-size argument (nonces, public keys).
+pub(crate) fn array<const N: usize>(b: &[u8], path: &str) -> Result<[u8; N], OvError> {
+    b.try_into()
+        .map_err(|_| OvError::new(OvErrorCode::InvalidRequest, format!("{path}: expected {N} bytes, got {}", b.len())))
+}
+
 // ------------------------------------------------------------------------------------ macros
 
 /// A plain record: `record!(Rust::Path => TsName { rust_field: jsKey "?: ts type", ... })`.
@@ -190,6 +284,17 @@ impl Elem for (String, String) {}
 /// `"?: string"`). Implements `ToJs`, `FromJs` and `Elem`, and emits `export interface TsName`.
 macro_rules! record {
     ($ty:path => $name:ident { $($f:ident : $js:ident $ts:literal),* $(,)? }) => {
+        $crate::convert::record!(@no_ts $ty => $name { $($f : $js $ts),* });
+        #[::wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section)]
+        const _: &str = concat!(
+            "export interface ", stringify!($name), " {\n",
+            $( "  ", stringify!($js), $ts, ";\n", )*
+            "}\n"
+        );
+    };
+    // The conversions only: the TypeScript type is declared elsewhere (a shared module declares the
+    // same JS shape for the domain type).
+    (@no_ts $ty:path => $name:ident { $($f:ident : $js:ident $ts:literal),* $(,)? }) => {
         impl $crate::convert::ToJs for $ty {
             fn to_js(&self) -> ::wasm_bindgen::JsValue {
                 let o = $crate::convert::obj();
@@ -206,18 +311,19 @@ macro_rules! record {
             }
         }
         impl $crate::convert::Elem for $ty {}
-        #[::wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section)]
-        const _: &str = concat!(
-            "export interface ", stringify!($name), " {\n",
-            $( "  ", stringify!($js), $ts, ";\n", )*
-            "}\n"
-        );
     };
 }
 
 /// A fieldless enum as a string union: `unit_enum!(Rust::Path => TsName { Variant => "wire", ... })`.
 macro_rules! unit_enum {
     ($ty:path => $name:ident { $v0:ident => $w0:literal $(, $v:ident => $w:literal)* $(,)? }) => {
+        $crate::convert::unit_enum!(@no_ts $ty => $name { $v0 => $w0 $(, $v => $w)* });
+        #[::wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section)]
+        const _: &str = concat!(
+            "export type ", stringify!($name), " = \"", $w0, "\"", $( " | \"", $w, "\"", )* ";\n"
+        );
+    };
+    (@no_ts $ty:path => $name:ident { $v0:ident => $w0:literal $(, $v:ident => $w:literal)* $(,)? }) => {
         impl $crate::convert::ToJs for $ty {
             fn to_js(&self) -> ::wasm_bindgen::JsValue {
                 use $ty as E;
@@ -235,10 +341,6 @@ macro_rules! unit_enum {
             }
         }
         impl $crate::convert::Elem for $ty {}
-        #[::wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section)]
-        const _: &str = concat!(
-            "export type ", stringify!($name), " = \"", $w0, "\"", $( " | \"", $w, "\"", )* ";\n"
-        );
     };
 }
 

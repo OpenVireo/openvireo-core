@@ -5,8 +5,8 @@ openvireo-core compiled to WebAssembly with wasm-bindgen. `cargo xtask wasm` bui
 
 | Module | Crate | What it has | Size after wasm-opt (raw / gzip -9) |
 |---|---|---|---|
-| **full** | `bindings/ov-wasm` | the facade handles (`OvClient`, `Account`, `Vault`, …) plus every low-level export below | 2,179,823 B / 876,771 B |
-| **lite** | `bindings/ov-wasm-lite` | primitives (SHA-256, HKDF, XChaCha20-Poly1305, Argon2, random), share links, TOTP | 404,519 B / 191,245 B |
+| **full** | `bindings/ov-wasm` | the facade handles (`OvClient`, `Account`, `Vault`, …) plus every low-level export below | 2,196,927 B / 882,649 B |
+| **lite** | `bindings/ov-wasm-lite` | primitives (SHA-256, HKDF, XChaCha20-Poly1305, Argon2, random), share links, TOTP | 405,134 B / 191,467 B |
 
 With the module embedded as base64 (the default), a lite-only browser bundle built with esbuild is
 558 KB raw / 244 KB gzip -9, which is what the public share page pays. The full module costs about
@@ -147,7 +147,7 @@ resolves with the core's result.
 | `parseTotpUri` | `parseTotpUri` (L) |
 | `totpCode(params, now)` | `totpCode(params, now)`, with `code` read through `fromUtf8` (L) |
 | `entryTotpUri(fields, label)` | `entryTotpUri(Object.entries(fields).map(([name, value]) => ({ name, value: utf8(value), protected: false })), label)` (L) |
-| `base32Decode` | TS. `ov-share`'s decoder isn't public; it's small. |
+| `base32Decode` | `base32Decode(text)` (L), `ov_share::base32_decode` (public since W3-A3) |
 
 ### `@openvireo/sdk/vault` and `@openvireo/sdk/merge`
 
@@ -218,8 +218,10 @@ iOS); all on the full module (F):
 | "save a copy" / KDF | `vault.copyWithoutRemotes(credentials?)`, `vault.setKdf(kdf)` (local), `vault.exportKdbxWith(credentials, groupIds?, kdf)`; `KdbxKdf` is `{ kind: "databaseDefault" }`, `{ kind: "argon2d" \| "argon2id", memory, iterations, parallelism }` or `{ kind: "aesKdf", rounds }` |
 | self-hosted version history | `selfHosted.history(databaseId)`, `selfHosted.openVersion(databaseId, revision, credentials)` |
 | a service account's server | `sa.serverConfig()`, `sa.issuer()` |
+| sync an account vault held as a file (desktop-style) | `account.syncVaultKdbx(vaultId, kdbx, base?, options?)` → `VaultKdbxSyncResult { kdbx, credentials, report }`; `account.vaultKdbxCredentials(vaultId)`; `SyncOptions.acceptServerState?` ("continue anyway" after `server_rolled_back` / `server_lost_database`, also for `vault.sync`) |
+| borrow the session token | `account.accessToken(forceRefresh)` (UTF-8 JWT bytes; never log it) |
 
-Record fields added in v1.6 (`usageCount`, `AttachmentInfo.protected`) default when a JS record that
+Record fields added in v1.6 (`usageCount`, `AttachmentInfo.protected`, `SyncOptions.acceptServerState`) default when a JS record that
 lacks them comes back in (`applyAutofillEdits`, `keepAutofillEdit`).
 
 ## Building and testing

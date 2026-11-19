@@ -2,6 +2,7 @@
 // contract-v1.6 on the full module (docs/adr/0001-contract.md § contract-v1.6).
 import { describe, expect, it } from "vitest";
 import { loadCore } from "../pkg/index.js";
+import { loadLite } from "../pkg/lite.js";
 import { consoleLog, memoryCache, memoryStore } from "../pkg/host/index.js";
 import { bytes } from "./helpers.js";
 
@@ -112,5 +113,31 @@ describe("contract-v1.6", () => {
     expect(v1.isReadOnly()).toBe(true);
     expect(v1.entries(false).map((e) => e.title)).toEqual(["Wifi"]);
     expect(v1.etag()).toBe('"r1"');
+  });
+  it("needs a session for the desktop's vault-file sync and the session token", async () => {
+    const core = await loadCore();
+    const server = {
+      issuer: "https://accounts.test", api: "https://accounts.test/api/v1", sync: "https://sync.test/api/v1",
+      jwksUri: "https://accounts.test/.well-known/jwks.json",
+      opaque: { lib: "opaque-ke", version: "4", context: "ov-opaque-v1", ids: "accounts.test" },
+    };
+    const client = new core.OvClient({ ...config, server }, host());
+    const account = await client.connect("https://accounts.test");
+    expect(account.isSignedIn()).toBe(false);
+    await expect(account.accessToken(false)).rejects.toMatchObject({ code: "signed_out" });
+    await expect(account.vaultKdbxCredentials("v")).rejects.toMatchObject({ code: expect.not.stringMatching(/^internal$/) });
+    await expect(account.syncVaultKdbx("v", new Uint8Array(), undefined, { localChanged: true, acceptServerState: true }))
+      .rejects.toMatchObject({ code: expect.not.stringMatching(/^internal$/) });
+    // SyncOptions without the v1.6 field is still accepted: a local file fails for the right reason.
+    const v = await client.createLocal("Home", pw("pw"));
+    await expect(v.sync({ localChanged: true })).rejects.toMatchObject({ code: "invalid_request", message: expect.stringMatching(/local file/) });
+  });
+  it("decodes base32 in both modules", async () => {
+    const want = [...new TextEncoder().encode("Hello!"), 0xde, 0xad, 0xbe, 0xef];
+    for (const core of [await loadCore(), await loadLite()]) {
+      expect([...core.base32Decode("jbsw y3dp-EHPK3PXP==")]).toEqual(want);
+      expect([...core.base32Decode(bytes("JBSWY3DPEHPK3PXP"))]).toEqual(want);
+      expect(() => core.base32Decode("not base32!")).toThrow(expect.objectContaining({ code: "invalid_totp" }));
+    }
   });
 });

@@ -441,6 +441,23 @@ impl AccountJs {
         call(signal, move |t| async move { a.import_vault(source, arg(&mode, "mode")?, t).await })
     }
 
+    /// Syncs an account vault held as `.kdbx` bytes (contract-v1.6).
+    #[wasm_bindgen(js_name = syncVaultKdbx, unchecked_return_type = "Promise<VaultKdbxSyncResult>")]
+    pub fn sync_vault_kdbx(
+        &self,
+        vault_id: String,
+        kdbx: Vec<u8>,
+        base: Option<Vec<u8>>,
+        #[wasm_bindgen(unchecked_param_type = "SyncOptions | undefined")] options: JsValue,
+        signal: Option<AbortSignal>,
+    ) -> Promise {
+        let a = self.0.clone();
+        call(signal, move |t| async move {
+            let options: Option<api::SyncOptions> = arg(&options, "options")?;
+            a.sync_vault_kdbx(vault_id, kdbx, base, options.unwrap_or_default(), t).await
+        })
+    }
+
     /// Opens one saved version, read-only. `revision` is an integer.
     #[wasm_bindgen(js_name = openVaultVersion, unchecked_return_type = "Promise<Vault>")]
     pub fn open_vault_version(&self, vault_id: String, revision: f64, signal: Option<AbortSignal>) -> Promise {
@@ -691,6 +708,10 @@ account_async! {
     deleteVault = delete_vault(vault_id: String) -> "Promise<void>";
     /// The saved versions of a vault, newest first.
     vaultHistory = vault_history(vault_id: String) -> "Promise<VaultVersion[]>";
+    /// The credentials an account vault's `.kdbx` is under (contract-v1.6). Wipe them.
+    vaultKdbxCredentials = vault_kdbx_credentials(vault_id: String) -> "Promise<KdbxCredentials>";
+    /// The session's access token (UTF-8), refreshed when needed (contract-v1.6). Never log it.
+    accessToken = access_token(force_refresh: bool) -> "Promise<Uint8Array>";
     /// Live updates (SPEC §11).
     subscribe = subscribe() -> "Promise<EventStream>";
     /// `GET /me` (SPEC §16).

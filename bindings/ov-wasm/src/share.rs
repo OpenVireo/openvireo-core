@@ -497,6 +497,16 @@ pub fn totp_code(
     Ok(ov_share::totp_code(&params, now as i64).to_js())
 }
 
+/// RFC 4648 base32 (as TOTP secrets are written): case-insensitive, white space, `=` and `-`
+/// ignored; `invalid_totp` otherwise. The SDK's `base32Decode`. The result may be a secret: wipe it.
+#[wasm_bindgen(js_name = base32Decode, unchecked_return_type = "Uint8Array")]
+pub fn base32_decode(
+    #[wasm_bindgen(unchecked_param_type = "string | Uint8Array")] text: JsValue,
+) -> Result<JsValue, JsValue> {
+    let text: SecretText = arg(&text, "text").map_err(arg_err)?;
+    js(ov_share::base32_decode(&text).map(|b| b.to_vec()))
+}
+
 /// An entry's TOTP URI from its fields (`otp`, or KeePass's `TOTP Seed`/`TOTP Settings`).
 #[wasm_bindgen(js_name = entryTotpUri, unchecked_return_type = "Uint8Array | undefined")]
 pub fn entry_totp_uri(

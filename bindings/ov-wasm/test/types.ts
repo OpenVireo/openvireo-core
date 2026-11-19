@@ -1,5 +1,5 @@
 // Type-checked by `npm run typecheck` (tsc --noEmit): the package's .d.ts must describe the API.
-import { loadCore, OvError, type Account, type Core, type Host, type ImportPreview, type ImportSummary, type ImportTarget, type KdbxKdf, type KdbxMergeReport, type Keyset, type LocalImportMode, type LoginStep, type ServerConfig, type SharePayload, type Vault, type VaultInfo, type VaultVersion } from "../pkg/index.js";
+import { loadCore, OvError, type Account, type Core, type Host, type ImportPreview, type ImportSummary, type ImportTarget, type KdbxCredentials, type KdbxKdf, type KdbxMergeReport, type Keyset, type LocalImportMode, type LoginStep, type ServerConfig, type SharePayload, type Vault, type VaultInfo, type VaultKdbxSyncResult, type VaultVersion } from "../pkg/index.js";
 import { loadCoreSync } from "../pkg/sync.js";
 import { loadLite, type LiteCore, type ShareLinkParts } from "../pkg/lite.js";
 import { loadLiteSync } from "../pkg/lite-sync.js";
@@ -75,5 +75,12 @@ export async function contractV16(core: Core, client: InstanceType<Core["OvClien
   const issuer: string = sa.issuer();
   const config: ServerConfig = sa.serverConfig();
   const mode: LocalImportMode = { kind: "merge" };
-  console.log(used, count, prot, summary, preview, targets, value, out, old, issuer, config, mode);
+  const account: Account = await client.connect("https://accounts.example");
+  const fileCreds: KdbxCredentials = await account.vaultKdbxCredentials("v");
+  const synced: VaultKdbxSyncResult = await account.syncVaultKdbx("v", out, undefined, { localChanged: true, acceptServerState: true });
+  const jwt: Uint8Array = await account.accessToken(false);
+  const b32: Uint8Array = core.base32Decode("JBSWY3DP");
+  const lite: LiteCore = await loadLite();
+  const b32lite: Uint8Array = lite.base32Decode("JBSWY3DP");
+  console.log(b32, b32lite, fileCreds, synced.report.outcome, jwt, used, count, prot, summary, preview, targets, value, out, old, issuer, config, mode);
 }

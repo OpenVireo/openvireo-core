@@ -116,7 +116,9 @@ record!(VaultInfo => VaultInfo {
 });
 record!(VaultVersion => VaultVersion { revision: revision ": number", etag: etag ": string", size: size "?: number", saved_at: savedAt "?: Rfc3339", is_current: isCurrent ": boolean" });
 record!(BlobMeta => BlobMeta { id: id ": string", etag: etag ": string", revision: revision ": number", size: size ": number", updated_at: updatedAt ": Rfc3339" });
-record!(SyncOptions => SyncOptions { local_changed: localChanged ": boolean" });
+record!(SyncOptions => SyncOptions {
+    local_changed: localChanged ": boolean", accept_server_state: acceptServerState "?: boolean" via crate::convert::field_or_default,
+});
 unit_enum!(SyncOutcome => SyncOutcome { Unchanged => "unchanged", Pulled => "pulled", Uploaded => "uploaded", Created => "created" });
 unit_enum!(ConflictKind => ConflictKind {
     EditedOnBoth => "edited-on-both", DeletedHereEditedThere => "deleted-here-edited-there", EditedHereDeletedThere => "edited-here-deleted-there",
@@ -179,6 +181,7 @@ record!(Injected => Injected { text: text ": Uint8Array", secrets: secrets ": Ui
 
 record!(PairingCode => PairingCode { code: code ": string", expires_at: expiresAt ": Rfc3339" });
 record!(SelfHostedSyncResult => SelfHostedSyncResult { kdbx: kdbx ": Uint8Array", report: report ": SyncReport" });
+record!(VaultKdbxSyncResult => VaultKdbxSyncResult { kdbx: kdbx ": Uint8Array", credentials: credentials ": KdbxCredentials", report: report ": SyncReport" });
 
 // ------------------------------------------------------------------------------------- TOTP
 

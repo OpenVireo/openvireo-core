@@ -79,8 +79,9 @@ fn is_js_space(c: char) -> bool {
     c.is_whitespace() || c == '\u{feff}'
 }
 
-/// RFC 4648 base32, case-insensitive, ignoring white space, `=` and `-`; `invalid_totp` otherwise.
-pub(crate) fn base32_decode(text: &str) -> Result<Zeroizing<Vec<u8>>, OvError> {
+/// RFC 4648 base32 (as TOTP secrets are written), case-insensitive, ignoring white space, `=` and
+/// `-`; `invalid_totp` otherwise. The SDK's `base32Decode`.
+pub fn base32_decode(text: &str) -> Result<Zeroizing<Vec<u8>>, OvError> {
     let clean = Zeroizing::new(text.to_uppercase());
     let mut out = Zeroizing::new(Vec::with_capacity(clean.len() * 5 / 8));
     let (mut bits, mut value) = (0u32, 0u32);

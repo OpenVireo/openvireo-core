@@ -1,6 +1,6 @@
 //! The terminal: questions on stderr (the TS `prompt` in bin.ts), typing hidden for passwords, and
 //! the host name for the device name. The only module with `unsafe` (libc's termios and
-//! `gethostname`, contract-v1.4).
+//! `gethostname`, contract-v1.4; windows-sys's console mode on Windows, W3-A3).
 #![allow(unsafe_code)]
 
 use std::io::{BufRead, IsTerminal, Write};
@@ -49,11 +49,9 @@ impl Drop for Restore {
     }
 }
 
-/// Reads a line with echo off and the terminal's signal keys off, one byte at a time: Enter ends it,
-/// Backspace and Ctrl-U edit it, Ctrl-C cancels, Ctrl-D on an empty line cancels.
+/// Turns echo, line editing and the signal keys off until the guard drops.
 #[cfg(unix)]
-fn read_hidden() -> Result<String, OvError> {
-    use std::io::Read;
+fn raw_mode() -> Result<Restore, OvError> {
     // SAFETY: termios is plain data; tcgetattr fills it or fails (then we don't use it).
     let mut t: libc::termios = unsafe { std::mem::zeroed() };
     // SAFETY: fd 0 is valid for the life of the process; `t` is a valid out-pointer.
@@ -69,6 +67,61 @@ fn read_hidden() -> Result<String, OvError> {
     if unsafe { libc::tcsetattr(0, libc::TCSAFLUSH, &raw) } != 0 {
         return Err(OvError::internal("can't change the terminal settings"));
     }
+    Ok(restore)
+}
+
+/// Puts the console's input mode back as it was, even on an early return.
+#[cfg(windows)]
+struct Restore {
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    mode: windows_sys::Win32::System::Console::CONSOLE_MODE,
+}
+
+#[cfg(windows)]
+impl Drop for Restore {
+    fn drop(&mut self) {
+        // SAFETY: the handle is the process's console input handle and the mode the one
+        // GetConsoleMode returned for it.
+        unsafe {
+            windows_sys::Win32::System::Console::SetConsoleMode(self.handle, self.mode);
+        }
+    }
+}
+
+/// Turns echo, line input and Ctrl-C processing off until the guard drops: keys arrive one at a
+/// time, Enter as `\r`, Ctrl-C as 0x03.
+#[cfg(windows)]
+fn raw_mode() -> Result<Restore, OvError> {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Console::{
+        GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT,
+        STD_INPUT_HANDLE,
+    };
+    // SAFETY: GetStdHandle has no preconditions; it returns the handle, null or INVALID_HANDLE_VALUE.
+    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+        return Err(OvError::internal("there is no console input"));
+    }
+    let mut mode = 0;
+    // SAFETY: `handle` is valid (checked above) and `mode` is a valid out-pointer.
+    if unsafe { GetConsoleMode(handle, &mut mode) } == 0 {
+        return Err(OvError::internal("can't read the console mode"));
+    }
+    let restore = Restore { handle, mode };
+    let raw = mode & !(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+    // SAFETY: as above.
+    if unsafe { SetConsoleMode(handle, raw) } == 0 {
+        return Err(OvError::internal("can't change the console mode"));
+    }
+    Ok(restore)
+}
+
+/// Reads a line with echo off and the terminal's signal keys off, one byte at a time: Enter ends it,
+/// Backspace and Ctrl-U edit it, Ctrl-C cancels, Ctrl-D on an empty line cancels.
+#[cfg(any(unix, windows))]
+fn read_hidden() -> Result<String, OvError> {
+    use std::io::Read;
+    let restore = raw_mode()?;
     let mut bytes = zeroize::Zeroizing::new(Vec::<u8>::new());
     let mut stdin = std::io::stdin().lock();
     let mut b = [0u8; 1];
@@ -100,9 +153,8 @@ fn read_hidden() -> Result<String, OvError> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// Windows: hiding typed text needs the console API (not in the dependency allow-list yet), so
-/// hidden questions aren't asked; set the value in the environment or pass the flag instead.
-#[cfg(not(unix))]
+/// Other platforms: hidden questions aren't asked; set the value in the environment or pass the flag.
+#[cfg(not(any(unix, windows)))]
 fn read_hidden() -> Result<String, OvError> {
     Err(OvError::new(
         OvErrorCode::InvalidRequest,

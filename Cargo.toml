@@ -66,6 +66,9 @@ cxx-build = "=1.0.205"
 # bins/ov, tests and tools only
 # libc: bins/ov only (no-echo prompt, signals to ov run children). Added 2026-11-15 (contract-v1.4, user-approved).
 libc = { version = "=0.2.191", default-features = false }
+# windows-sys: bins/ov only (no-echo prompt on the Windows console). Added 2026-11-19 (W3-A3, user-approved);
+# the version already in the lock (via tokio and others).
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_System_Console"] }
 clap = { version = "=4.6.7", features = ["derive"] }
 reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls-native-roots", "json"] }  # OS trust store; webpki-roots is CDLA (W1-L)
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros"] }

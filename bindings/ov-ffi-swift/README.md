@@ -75,11 +75,11 @@ today, from `OpenVireoCore/{Crypto,Opaque,KDBX,Merge,Sync,Auth}`.
 | `Database` editing (`entries`, `groupPaths`, `addEntry`, `updateEntry`, …) | `Vault` methods, see the Kit table below |
 | `Export.rows / csv / json` | `vault.exportPlain(format:groupIds:)` |
 | `Importer.importInto / importAsCopies` (into an account vault) | `account.importKdbx(kdbx:credentials:mode:)` / `account.importVault(source:mode:)` with `ImportMode.merge` / `.copies` |
-| `Importer.*` into a **local** database, `importableEntries`, `importTargets` | gap: CONTRACT-REQUEST 6 |
+| `Importer.*` into a **local** database, `importableEntries`, `importTargets` | `Vault.importFrom`, `importPreview`, `importTargets` (contract-v1.6) |
 | `Merger.merge`, `Merger.Conflict`, `snapshot`, `needsCommonBase`, `conflictingFields` | inside the core: `vault.sync` / `selfHosted.syncDatabase` merge, and `vault.conflicts()` returns `SyncConflict`. `MergeFixtureTests` are covered by ov-merge's Rust tests over the same `vectors/merge-fixtures` (they build databases with set timestamps, which the facade can't). No Swift merge export (see follow-ups) |
 | `SyncEngine.sync`, `SyncClient.*`, `AuthClient.*`, `TokenManager` | the facade (`Vault.sync`, `Account`, `OvClient.discover`); the suites' `MemoryAccountServer`/`MemorySyncServer` become Host-level HTTP fakes |
 | `SyncEngine.isClockSkewed` | `SyncReport` / `AccountEvent` skew warning from the facade |
-| `SelfHostedSync.pair / restore / unpair / normalize / sameServer` | `SelfHosted.pair`, `restoreSelfHosted`, `SelfHosted.connect`; unpair = delete the stored token via the SecureStore; normalize/sameServer: CONTRACT-REQUEST 7 |
+| `SelfHostedSync.pair / restore / unpair / normalize / sameServer` | `SelfHosted.pair`, `restoreSelfHosted`, `SelfHosted.connect`; unpair = delete the stored token via the SecureStore; normalize/sameServer: not in the core (stay in Swift) |
 | `Gzip`, `VariantDictionary`, `XMLConverter`, `Ciphers` | internal to ov-kdbx, with no Swift equivalent needed |
 | `Passkey`, `CredentialMatcher`, `CredentialRecord` (`OpenVireoCore/AutoFill`) | stay in Swift, but read `EntryRecord.fields` instead of `Entry` |
 
@@ -95,17 +95,17 @@ custom icons, move, Recycle Bin, save/reopen, CSV export).
 | create local (`addNewLocal`) | `Vault.createLocal(name:credentials:)` | ok |
 | save local (`persist` → `save(key:)`) | `vault.saveLocal()` | ok |
 | `meta.databaseName` / root name for the vault title | `vault.name()` | ok |
-| `entries()` → `model(...)` for every entry (title, user, password, notes, URL, OTP, custom fields, attachments, expiry, icon, colours) | `vault.entries(includeRecycleBin:)` for the list + `vault.entry(entryId:)` per entry for values | works; one FFI call per entry (CONTRACT-REQUEST 5) |
-| `lastUsed` (`times.usageCount > 0 ? times.lastAccess`) | none | **gap**, CONTRACT-REQUEST 1 |
+| `entries()` → `model(...)` for every entry (title, user, password, notes, URL, OTP, custom fields, attachments, expiry, icon, colours) | `vault.entries(includeRecycleBin:)` for the list + `vault.entry(entryId:)` per entry for values | ok; `vault.entryRecords(includeRecycleBin:)` gives every entry with values in one call (contract-v1.6) |
+| `lastUsed` (`times.usageCount > 0 ? times.lastAccess`) | `EntrySummary.lastAccessAt` / `usageCount` (also on `EntryRecord`) | ok (contract-v1.6) |
 | `groupPaths` → `EntryGroup(name: path, symbol: iconID)` | `vault.groups()` (`path`, `iconId`, `isRecycleBin`) | ok (join `path` with `/`) |
 | `groupUUID(at:)`, `group(at:create:)` | `vault.groupIdAt(path:)`, `vault.ensureGroup(path:)` | ok |
-| `addEntry(_, groupPath:)` with a UUID Kit chose | `vault.addEntry(groupId:input:)` returns the new id | works if Kit takes the returned id; CONTRACT-REQUEST 3 for a caller-chosen id |
+| `addEntry(_, groupPath:)` with a UUID Kit chose | `vault.addEntryWithId(entryId:groupId:input:)` (or `addEntry`, which returns a new id) | ok (contract-v1.6) |
 | `updateEntry` + `apply`: title/user/password/URL/notes, tags (incl. `Favorite`), `iconID`, OTP fields (`otp`, remove `TOTP Seed`/`TOTP Settings`), expiry | `vault.editEntry(entryId:input:)` (`fields`, `removeFields`, `tags`, `iconId`, `expiry`) | ok, history kept by the core |
-| `applyExtras`: custom fields in the screen's order | `fields` + `removeFields` set the values; order can't be set | **gap**, CONTRACT-REQUEST 2 (`fieldOrder`) |
-| `backgroundColor` / `foregroundColor` write | read in `EntryRecord`, no write | **gap**, CONTRACT-REQUEST 2 |
-| `customIcon(for: png)` + `entry.customIcon = uuid` | `vault.addCustomIcon(png:)` returns an id, but it can't be assigned to an entry | **gap**, CONTRACT-REQUEST 2 |
+| `applyExtras`: custom fields in the screen's order | `EntryInput.fieldOrder` | ok (contract-v1.6) |
+| `backgroundColor` / `foregroundColor` write | `EntryInput.foregroundColor` / `backgroundColor` (`#RRGGBB`, `""` clears) | ok (contract-v1.6) |
+| `customIcon(for: png)` + `entry.customIcon = uuid` | `vault.addCustomIcon(png:)` + `EntryInput.customIcon` (`.some(nil)` clears) | ok (contract-v1.6) |
 | custom icon PNG for display (`meta.customIcons`) | `EntrySummary.customIcon` id + `vault.customIcon(iconId:)` | ok |
-| attachments: names, data, protected flag; replace the whole list | `EntryRecord.attachments` (name, size), `vault.attachment`, `setAttachment`, `removeAttachment` | works; the protected flag is neither read nor written: **gap**, CONTRACT-REQUEST 4 |
+| attachments: names, data, protected flag; replace the whole list | `EntryRecord.attachments` (name, size), `vault.attachment`, `setAttachment`, `removeAttachment` | ok; `AttachmentInfo.protected`, `setAttachmentWith(entryId:name:data:protected:)` (contract-v1.6) |
 | `moveEntry(toGroupPath:)` | `ensureGroup(path:)` + `moveEntry(entryId:groupId:)` | ok |
 | `deleteEntry` (Recycle Bin) | `vault.deleteEntry` | ok |
 | `recycleBinContents`, `isInRecycleBin`, `restoreFromRecycleBin`, `emptyRecycleBin` | `entries(includeRecycleBin: true)` + `inRecycleBin`, `groups()` + `isInRecycleBin(id:)`, `restoreFromRecycleBin(id:)`, `emptyRecycleBin()` | ok |
@@ -117,50 +117,25 @@ custom icons, move, Recycle Bin, save/reopen, CSV export).
 | `Merger.Conflict` after a sync | `vault.conflicts()` → `SyncConflict` | ok |
 | AutoFill edits (`AutoFillEdits.apply`) | `vault.applyAutofillEdits(edits:)`, `account.keepAutofillEdit` / `autofillEdits` | ok |
 | passkey reports (`apply(reports)`: drop KPEX_PASSKEY_* fields + tag, rename user) | `editEntry` with `removeFields` / `tags` / `fields` | ok |
-| AutoFill identities (`CredentialRecord.records(for:)`) | `entries()` + `entry(entryId:)` (password, URL fields, `otp`, KPEX_PASSKEY_*) | ok (CONTRACT-REQUEST 5 for speed) |
+| AutoFill identities (`CredentialRecord.records(for:)`) | `entries()` + `entry(entryId:)` (password, URL fields, `otp`, KPEX_PASSKEY_*) | ok; `entryRecords(includeRecycleBin:)` for speed (contract-v1.6) |
 | share link from an entry (`database.entry(id)`) | `vault.entry` → `account.createShare` / `itemSharePayload` | ok |
 | move local DB to the account (`importVault(database, name:, orgID:)`) | `account.importVault(source: vault, mode: .newVault(name:orgId:))` | ok |
 | import a `.kdbx` into an account vault (merge / copies) | `account.importKdbx(mode: .merge / .copies)` | ok |
-| import into a **local** database; preview counts (`importableEntries`, `importableGroupCount`), copies under a chosen group | none | **gap**, CONTRACT-REQUEST 6 |
+| import into a **local** database; preview counts (`importableEntries`, `importableGroupCount`), copies under a chosen group | `vault.importFrom(source:mode: .merge / .copies(parentGroupId:))`, `source.importPreview()`, `vault.importTargets()` | ok (contract-v1.6) |
 | export CSV/JSON of chosen groups | `vault.exportPlain(format:groupIds:)` | ok |
-| export `.kdbx` with a new password (`kdf = .databaseDefault`, drop `KPXC_REMOTE_SYNC_SETTINGS`, set name) | `vault.exportKdbx(credentials:groupIds:)` | partial: the remote drop, name and KDF choice aren't settable, CONTRACT-REQUEST 7 |
-| "save a copy" as a new local DB with a new name, remotes dropped | none (no rename of a local DB's name) | **gap**, CONTRACT-REQUEST 7 |
-| self-hosted: link/unlink (`linkSyncServer`, `syncServerRemote`, `remotes` in `KPXC_REMOTE_SYNC_SETTINGS`) | none (no meta custom data access) | **gap**, CONTRACT-REQUEST 7 |
+| export `.kdbx` with a new password (`kdf = .databaseDefault`, drop `KPXC_REMOTE_SYNC_SETTINGS`, set name) | whole database: `copyWithoutRemotes(credentials:)` (account vaults get `.databaseDefault`) + `setName` + `saveLocal`; selected groups: `exportKdbxWith(credentials:groupIds:kdf:)` | ok (contract-v1.6) |
+| "save a copy" as a new local DB with a new name, remotes dropped | `copyWithoutRemotes(credentials:)` + `setName(name:)` + `setKdf(kdf:)` + `saveLocal` | ok (contract-v1.6) |
+| self-hosted: link/unlink (`linkSyncServer`, `syncServerRemote`, `remotes` in `KPXC_REMOTE_SYNC_SETTINGS`) | `metaCustomData(key:)` / `setMetaCustomData(key:value:)` on `KPXC_REMOTE_SYNC_SETTINGS` | ok (contract-v1.6) |
 | self-hosted sync of a linked DB | `selfHosted.syncDatabase(databaseId:kdbx:credentials:)` on `saveLocal()` bytes, then `Vault.openLocal` on the result | works; Kit re-opens the merged bytes |
-| self-hosted version history (`server.history`, `openVersion`) | none on `SelfHosted` | **gap**, CONTRACT-REQUEST 8 |
+| self-hosted version history (`server.history`, `openVersion`) | `selfHosted.history(databaseId:)`, `selfHosted.openVersion(databaseId:revision:credentials:)` (read-only `Vault`) | ok (contract-v1.6) |
 | `database` events while linked | `selfHosted.events()` | ok |
 | offline cache (`OfflineAccessTests`) | the core's `BlobCache` Host + `account.openOffline` / `cachedVaults` | ok; the existing Swift cache needs a one-off migration or a resync (W3-II2) |
 
 ### CONTRACT-REQUESTs (frozen `crates/ov-core/src/api/**`)
 
-1. `EntrySummary` and `EntryRecord`: add `last_access_at: Option<i64>` (None when `UsageCount` is 0)
-   and `usage_count: u32`. Kit's "recently used" list sorts on it.
-2. `EntryInput`: add `foreground_color: Option<String>`, `background_color: Option<String>`,
-   `custom_icon: Option<Option<String>>` (Some(None) clears), and
-   `field_order: Option<Vec<String>>` (custom fields in this order after the standard ones). Kit's
-   editor writes all four.
-3. `Vault::add_entry_with_id(&self, entry_id: String, group_id: String, input: EntryInput) -> Result<String, OvError>`
-   (`conflict` if the id exists). Kit creates the model's UUID before saving. Optional: Kit can
-   switch to the returned id.
-4. `AttachmentInfo.protected: bool` and
-   `Vault::set_attachment(&self, entry_id, name, data, protected: Option<bool>)`. Kit round-trips
-   the flag today.
-5. `Vault::entry_records(&self, include_recycle_bin: bool) -> Vec<EntryRecord>`: every entry with
-   values in one call. Kit rebuilds its models (and AutoFill identities) from every entry after each
-   edit, and a call per entry is N FFI crossings plus N copies.
-6. Local import: `Vault::import_from(&self, source: Vault, mode: LocalImportMode) -> Result<ImportSummary, OvError>`,
-   where `LocalImportMode = Merge | Copies { parent_group_id: Option<String> }`, plus
-   `Vault::import_preview(&self) -> ImportPreview { entries: u32, groups: u32 }`, over
-   `ov_merge::import_into` / `import_as_copies` / `import_targets`. Kit imports into local databases
-   and into a chosen group, and shows counts first.
-7. Local file metadata: `Vault::set_name(&self, name: String)` (local only),
-   `Vault::meta_custom_data(&self, key: String) -> Option<String>`,
-   `Vault::set_meta_custom_data(&self, key: String, value: Option<String>)`, and
-   `Vault::copy_without_remotes(&self) -> Vault` (`ov_kdbx::vault::drop_server_remotes`). Also either
-   `export_kdbx` takes the KDF to use, or it documents that it applies the database default. These
-   cover self-hosted links (`KPXC_REMOTE_SYNC_SETTINGS`, as the desktop writes them), "save a copy"
-   and export. `SelfHostedSync.normalize` / `sameServer` as free functions over the core's URL check
-   would also help.
-8. `SelfHosted::history(&self, database_id, cancel) -> Vec<VaultVersion>` and
-   `SelfHosted::open_version(&self, database_id, revision: u64, credentials: KdbxCredentials, cancel) -> Vault`.
-   Kit shows version history for linked databases.
+All eight were approved and added as **contract-v1.6** (W3-A3, 2026-11-19; `docs/adr/0001-contract.md`
+§ contract-v1.6). The new `EntryInput`, `EntrySummary`, `EntryRecord` and `AttachmentInfo` fields
+have UniFFI defaults, so existing Swift initializers still compile. Also new: `OvClient.openLocal` /
+`createLocal` (local files on the Host clock) and `ServiceAccount.serverConfig()` / `issuer()`.
+`SelfHostedSync.normalize` / `sameServer` were not added. `SmokeTests/ContractV16Tests.swift` covers
+the additions.

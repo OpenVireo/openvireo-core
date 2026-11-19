@@ -12,14 +12,15 @@ use ov_core::api::{
     CreatedShare, DeletionCandidate, DeletionOrg, DeletionOutcome, DeletionPreview, DeletionShare,
     DeletionSubscription, DeletionVault, Device, DeviceInfo, EmergencyKit, EntryExpiry, EntryInput, EntryRecord,
     EntrySummary, ExpiryChange, ExportFormat, FieldInput, FieldRecord, GrantResult, Grantee, GroupInfo, ImportMode,
-    Injected, Invitation, IssuedSecret, KdbxCredentials, KdfMin, KdfOverrides, KdfParams, LoginInput, Member,
-    MemberStatus, MergeChange, NewAccount, NewServiceAccount, OpaqueConfig, OpenedShare, Org, OrgMembership, OrgRole,
-    PairingCode, ParkedCheck, Plan, PlanLimit, Platform, Profile, PublicKeys, RecoveryReset, RecoveryStatus,
-    RegisterInput, RememberedAccount, SaSecretInfo, SaVault, SelfHostedSyncResult, ServerConfig, ServiceAccountInfo,
-    ServiceAccountUpdate, SessionState, SetFieldsResult, ShareField, ShareInfo, ShareLinkPolicy, ShareListing,
-    ShareOptions, SharePayload, ShareRecipient, ShareRef, ShareableField, SignedOutReason, StoredSession, SyncConflict,
-    SyncOptions, SyncOutcome, SyncReport, TotpAlgorithm, TotpCode, TotpParams, TotpSetup, Unlocked, VaultGrantRequest,
-    VaultInfo, VaultMember, VaultRole, VaultVersion, VersionDifference,
+    ImportPreview, ImportSummary, ImportTarget, Injected, Invitation, IssuedSecret, KdbxCredentials, KdbxKdf, KdfMin,
+    KdfOverrides, KdfParams, LocalImportMode, LoginInput, Member, MemberStatus, MergeChange, NewAccount,
+    NewServiceAccount, OpaqueConfig, OpenedShare, Org, OrgMembership, OrgRole, PairingCode, ParkedCheck, Plan,
+    PlanLimit, Platform, Profile, PublicKeys, RecoveryReset, RecoveryStatus, RegisterInput, RememberedAccount,
+    SaSecretInfo, SaVault, SelfHostedSyncResult, ServerConfig, ServiceAccountInfo, ServiceAccountUpdate, SessionState,
+    SetFieldsResult, ShareField, ShareInfo, ShareLinkPolicy, ShareListing, ShareOptions, SharePayload, ShareRecipient,
+    ShareRef, ShareableField, SignedOutReason, StoredSession, SyncConflict, SyncOptions, SyncOutcome, SyncReport,
+    TotpAlgorithm, TotpCode, TotpParams, TotpSetup, Unlocked, VaultGrantRequest, VaultInfo, VaultMember, VaultRole,
+    VaultVersion, VersionDifference,
 };
 use ov_core::host::{CachedVault, Level, Method};
 
@@ -777,6 +778,10 @@ pub struct EntrySummary {
     pub modified_at: i64,
     pub expires_at: Option<i64>,
     pub in_recycle_bin: bool,
+    #[uniffi(default = None)]
+    pub last_access_at: Option<i64>,
+    #[uniffi(default = 0)]
+    pub usage_count: u32,
 }
 
 #[uniffi::remote(Record)]
@@ -790,6 +795,8 @@ pub struct FieldRecord {
 pub struct AttachmentInfo {
     pub name: String,
     pub size: u64,
+    #[uniffi(default = true)]
+    pub protected: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -810,6 +817,10 @@ pub struct EntryRecord {
     pub attachments: Vec<AttachmentInfo>,
     pub history_count: u32,
     pub quality_check: bool,
+    #[uniffi(default = None)]
+    pub last_access_at: Option<i64>,
+    #[uniffi(default = 0)]
+    pub usage_count: u32,
 }
 
 #[uniffi::remote(Record)]
@@ -845,6 +856,14 @@ pub struct EntryInput {
     pub tags: Option<Vec<String>>,
     pub icon_id: Option<u32>,
     pub expiry: EntryExpiry,
+    #[uniffi(default = None)]
+    pub foreground_color: Option<String>,
+    #[uniffi(default = None)]
+    pub background_color: Option<String>,
+    #[uniffi(default = None)]
+    pub custom_icon: Option<Option<String>>,
+    #[uniffi(default = None)]
+    pub field_order: Option<Vec<String>>,
 }
 
 #[uniffi::remote(Enum)]
@@ -871,6 +890,41 @@ pub enum VersionDifference {
 pub enum ExportFormat {
     Csv,
     Json,
+}
+
+#[uniffi::remote(Enum)]
+pub enum LocalImportMode {
+    Merge,
+    Copies { parent_group_id: Option<String> },
+}
+
+#[uniffi::remote(Record)]
+pub struct ImportSummary {
+    pub added: u32,
+    pub updated: u32,
+    pub unchanged: u32,
+    pub groups_added: u32,
+    pub changes: Vec<MergeChange>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ImportPreview {
+    pub entries: u32,
+    pub groups: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct ImportTarget {
+    pub group_id: String,
+    pub path: String,
+}
+
+#[uniffi::remote(Enum)]
+pub enum KdbxKdf {
+    DatabaseDefault,
+    Argon2d { memory: u64, iterations: u64, parallelism: u32 },
+    Argon2id { memory: u64, iterations: u64, parallelism: u32 },
+    AesKdf { rounds: u64 },
 }
 
 // ------------------------------------------------------------------------------ events

@@ -89,6 +89,11 @@ fn ci() -> Result {
     run("fmt", cargo().args(["fmt", "--all", "--check"]))?;
     run("clippy", cargo().args(["clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]))?;
     run("test", cargo().args(["test", "--workspace", "--locked"]))?;
+    // The OPAQUE test server and seeded steps only build with this feature; --workspace leaves it off.
+    run(
+        "test ov-ffi-cpp (test-server)",
+        cargo().args(["test", "-p", "ov-ffi-cpp", "--locked", "--features", "test-server"]),
+    )?;
     run("deny", cargo().args(["deny", "--locked", "check"]))?;
     run("doc", cargo().args(["doc", "--workspace", "--no-deps", "--locked"]).env("RUSTDOCFLAGS", "-D warnings"))?;
     vectors()?;
@@ -96,7 +101,7 @@ fn ci() -> Result {
 
     let portable = portable_packages()?;
     let mut wasm = portable.clone();
-    wasm.extend(existing_packages(&["ov-wasm"])?);
+    wasm.extend(existing_packages(&["ov-wasm", "ov-wasm-lite"])?);
     build_for("wasm32 build", &wasm, &[WASM_TARGET])?;
     // Native clippy can't see wasm32-only code paths (no Send/Sync on the Host, wasm-bindgen glue).
     let mut clippy = cargo();
@@ -240,6 +245,7 @@ fn wasm_cdylibs() -> Result<Vec<String>> {
     let meta = metadata()?;
     let mut wanted = portable_packages()?;
     wanted.push("ov-wasm".into());
+    wanted.push("ov-wasm-lite".into());
     Ok(meta["packages"]
         .as_array()
         .into_iter()

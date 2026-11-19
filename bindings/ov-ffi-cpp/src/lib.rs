@@ -26,6 +26,7 @@ mod more;
 mod opaque;
 mod primitives;
 mod records;
+mod test_servers;
 mod v16;
 
 pub use edge::FfiError;
@@ -57,6 +58,7 @@ use opaque::{
     test_server_enabled,
 };
 use primitives::{aead_decrypt, aead_encrypt, argon2id, hkdf_sha256, random_bytes, sha256};
+pub use test_servers::{test_servers_start, TestServers, TestStream};
 
 /// The core's version, as C++ sees it (`ov::version()`).
 pub fn version() -> String {
@@ -945,6 +947,22 @@ pub mod ffi {
         rounds: u64,
     }
 
+    /// What [`TestStream::poll_chunk`] found (feature `test-server`).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum TestStreamPollKind {
+        Data,
+        /// Nothing yet: poll again later.
+        Pending,
+        /// The stream ended.
+        End,
+    }
+
+    /// One poll of a test event stream.
+    struct TestStreamPoll {
+        kind: TestStreamPollKind,
+        data: Vec<u8>,
+    }
+
     /// An optional string (contract-v1.6 `Vault::meta_custom_data`).
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     struct OptionalString {
@@ -1172,6 +1190,21 @@ pub mod ffi {
     /// Rust `SelfHostedSyncResult`: save `kdbx` as the local file.
     struct SelfHostedSyncResult {
         kdbx: Vec<u8>,
+        report: SyncReport,
+    }
+
+    /// Rust `SyncOptions` (contract-v1.6 `accept_server_state`: "continue anyway").
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct SyncOptions {
+        local_changed: bool,
+        accept_server_state: bool,
+    }
+
+    /// Rust `VaultKdbxSyncResult` (contract-v1.6): keep `kdbx` as the local copy, under
+    /// `credentials` (the vault key as a raw key file; wipe it).
+    struct VaultKdbxSyncResult {
+        kdbx: Vec<u8>,
+        credentials: KdbxCredentials,
         report: SyncReport,
     }
 
@@ -1954,6 +1987,82 @@ pub mod ffi {
         ) -> Result<Box<Vault>>;
         fn server_config(self: &ServiceAccount) -> Result<ServerConfig>;
         fn issuer(self: &ServiceAccount) -> Result<String>;
+        /// The newest vault key as `.kdbx` credentials (a raw key file). Wipe them.
+        fn vault_kdbx_credentials(self: &Account, vault_id: &str, cancel: &CancelToken) -> Result<KdbxCredentials>;
+        /// Syncs an account vault held as `.kdbx` bytes; `has_base == false` uses the cached base.
+        fn sync_vault_kdbx(
+            self: &Account,
+            vault_id: &str,
+            kdbx: Vec<u8>,
+            has_base: bool,
+            base: Vec<u8>,
+            options: SyncOptions,
+            cancel: &CancelToken,
+        ) -> Result<VaultKdbxSyncResult>;
+        /// The session's access token (UTF-8), refreshed when needed. Never log it.
+        fn access_token(self: &Account, force_refresh: bool, cancel: &CancelToken) -> Result<Vec<u8>>;
+        /// [`Vault::sync`] with every option (`accept_server_state`).
+        fn sync_with_options(self: &Vault, options: SyncOptions, cancel: &CancelToken) -> Result<SyncReport>;
+
+        // ---- in-process test servers (feature `test-server`; README.md "Test servers")
+        type TestServers;
+        type TestStream;
+        /// Fresh auth + sync servers, the clock at `now_ms` (0: the testkit default). Fails with
+        /// `internal` without the feature.
+        fn test_servers_start(now_ms: i64) -> Result<Box<TestServers>>;
+        fn issuer(self: &TestServers) -> Result<String>;
+        fn api_url(self: &TestServers) -> Result<String>;
+        fn sync_url(self: &TestServers) -> Result<String>;
+        fn now_ms(self: &TestServers) -> Result<i64>;
+        fn set_now_ms(self: &TestServers, ms: i64) -> Result<()>;
+        fn advance_ms(self: &TestServers, delta_ms: i64) -> Result<i64>;
+        /// For a C++ `HttpTransport::send`: answers in process; failures go to `failure`.
+        fn handle(self: &TestServers, req: &HttpRequest, failure: &mut TransportFailure) -> Result<HttpResponse>;
+        /// For a C++ `HttpTransport::open_stream`.
+        fn open_stream(
+            self: &TestServers,
+            req: &HttpRequest,
+            failure: &mut TransportFailure,
+        ) -> Result<Box<TestStream>>;
+        /// A Client on the servers' own Host (memory store and cache, the test clock).
+        fn client(self: &TestServers, config: &ClientConfig) -> Result<Box<Client>>;
+        fn set_offline(self: &TestServers, offline: bool) -> Result<()>;
+        /// `status == 0` is a transport failure; empty `server` / `method` / `path_contains` match any.
+        fn fail_next(
+            self: &TestServers,
+            server: &str,
+            method: &str,
+            path_contains: &str,
+            status: u16,
+            times: usize,
+        ) -> Result<()>;
+        fn clear_faults(self: &TestServers) -> Result<()>;
+        fn set_server_clock_skew_ms(self: &TestServers, ms: i64) -> Result<()>;
+        fn requests(self: &TestServers) -> Result<Vec<String>>;
+        fn clear_requests(self: &TestServers) -> Result<()>;
+        fn set_live_access(self: &TestServers, live: bool) -> Result<()>;
+        fn vault_blob(self: &TestServers, vault_id: &str) -> Result<OptionalBytes>;
+        fn vault_revision(self: &TestServers, vault_id: &str) -> Result<i64>;
+        fn put_vault_blob(self: &TestServers, vault_id: &str, data: &[u8]) -> Result<()>;
+        fn rollback_vault(self: &TestServers, vault_id: &str, to_revision: i64) -> Result<()>;
+        fn lose_vault(self: &TestServers, vault_id: &str) -> Result<()>;
+        fn add_device_token(self: &TestServers, token: &str, user: &str) -> Result<()>;
+        fn close_streams(self: &TestServers) -> Result<()>;
+        fn user_id(self: &TestServers, email: &str) -> Result<String>;
+        fn set_totp_code(self: &TestServers, email: &str, code: &str) -> Result<bool>;
+        fn totp_now(self: &TestServers, email: &str) -> Result<String>;
+        fn email_code(self: &TestServers, user_id: &str) -> Result<String>;
+        fn approve_reset(self: &TestServers, email: &str, delay_secs: i64) -> Result<String>;
+        fn invitation_token(self: &TestServers, org_id: &str, email: &str) -> Result<String>;
+        fn add_member(self: &TestServers, org_id: &str, email: &str, role: &str) -> Result<bool>;
+        fn revoke_sessions(self: &TestServers, principal: &str) -> Result<()>;
+        fn access_events(self: &TestServers) -> Result<String>;
+        fn set_deletion_days(self: &TestServers, days: i64) -> Result<()>;
+        fn set_access_token_ttl_secs(self: &TestServers, secs: i64) -> Result<()>;
+        fn set_recent_token_ms(self: &TestServers, ms: i64) -> Result<()>;
+        fn status(self: &TestStream) -> Result<u16>;
+        fn poll_chunk(self: &TestStream) -> Result<TestStreamPoll>;
+        fn close(self: &TestStream) -> Result<()>;
     }
 
     // ------------------------------------------- below the facade, for C++ (README.md, "Desktop swap")

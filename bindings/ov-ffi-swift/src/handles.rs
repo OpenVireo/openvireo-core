@@ -426,6 +426,30 @@ impl Account {
         guard_async(self.0.has_pending_edits(vault_id)).await
     }
 
+    // ------------------------------------------- vault files and the session token (v1.6)
+
+    /// The credentials an account vault's `.kdbx` is under (contract-v1.6). Wipe them.
+    pub async fn vault_kdbx_credentials(&self, vault_id: String, cancel: Arc<CancelToken>) -> R<core::KdbxCredentials> {
+        guard_async(self.0.vault_kdbx_credentials(vault_id, tok(&cancel))).await
+    }
+
+    /// Syncs an account vault held as `.kdbx` bytes (contract-v1.6).
+    pub async fn sync_vault_kdbx(
+        &self,
+        vault_id: String,
+        kdbx: Vec<u8>,
+        base: Option<Vec<u8>>,
+        options: core::SyncOptions,
+        cancel: Arc<CancelToken>,
+    ) -> R<core::VaultKdbxSyncResult> {
+        guard_async(self.0.sync_vault_kdbx(vault_id, kdbx, base, options, tok(&cancel))).await
+    }
+
+    /// The session's access token, refreshed when needed (contract-v1.6). Don't log it.
+    pub async fn access_token(&self, force_refresh: bool, cancel: Arc<CancelToken>) -> R<Vec<u8>> {
+        guard_async(self.0.access_token(force_refresh, tok(&cancel))).await
+    }
+
     // ------------------------------------------------------------------------ history
 
     /// The saved versions of a vault.

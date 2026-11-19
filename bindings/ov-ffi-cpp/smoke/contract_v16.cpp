@@ -7,6 +7,7 @@
 #include <ovcore.h>
 
 #include <cstdio>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -94,6 +95,124 @@ rust::Box<ov::Client> client(rust::Vec<std::uint8_t> revision1 = {}) {
         return ov::new_client(config, std::move(http), std::make_unique<NoStore>(), std::make_unique<NoCache>(),
                               std::make_unique<Clock1700>(), std::make_unique<NoLog>());
     });
+}
+
+// ---- a C++ Host over the in-process test servers (what the desktop's CoreHost does in its tests)
+struct ServersHttp : ov::HttpTransport {
+    const ov::TestServers *servers;
+    explicit ServersHttp(const ov::TestServers *s) : servers(s) {}
+    ov::HttpResponse send(const ov::HttpRequest &req, ov::TransportFailure &failure) const override {
+        return servers->handle(req, failure);
+    }
+    std::unique_ptr<ov::ByteStream> open_stream(const ov::HttpRequest &, ov::TransportFailure &failure) const override {
+        failure.kind = ov::TransportErrorKind::Offline;
+        return nullptr;
+    }
+};
+struct ServersClock : ov::Clock {
+    const ov::TestServers *servers;
+    explicit ServersClock(const ov::TestServers *s) : servers(s) {}
+    std::int64_t now_unix_ms() const override { return servers->now_ms(); }
+};
+struct MapStore : ov::SecureStore {
+    mutable std::map<std::string, rust::Vec<std::uint8_t>> items;
+    bool get(rust::Str key, rust::Vec<std::uint8_t> &out) const override {
+        auto it = items.find(std::string(key));
+        if (it == items.end()) {
+            return false;
+        }
+        out = it->second;
+        return true;
+    }
+    void set(rust::Str key, rust::Slice<const std::uint8_t> value) const override {
+        rust::Vec<std::uint8_t> v;
+        for (auto b : value) {
+            v.push_back(b);
+        }
+        items[std::string(key)] = std::move(v);
+    }
+    void remove(rust::Str key) const override { items.erase(std::string(key)); }
+};
+struct MapCache : ov::BlobCache {
+    mutable std::map<std::string, ov::CachedVault> vaults;
+    mutable std::map<std::string, rust::Vec<std::uint8_t>> meta;
+    static std::string k(rust::Str a, rust::Str b) { return std::string(a) + "\n" + std::string(b); }
+    bool load(rust::Str u, rust::Str v, ov::CachedVault &out) const override {
+        auto it = vaults.find(k(u, v));
+        if (it == vaults.end()) {
+            return false;
+        }
+        out = it->second;
+        return true;
+    }
+    void save(rust::Str u, rust::Str v, const ov::CachedVault &c) const override { vaults[k(u, v)] = c; }
+    void remove(rust::Str u, rust::Str v) const override { vaults.erase(k(u, v)); }
+    rust::Vec<rust::String> list(rust::Str u) const override {
+        rust::Vec<rust::String> out;
+        const std::string prefix = std::string(u) + "\n";
+        for (const auto &e : vaults) {
+            if (e.first.compare(0, prefix.size(), prefix) == 0) {
+                out.push_back(rust::String(e.first.substr(prefix.size())));
+            }
+        }
+        return out;
+    }
+    bool load_meta(rust::Str u, rust::Str n, rust::Vec<std::uint8_t> &out) const override {
+        auto it = meta.find(k(u, n));
+        if (it == meta.end()) {
+            return false;
+        }
+        out = it->second;
+        return true;
+    }
+    void save_meta(rust::Str u, rust::Str n, rust::Slice<const std::uint8_t> value) const override {
+        rust::Vec<std::uint8_t> v;
+        for (auto b : value) {
+            v.push_back(b);
+        }
+        meta[k(u, n)] = std::move(v);
+    }
+    void clear_user(rust::Str) const override {}
+};
+
+// The desktop's contract-v1.6 calls against the in-process servers, through a C++ Host.
+[[maybe_unused]] void desktop_flow() {
+    auto token = ov::new_cancel_token();
+    auto servers = ov::call([] { return ov::test_servers_start(0); });
+    ov::ClientConfig config{"", "smoke", ov::Platform::QtMacos, true, false, ov::ServerConfig{}};
+    auto c = ov::call([&] {
+        return ov::new_client(config, std::make_unique<ServersHttp>(&*servers), std::make_unique<MapStore>(),
+                              std::make_unique<MapCache>(), std::make_unique<ServersClock>(&*servers),
+                              std::make_unique<NoLog>());
+    });
+    auto account = ov::call([&] { return c->connect(servers->issuer(), *token); });
+    ov::RegisterInput input{"desk@example.com", bytes("pw desk"), ov::KdfOverrides{true, 19456, true, 2, true, 1}, true};
+    ov::call([&] { return account->register_account(std::move(input), *token); });
+    check(!std::string(ov::call([&] { return servers->user_id("desk@example.com"); })).empty(),
+          "test servers: register through a C++ Host");
+    auto jwt = ov::call([&] { return account->access_token(false, *token); });
+    check(jwt.size() > 20, "Account::access_token lends the session token");
+    ov::wipe(jwt);
+    auto vault = ov::call([&] { return account->create_vault("Desk", "", *token); });
+    const std::string id(ov::call([&] { return vault->id(); }));
+    ov::KdbxCredentials creds = ov::call([&] { return account->vault_kdbx_credentials(id, *token); });
+    check(!creds.has_password && creds.key_file.size() == 32, "Account::vault_kdbx_credentials is the raw vault key");
+    auto copy = ov::call([&] { return vault->copy_without_remotes(std::move(creds)); });
+    ov::call([&] { copy->set_kdf(ov::KdbxKdf{ov::KdbxKdfKind::Argon2id, 1 << 20, 2, 1, 0}); });
+    auto file = ov::call([&] { return copy->save_local(*token); });
+    ov::SyncOptions opts{true, false};
+    ov::VaultKdbxSyncResult r = ov::call([&] { return account->sync_vault_kdbx(id, std::move(file), false, {}, opts, *token); });
+    check(ov::call([&] { return servers->vault_revision(id); }) >= 1, "Account::sync_vault_kdbx syncs the file");
+    ov::call([&] { servers->lose_vault(id); });
+    try {
+        ov::call([&] { return account->sync_vault_kdbx(id, r.kdbx, false, {}, opts, *token); });
+        check(false, "a lost vault fails the sync");
+    } catch (const ov::Error &e) {
+        check(e.code() == "server_lost_database", "a lost vault fails with server_lost_database");
+    }
+    ov::SyncOptions accept{true, true};
+    auto again = ov::call([&] { return account->sync_vault_kdbx(id, std::move(r.kdbx), false, {}, accept, *token); });
+    check(again.report.outcome == ov::SyncOutcome::Created, "SyncOptions::accept_server_state uploads it again");
 }
 
 [[maybe_unused]] void compile_only(const ov::ServiceAccount &sa) {
@@ -207,6 +326,18 @@ int contract_v16() {
     auto version = ov::call([&] { return sh->open_version("home", 1, pw("pw"), *token); });
     check(ov::call([&] { return version->is_read_only(); }) && version->entries(false).size() == 1,
           "SelfHosted::open_version opens a read-only version");
+
+    // ---- the in-process test servers (feature test-server)
+#if OV_EXPECT_TEST_SERVER
+    desktop_flow();
+#else
+    try {
+        ov::call([] { return ov::test_servers_start(0); });
+        check(false, "test_servers_start fails without test-server");
+    } catch (const ov::Error &e) {
+        check(e.code() == "internal", "test_servers_start fails with internal without test-server");
+    }
+#endif
 
     return failures;
 }

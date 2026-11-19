@@ -122,4 +122,28 @@ final class ContractV16Tests: XCTestCase {
         XCTAssertEqual(try v1.entries(includeRecycleBin: false).map(\.title), ["Wifi"])
         XCTAssertEqual(try v1.etag(), "\"r1\"")
     }
+
+    /// The desktop's additions need a signed-in account; signed out they fail cleanly (the behaviour
+    /// is tested in Rust against the in-memory servers).
+    func testAccountVaultFileSyncAndTokenNeedASession() async throws {
+        let server = ServerConfig(issuer: "https://accounts.test", api: "https://accounts.test/api/v1", sync: "https://sync.test/api/v1",
+                                  jwksUri: "https://accounts.test/.well-known/jwks.json",
+                                  opaque: OpaqueConfig(lib: "opaque-ke", version: "4", context: "ov-opaque-v1", ids: "accounts.test"),
+                                  kdfMin: nil, web: nil, share: nil)
+        let host = Host(http: FakeHttp(), store: FakeStore(), cache: FakeCache(), clock: FakeClock(), log: FakeLog())
+        let c = OvClient(config: ClientConfig(device: DeviceInfo(id: nil, name: "smoke", platform: .ios), offline: false, server: server), host: host)
+        let account = try await c.connect(issuer: "https://accounts.test", cancel: CancelToken())
+        XCTAssertFalse(try account.isSignedIn())
+        await XCTAssertThrowsErrorAsync(try await account.accessToken(forceRefresh: false, cancel: CancelToken())) {
+            XCTAssertEqual(($0 as! OvError).code, .signedOut)
+        }
+        await XCTAssertThrowsErrorAsync(try await account.vaultKdbxCredentials(vaultId: "v", cancel: CancelToken())) {
+            XCTAssertNotEqual(($0 as! OvError).code, .internal)
+        }
+        await XCTAssertThrowsErrorAsync(try await account.syncVaultKdbx(vaultId: "v", kdbx: Data(), base: nil,
+                                                                        options: SyncOptions(localChanged: true, acceptServerState: true), cancel: CancelToken())) {
+            XCTAssertNotEqual(($0 as! OvError).code, .internal)
+        }
+        XCTAssertFalse(SyncOptions(localChanged: true).acceptServerState) // the new field defaults
+    }
 }

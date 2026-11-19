@@ -19,8 +19,8 @@ use ov_core::api::{
     SaSecretInfo, SaVault, SelfHostedSyncResult, ServerConfig, ServiceAccountInfo, ServiceAccountUpdate, SessionState,
     SetFieldsResult, ShareField, ShareInfo, ShareLinkPolicy, ShareListing, ShareOptions, SharePayload, ShareRecipient,
     ShareRef, ShareableField, SignedOutReason, StoredSession, SyncConflict, SyncOptions, SyncOutcome, SyncReport,
-    TotpAlgorithm, TotpCode, TotpParams, TotpSetup, Unlocked, VaultGrantRequest, VaultInfo, VaultMember, VaultRole,
-    VaultVersion, VersionDifference,
+    TotpAlgorithm, TotpCode, TotpParams, TotpSetup, Unlocked, VaultGrantRequest, VaultInfo, VaultKdbxSyncResult,
+    VaultMember, VaultRole, VaultVersion, VersionDifference,
 };
 use ov_core::host::{CachedVault, Level, Method};
 
@@ -405,6 +405,8 @@ pub enum ImportMode {
 #[uniffi::remote(Record)]
 pub struct SyncOptions {
     pub local_changed: bool,
+    #[uniffi(default = false)]
+    pub accept_server_state: bool,
 }
 
 #[uniffi::remote(Enum)]
@@ -648,6 +650,13 @@ pub struct PairingCode {
 #[uniffi::remote(Record)]
 pub struct SelfHostedSyncResult {
     pub kdbx: Vec<u8>,
+    pub report: SyncReport,
+}
+
+#[uniffi::remote(Record)]
+pub struct VaultKdbxSyncResult {
+    pub kdbx: Vec<u8>,
+    pub credentials: KdbxCredentials,
     pub report: SyncReport,
 }
 

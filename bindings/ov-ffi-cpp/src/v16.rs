@@ -8,7 +8,7 @@ use ov_error::OvError;
 use crate::convert::{self, kdbx_credentials, merge_change};
 use crate::edge::{edge, run, FfiError};
 use crate::ffi;
-use crate::handles::{CancelToken, Client, Vault};
+use crate::handles::{Account, CancelToken, Client, Vault};
 use crate::more::{SelfHosted, ServiceAccount};
 use crate::records::{self as rec, bad_enum, some};
 
@@ -189,6 +189,63 @@ impl ServiceAccount {
     /// [`core::ServiceAccount::issuer`].
     pub fn issuer(&self) -> R<String> {
         edge(|| Ok(self.0.issuer()))
+    }
+}
+
+fn sync_options_in(o: ffi::SyncOptions) -> core::SyncOptions {
+    core::SyncOptions { local_changed: o.local_changed, accept_server_state: o.accept_server_state }
+}
+
+fn kdbx_credentials_out(c: core::KdbxCredentials) -> ffi::KdbxCredentials {
+    ffi::KdbxCredentials {
+        has_password: c.password.is_some(),
+        password: c.password.unwrap_or_default(),
+        has_key_file: c.key_file.is_some(),
+        key_file: c.key_file.unwrap_or_default(),
+    }
+}
+
+impl Account {
+    /// [`core::Account::vault_kdbx_credentials`].
+    pub fn vault_kdbx_credentials(&self, vault_id: &str, cancel: &CancelToken) -> R<ffi::KdbxCredentials> {
+        run(
+            cancel,
+            |c| async move { self.0.vault_kdbx_credentials(vault_id.into(), c).await.map(kdbx_credentials_out) },
+        )
+    }
+
+    /// [`core::Account::sync_vault_kdbx`]; `has_base == false` is no base.
+    #[allow(clippy::too_many_arguments)]
+    pub fn sync_vault_kdbx(
+        &self,
+        vault_id: &str,
+        kdbx: Vec<u8>,
+        has_base: bool,
+        base: Vec<u8>,
+        options: ffi::SyncOptions,
+        cancel: &CancelToken,
+    ) -> R<ffi::VaultKdbxSyncResult> {
+        run(cancel, |c| async move {
+            let base = has_base.then_some(base);
+            let r = self.0.sync_vault_kdbx(vault_id.into(), kdbx, base, sync_options_in(options), c).await?;
+            Ok(ffi::VaultKdbxSyncResult {
+                kdbx: r.kdbx,
+                credentials: kdbx_credentials_out(r.credentials),
+                report: convert::sync_report(r.report),
+            })
+        })
+    }
+
+    /// [`core::Account::access_token`].
+    pub fn access_token(&self, force_refresh: bool, cancel: &CancelToken) -> R<Vec<u8>> {
+        run(cancel, |c| self.0.access_token(force_refresh, c))
+    }
+}
+
+impl Vault {
+    /// [`core::Vault::sync`] with every option.
+    pub fn sync_with_options(&self, options: ffi::SyncOptions, cancel: &CancelToken) -> R<ffi::SyncReport> {
+        run(cancel, |c| async move { self.0.sync(sync_options_in(options), c).await.map(convert::sync_report) })
     }
 }
 

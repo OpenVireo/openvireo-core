@@ -335,7 +335,7 @@ impl Vault {
     pub fn sync(&self, local_changed: bool, cancel: &CancelToken) -> R<ffi::SyncReport> {
         let c = cancel.0.clone();
         edge_blocking(&cancel.0, || async move {
-            self.0.sync(core::SyncOptions { local_changed }, c).await.map(convert::sync_report)
+            self.0.sync(core::SyncOptions { local_changed, ..Default::default() }, c).await.map(convert::sync_report)
         })
     }
 

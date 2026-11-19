@@ -28,8 +28,8 @@ Pick one:
   **On aarch64, pass `CARGO_TARGET_<TRIPLE>_RUSTFLAGS=--cfg aes_armv8`** (the example does): Corrosion runs cargo
   outside this repo, so `.cargo/config.toml` isn't read, and without the cfg AES-KDF runs in software (~30x slower).
 
-- **Test server:** the `test-server` cargo feature (off by default) builds in opaque-ke's server half and the
-  seeded OPAQUE client steps, for tests that stand in for the auth server. Without it those functions still
+- **Test server:** the `test-server` cargo feature (off by default) builds in opaque-ke's server half, the
+  seeded OPAQUE client steps and the in-process [test servers](#test-servers), for tests that stand in for the auth server. Without it those functions still
   exist (same header) but fail with `internal`; `ov::test_server_enabled()` says which build you have. Turn it on
   only for test builds:
 
@@ -158,6 +158,39 @@ with the same key. A copy comes back (written with its own key and KDF) only whe
 (`ov::KdbxMergeChange`: `ov::ChangeType`, `ov::ChangeSubject`, the 16-byte RFC 4122 uuid or empty for the database,
 title, group, details) and `conflicts` the entries both sides edited differently.
 
+## Test servers
+
+For the desktop's account tests (W3-ID2): with feature `test-server`, W2-E's in-process auth and sync servers
+(`ov_testkit::servers`, the ones every core test runs against) are bridged, so the desktop's own Host (CoreHost)
+can drive the real protocol without a network or the local stack. Without the feature the functions exist (same
+header) and `ov::test_servers_start` fails with `internal`.
+
+Design:
+
+- `ov::test_servers_start(now_ms)` returns an `ov::TestServers` handle: both servers on one manual clock
+  (`now_ms == 0` is the testkit default, 2026-11-15T00:00:00Z). `issuer()` is `https://auth.test`, `sync_url()`
+  `https://sync.test/api/v1` (the self-hosted server URL is that without `/api/v1`).
+- **Transport:** the test's `ov::HttpTransport::send` forwards to `servers->handle(req, failure)` (failures land in
+  `failure`, exactly as a transport reports them), and `open_stream` to `servers->open_stream(req, failure)`, whose
+  `ov::TestStream` is polled without blocking: `poll_chunk()` → `{Data, data}`, `{Pending}` or `{End}`. Hosts
+  other than `auth.test` / `sync.test` fail as offline.
+- **Clock:** the test's `ov::Clock` returns `servers->now_ms()`; `advance_ms()` / `set_now_ms()` move time (token
+  expiry, the deletion grace period, refresh grace).
+- **Store and cache** stay the desktop's own (keychain fake, `AccountOfflineCache`). `servers->client(config)` is a
+  shortcut that builds a whole `ov::Client` on the servers' Rust Host (memory store and cache) instead.
+- **Seeding and accidents:** `set_offline`, `fail_next(server, method, path_contains, status, times)` (`status
+  0` = transport failure), `clear_faults`, `set_server_clock_skew_ms`, `requests()` (`"<status> <route>"`, never
+  headers or bodies), `set_live_access`; blobs: `vault_blob`, `vault_revision`, `put_vault_blob` (another device),
+  `rollback_vault` (`server_rolled_back`), `lose_vault` (`server_lost_database`), `add_device_token`,
+  `close_streams`; accounts: `user_id`, `set_totp_code` / `totp_now` (MFA), `email_code`, `approve_reset`
+  (recovery), `invitation_token`, `add_member`, `revoke_sessions` (revocation: the session ends),
+  `access_events()` (JSON), `set_deletion_days` (deletion grace), `set_access_token_ttl_secs`,
+  `set_recent_token_ms`. Users, vaults and orgs are made through the facade itself (`register_account`,
+  `create_vault`, ...), so the fixtures are real protocol state.
+
+`smoke/contract_v16.cpp` (`desktop_flow`) runs this end to end through a C++ Host; `tests/test_servers.rs` covers
+the Rust side.
+
 ## Desktop swap
 
 W3-ID's desktop-local `ovd` bridge (`src/account/ovcore/`, header `<ovdesktop.h>`) moved here. For W3-ID2:
@@ -191,7 +224,7 @@ In `SyncEngine::mergeAccountVault`, `changeType(change.change)` switches on `ov:
 
 ## Coverage
 
-**All bridged:** every public method and free function of `ov_core::api` (231 items since contract-v1.6, see
+**All bridged:** every public method and free function of `ov_core::api` (234 items since contract-v1.6, see
 `docs/api-coverage.md` for how they map to the TS SDK and iOS) has a C++ function, with one deliberate exclusion.
 `cargo xtask cpp --check-coverage` (also part of `cargo test -p ov-ffi-cpp`, so of `cargo xtask ci`) scans
 `crates/ov-core/src/api/*.rs` and the bridge in `src/lib.rs` and fails, naming each one, when a facade item has no
@@ -212,9 +245,9 @@ How facade names become C++ names:
 | Free | `version`, `take_last_error`, the crypto primitives, the functions [below the facade](#below-the-facade); `deletion_expired`, `default_share_fields`, `shareable_fields`, `item_share_payload`, `text_share_payload`, `parse_totp_uri`, `totp_code`, `entry_totp_uri`; record helpers `plan_limit`, `plan_has`, `plan_has_billing`, `platform_as_str` |
 | `CancelToken` | `new_cancel_token`, `clone`, `cancel`, `is_cancelled`, `check` |
 | `ov::Client` | everything: discovery, `connect`, `config`, local files on the Host clock (`open_local`, `create_local`), remembered accounts (`remembered_accounts`, `remember_account`, `set_remembered_deletion`, `mark_remembered_checked`, `forget_remembered`), `session_state`, `has_pending_edits`, signed-out share links (`share_info`, `open_share`) |
-| `Account` | everything: state and sessions (incl. `signed_out`, `verify_session`, parked sessions, `sign_out_on_unload`, `unlocked_keyset_secret` / `resume_unlocked`), register / login / TOTP / unlock, vaults and import, history, AutoFill edits, settings and two-step, devices, recovery, deletion, plans and In-App Purchase, vault sharing, orgs, audit log, service-account admin, share links |
+| `Account` | everything (contract-v1.6: `vault_kdbx_credentials`, `sync_vault_kdbx` with `ov::SyncOptions`, `access_token`): state and sessions (incl. `signed_out`, `verify_session`, parked sessions, `sign_out_on_unload`, `unlocked_keyset_secret` / `resume_unlocked`), register / login / TOTP / unlock, vaults and import, history, AutoFill edits, settings and two-step, devices, recovery, deletion, plans and In-App Purchase, vault sharing, orgs, audit log, service-account admin, share links |
 | `LoginStep` / `TotpChallenge` | `needs_totp`, `challenge`, `take_unlocked`; `attempt`, `last_error` |
-| `Vault` | everything: local files, state, reading, every edit (entries, groups, attachments, icons, Recycle Bin), version diff and restore, AutoFill, sync, `keep_edits`, `export_kdbx`, `export_plain`; contract-v1.6: `entry_records`, `add_entry_with_id`, `set_attachment_with`, `import_from` / `import_preview` / `import_targets`, `set_name`, `set_kdf`, `copy_without_remotes` (empty credentials keep the file's own), `meta_custom_data` / `set_meta_custom_data`, `export_kdbx_with` |
+| `Vault` | everything: local files, state, reading, every edit (entries, groups, attachments, icons, Recycle Bin), version diff and restore, AutoFill, sync, `keep_edits`, `export_kdbx`, `export_plain`; contract-v1.6: `entry_records`, `add_entry_with_id`, `set_attachment_with`, `import_from` / `import_preview` / `import_targets`, `set_name`, `set_kdf`, `copy_without_remotes` (empty credentials keep the file's own), `meta_custom_data` / `set_meta_custom_data`, `export_kdbx_with`, `sync_with_options` (`accept_server_state`) |
 | `ServiceAccount` | everything (incl. `server_config`, `issuer`) |
 | `SelfHosted` | everything (incl. `history`, `open_version`); `restore` returns `RestoredSelfHosted` (`is_paired()`, then `take()`) |
 | `EventStream` | `next` (`kind == Closed` for the end), `reconnect`, `close` |

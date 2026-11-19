@@ -407,6 +407,7 @@ impl Account {
     /// Imports a `.kdbx` (opened with `credentials`) into the account: as a new vault ("Move to
     /// account", re-keyed to a fresh vault key, the original untouched), merged into a vault, or as
     /// copies. If the vault was created but the upload failed, [`ImportOutcome::uploaded`] is false.
+    /// A wrong password or key file is `vault_key_mismatch` (TS 0.11; contract-v1.7, was `kdbx_error`).
     pub async fn import_kdbx(
         &self,
         kdbx: Vec<u8>,
@@ -415,13 +416,7 @@ impl Account {
         cancel: CancelToken,
     ) -> Result<ImportOutcome, OvError> {
         let key = crate::impls::vaults::local_key(&credentials)?;
-        let source = ov_kdbx::read(&kdbx, &key).map_err(|e| {
-            if e.is(ov_error::OvErrorCode::VaultKeyMismatch) {
-                OvError::new(ov_error::OvErrorCode::KdbxError, "the password or key file doesn't open this file")
-            } else {
-                e
-            }
-        })?;
+        let source = ov_kdbx::read(&kdbx, &key)?;
         self.import_db(source, mode, &cancel).await
     }
 

@@ -681,8 +681,9 @@ pub struct ImportOutcome {
     pub report: Option<SyncReport>,
 }
 
-/// Options for [`Vault::sync`](crate::api::Vault::sync) and
-/// [`Account::sync_vault_kdbx`](crate::api::Account::sync_vault_kdbx).
+/// Options for [`Vault::sync`](crate::api::Vault::sync),
+/// [`Account::sync_vault_kdbx`](crate::api::Account::sync_vault_kdbx) and
+/// [`SelfHosted::sync_database_with`](crate::api::SelfHosted::sync_database_with).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SyncOptions {
     /// `false`: nothing changed here, so ask the server with a HEAD first and stop if it didn't

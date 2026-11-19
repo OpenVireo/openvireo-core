@@ -34,6 +34,11 @@ pub struct KdbxCredentials {
     pub password: Option<SecretBytes>,
     /// The key file's bytes (any KeePass key-file format).
     pub key_file: Option<SecretBytes>,
+    /// Instead of `password`: its SHA-256, 32 bytes (the password component of the composite key,
+    /// TS `passwordHash`). An app that keeps a database openable across reloads keeps this rather
+    /// than the password. Setting both `password` and `password_hash`, or a hash that isn't 32 bytes,
+    /// is `invalid_request`. Contract-v1.7.
+    pub password_hash: Option<SecretBytes>,
 }
 
 impl std::fmt::Debug for KdbxCredentials {
@@ -41,6 +46,7 @@ impl std::fmt::Debug for KdbxCredentials {
         f.debug_struct("KdbxCredentials")
             .field("password", &self.password.is_some())
             .field("key_file", &self.key_file.is_some())
+            .field("password_hash", &self.password_hash.is_some())
             .finish()
     }
 }
@@ -355,8 +361,9 @@ pub enum KdbxKdf {
 impl Vault {
     // ---------------------------------------------------------------------- local files
 
-    /// Opens a local `.kdbx` (not an account vault). TS `decryptKdbx`. `kdbx_error` for a wrong key
-    /// or a damaged file. Edits are stamped with the system clock (on wasm32, one second after the
+    /// Opens a local `.kdbx` (not an account vault). TS `decryptKdbx`. `vault_key_mismatch` for a
+    /// wrong password or key file (as TS 0.11 and [`ov_kdbx::read`] report it; contract-v1.7, was
+    /// `kdbx_error`), `kdbx_error` for a damaged file. Edits are stamped with the system clock (on wasm32, one second after the
     /// newest time in the file); [`OvClient::open_local`](crate::api::OvClient::open_local) uses the
     /// Host clock instead.
     pub async fn open_local(

@@ -140,32 +140,13 @@ fn signed_out(message: &str) -> OvError {
     OvError::new(OvErrorCode::SignedOut, message)
 }
 
-/// The issuer URL inside an `ov_sa_` token (base64url JSON with `url`), to discover the server
-/// first and report its issuer (TS `sa.config.issuer`). `None` when it can't be read; the core then
-/// reports what's wrong with the token.
-// CONTRACT-REQUEST: `ServiceAccount::server_config()` (or `issuer()`) would make this unnecessary.
-fn token_url(token: &str) -> Option<String> {
-    use base64::Engine as _;
-    let body = token.strip_prefix("ov_sa_")?;
-    let json =
-        Zeroizing::new(base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(body.trim_end_matches('=')).ok()?);
-    let v: serde_json::Value = serde_json::from_slice(&json).ok()?;
-    v.get("url")?.as_str().map(str::to_string)
-}
-
-/// Signs in with a service account token; also returns the server's issuer.
+/// Signs in with a service account token; also returns the server's issuer (TS `sa.config.issuer`).
+/// The core discovers the server named in the token.
 async fn service_account(io: &Io, token: &str) -> Result<(ServiceAccount, String), OvError> {
     let s = session(io)?;
-    let (client, issuer) = match token_url(token) {
-        Some(url) => {
-            let config = s.client.discover(url, nc()).await?;
-            let issuer = config.issuer.clone();
-            (session_with(io, Some(config))?.client, Some(issuer))
-        }
-        None => (s.client, None),
-    };
-    let sa = ServiceAccount::from_token(client, token.as_bytes().to_vec(), nc()).await?;
-    Ok((sa, issuer.unwrap_or_default()))
+    let sa = ServiceAccount::from_token(s.client, token.as_bytes().to_vec(), nc()).await?;
+    let issuer = sa.issuer();
+    Ok((sa, issuer))
 }
 
 /// The saved, signed-in (still locked) user session.
@@ -447,15 +428,6 @@ mod tests {
             "t"
         );
         assert!(service_account_token(&env(&[])).unwrap().is_none());
-    }
-
-    #[test]
-    fn reads_the_issuer_url_of_a_token() {
-        use base64::Engine as _;
-        let body = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"v":1,"url":"https://a.example"}"#);
-        assert_eq!(token_url(&format!("ov_sa_{body}")).as_deref(), Some("https://a.example"));
-        assert_eq!(token_url("ov_sa_!!"), None);
-        assert_eq!(token_url("nope"), None);
     }
 
     #[test]

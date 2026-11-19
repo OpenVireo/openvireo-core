@@ -64,6 +64,11 @@ fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
 }
 
+/// Cargo's target directory: `CARGO_TARGET_DIR` when set, else `<repo>/target`.
+fn target_root() -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| root().join("target"))
+}
+
 fn cargo() -> Command {
     let mut c = Command::new(env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
     c.current_dir(root());
@@ -283,7 +288,7 @@ fn unlinked() -> Result {
         println!("\n==> unlinked: no wasm cdylibs");
         return Ok(());
     }
-    let target_dir = root().join("target").join("symbols");
+    let target_dir = target_root().join("symbols");
     let target_dir = target_dir.to_str().ok_or("non-UTF-8 target dir")?;
     wasm_release_build(
         "unlinked: release wasm32 build with symbols",
@@ -382,7 +387,7 @@ fn size() -> Result {
     }
     wasm_release_build("size: release wasm32 build", &cdylibs, &[])?;
 
-    let out_dir = root().join("target").join(WASM_TARGET).join("release");
+    let out_dir = target_root().join(WASM_TARGET).join("release");
     println!("\n{:<32} {:>12} {:>12}", "wasm size report", "raw bytes", "gzip -9");
     for name in &cdylibs {
         let file = out_dir.join(format!("{}.wasm", name.replace('-', "_")));

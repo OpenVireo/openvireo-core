@@ -5,7 +5,7 @@ openvireo-core compiled to WebAssembly with wasm-bindgen. `cargo xtask wasm` bui
 
 | Module | Crate | What it has | Size after wasm-opt (raw / gzip -9) |
 |---|---|---|---|
-| **full** | `bindings/ov-wasm` | the facade handles (`OvClient`, `Account`, `Vault`, …) plus every low-level export below | 2,142,208 B / 864,457 B |
+| **full** | `bindings/ov-wasm` | the facade handles (`OvClient`, `Account`, `Vault`, …) plus every low-level export below | 2,179,823 B / 876,771 B |
 | **lite** | `bindings/ov-wasm-lite` | primitives (SHA-256, HKDF, XChaCha20-Poly1305, Argon2, random), share links, TOTP | 404,519 B / 191,245 B |
 
 With the module embedded as base64 (the default), a lite-only browser bundle built with esbuild is
@@ -199,12 +199,35 @@ Either the SDK keeps kdbxweb for these, or a major version replaces the kdbxweb 
 | `SseParser`, `toSyncEvent`, `EventStream`, `subscribeEvents` | TS (a string-chunk parser with no crypto), or the facade's `Account.events()` |
 | `isMfaChallenge`, `APPLE_SUBSCRIPTIONS_URL` and the `auth/types` types | TS |
 
+### Facade additions in contract-v1.6
+
+User decision 2026-11-19: the SDK's next major exposes the core's handles instead of kdbxweb, so the
+kdbxweb-shaped exports above become `Vault` calls. These were added to the facade for that (and for
+iOS); all on the full module (F):
+
+| Need | Binding |
+|---|---|
+| local files on the app's clock | `client.openLocal(kdbx, credentials, signal?)`, `client.createLocal(name, credentials, signal?)` (`Vault.openLocal` / `createLocal` keep working, on the system clock) |
+| last use of an entry | `EntrySummary` / `EntryRecord`: `lastAccessAt?` (only when `usageCount > 0`), `usageCount` |
+| colours, custom icon, field order | `EntryInput`: `foregroundColor?` / `backgroundColor?` (`"#RRGGBB"`, `""` clears), `customIcon?` (`null` clears, absent keeps), `fieldOrder?` |
+| every entry with values | `vault.entryRecords(includeRecycleBin)` |
+| an entry with a chosen id | `vault.addEntryWithId(id, groupId, input)` (`conflict` if taken) |
+| attachment protected flag | `AttachmentInfo.protected`; `vault.setAttachmentWith(entryId, name, data, protected?)` |
+| import one open vault into another | `vault.importFrom(source, { kind: "merge" } \| { kind: "copies", parentGroupId? })` → `ImportSummary`; `source.importPreview()` → `{ entries, groups }`; `vault.importTargets()` |
+| file metadata | `vault.setName(name)` (local), `metaCustomData(key)`, `setMetaCustomData(key, value?)` |
+| "save a copy" / KDF | `vault.copyWithoutRemotes(credentials?)`, `vault.setKdf(kdf)` (local), `vault.exportKdbxWith(credentials, groupIds?, kdf)`; `KdbxKdf` is `{ kind: "databaseDefault" }`, `{ kind: "argon2d" \| "argon2id", memory, iterations, parallelism }` or `{ kind: "aesKdf", rounds }` |
+| self-hosted version history | `selfHosted.history(databaseId)`, `selfHosted.openVersion(databaseId, revision, credentials)` |
+| a service account's server | `sa.serverConfig()`, `sa.issuer()` |
+
+Record fields added in v1.6 (`usageCount`, `AttachmentInfo.protected`) default when a JS record that
+lacks them comes back in (`applyAutofillEdits`, `keepAutofillEdit`).
+
 ## Building and testing
 
 ```sh
 cargo xtask wasm                      # builds both modules into pkg/ (needs wasm-bindgen-cli 0.2.130 and binaryen)
 cd bindings/ov-wasm && npm ci
-npx vitest run                        # 8 files: smoke (Node, jsdom), host, low-level vectors, shared/lite parity, wipe, lite panic, esbuild bundle
+npx vitest run                        # 9 files: smoke (Node, jsdom), host, low-level vectors, shared/lite parity, wipe, lite panic, esbuild bundle, contract-v1.6
 npx tsc -p tsconfig.json              # the .d.ts describe the API (test/types.ts)
 ```
 

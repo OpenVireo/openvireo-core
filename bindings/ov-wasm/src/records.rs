@@ -212,15 +212,19 @@ record!(EntrySummary => EntrySummary {
     id: id ": string", group_id: groupId ": string", group_path: groupPath ": string[]", title: title ": string", username: username ": string",
     url: url ": string", tags: tags ": string[]", protected_fields: protectedFields ": string[]", icon_id: iconId ": number",
     custom_icon: customIcon "?: string", modified_at: modifiedAt ": number", expires_at: expiresAt "?: number", in_recycle_bin: inRecycleBin ": boolean",
+    last_access_at: lastAccessAt "?: number", usage_count: usageCount ": number" via crate::convert::field_or_default,
 });
 record!(@no_ts FieldRecord => FieldRecord { name: name ": string", value: value ": Uint8Array", protected: protected ": boolean" });
-record!(AttachmentInfo => AttachmentInfo { name: name ": string", size: size ": number" });
+record!(AttachmentInfo => AttachmentInfo {
+    name: name ": string", size: size ": number", protected: protected ": boolean" via crate::convert::field_or_default,
+});
 record!(EntryRecord => EntryRecord {
     id: id ": string", group_id: groupId ": string", group_path: groupPath ": string[]", fields: fields ": FieldRecord[]", tags: tags ": string[]",
     icon_id: iconId ": number", custom_icon: customIcon "?: string", foreground_color: foregroundColor ": string",
     background_color: backgroundColor ": string", override_url: overrideUrl ": string", created_at: createdAt ": number",
     modified_at: modifiedAt ": number", expires_at: expiresAt "?: number", attachments: attachments ": AttachmentInfo[]",
     history_count: historyCount ": number", quality_check: qualityCheck ": boolean",
+    last_access_at: lastAccessAt "?: number", usage_count: usageCount ": number" via crate::convert::field_or_default,
 });
 record!(GroupInfo => GroupInfo {
     id: id ": string", name: name ": string", parent_id: parentId "?: string", path: path ": string[]", icon_id: iconId ": number",
@@ -229,11 +233,19 @@ record!(GroupInfo => GroupInfo {
 record!(FieldInput => FieldInput { name: name ": string", value: value ": Uint8Array", protected: protected "?: boolean" });
 record!(EntryInput => EntryInput {
     fields: fields ": FieldInput[]", remove_fields: removeFields ": string[]", tags: tags "?: string[]", icon_id: iconId "?: number", expiry: expiry ": EntryExpiry",
+    foreground_color: foregroundColor "?: string", background_color: backgroundColor "?: string",
+    custom_icon: customIcon "?: string | null" via crate::convert::field_change, field_order: fieldOrder "?: string[]",
 });
 unit_enum!(CreateMode => CreateMode { MustExist => "must_exist", CreateIfMissing => "create_if_missing", CreateOnly => "create_only" });
 record!(SetFieldsResult => SetFieldsResult { entry: entry ": EntryRecord", created: created ": boolean" });
 unit_enum!(VersionDifference => VersionDifference { Same => "same", Changed => "changed", Deleted => "deleted" });
 unit_enum!(ExportFormat => ExportFormat { Csv => "csv", Json => "json" });
+record!(ImportSummary => ImportSummary {
+    added: added ": number", updated: updated ": number", unchanged: unchanged ": number", groups_added: groupsAdded ": number",
+    changes: changes ": MergeChange[]",
+});
+record!(ImportPreview => ImportPreview { entries: entries ": number", groups: groups ": number" });
+record!(ImportTarget => ImportTarget { group_id: groupId ": string", path: path ": string" });
 
 // ------------------------------------------------------------------------------------ host
 
@@ -272,6 +284,14 @@ export type Grantee = { kind: "email"; email: string } | { kind: "principal"; pr
 export type ExpiryChange = { kind: "keep" } | { kind: "never" } | { kind: "at"; at: Rfc3339 };
 /** Entry expiry edit; `at` is Unix seconds. */
 export type EntryExpiry = { kind: "keep" } | { kind: "never" } | { kind: "at"; at: number };
+/** How `Vault.importFrom` brings another open vault in (contract-v1.6); `copies` goes under `parentGroupId` (the root when absent). */
+export type LocalImportMode = { kind: "merge" } | { kind: "copies"; parentGroupId?: string };
+/** The key derivation a password-protected `.kdbx` is saved with (contract-v1.6); `memory` is in bytes. */
+export type KdbxKdf =
+  | { kind: "databaseDefault" }
+  | { kind: "argon2d"; memory: number; iterations: number; parallelism: number }
+  | { kind: "argon2id"; memory: number; iterations: number; parallelism: number }
+  | { kind: "aesKdf"; rounds: number };
 export type LoginStep = { kind: "needsTotp"; challenge: TotpChallenge } | { kind: "unlocked"; unlocked: Unlocked };
 export interface Unlocked { auk: Uint8Array; offline: boolean; deletionScheduledFor?: Rfc3339 }
 export interface RegisterInput { email: string; password: Uint8Array; kdf?: KdfOverrides; trustDevice: boolean }
@@ -290,6 +310,35 @@ impl FromJs for ImportMode {
             "merge" => Ok(ImportMode::Merge { vault_id: field(v, "vaultId", path)? }),
             "copies" => Ok(ImportMode::Copies { vault_id: field(v, "vaultId", path)? }),
             _ => Err(bad(&format!("{path}.kind"), "\"newVault\" | \"merge\" | \"copies\"")),
+        }
+    }
+}
+
+impl FromJs for LocalImportMode {
+    fn from_js(v: &JsValue, path: &str) -> Result<Self, OvError> {
+        match kind(v, path)?.as_str() {
+            "merge" => Ok(LocalImportMode::Merge),
+            "copies" => Ok(LocalImportMode::Copies { parent_group_id: field(v, "parentGroupId", path)? }),
+            _ => Err(bad(&format!("{path}.kind"), "\"merge\" | \"copies\"")),
+        }
+    }
+}
+
+impl FromJs for KdbxKdf {
+    fn from_js(v: &JsValue, path: &str) -> Result<Self, OvError> {
+        let argon = |v: &JsValue| -> Result<(u64, u64, u32), OvError> {
+            Ok((field(v, "memory", path)?, field(v, "iterations", path)?, field(v, "parallelism", path)?))
+        };
+        match kind(v, path)?.as_str() {
+            "databaseDefault" => Ok(KdbxKdf::DatabaseDefault),
+            "argon2d" => {
+                argon(v).map(|(memory, iterations, parallelism)| KdbxKdf::Argon2d { memory, iterations, parallelism })
+            }
+            "argon2id" => {
+                argon(v).map(|(memory, iterations, parallelism)| KdbxKdf::Argon2id { memory, iterations, parallelism })
+            }
+            "aesKdf" => Ok(KdbxKdf::AesKdf { rounds: field(v, "rounds", path)? }),
+            _ => Err(bad(&format!("{path}.kind"), "\"databaseDefault\" | \"argon2d\" | \"argon2id\" | \"aesKdf\"")),
         }
     }
 }

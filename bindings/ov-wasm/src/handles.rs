@@ -152,6 +152,30 @@ impl OvClientJs {
         call(signal, move |t| async move { c.connect(issuer, t).await })
     }
 
+    /// Opens a local `.kdbx`; edits are stamped with this client's Host clock (contract-v1.6).
+    #[wasm_bindgen(js_name = openLocal, unchecked_return_type = "Promise<Vault>")]
+    pub fn open_local(
+        &self,
+        kdbx: Vec<u8>,
+        #[wasm_bindgen(unchecked_param_type = "KdbxCredentials")] credentials: JsValue,
+        signal: Option<AbortSignal>,
+    ) -> Promise {
+        let c = self.0.clone();
+        call(signal, move |t| async move { c.open_local(kdbx, arg(&credentials, "credentials")?, t).await })
+    }
+
+    /// Creates a new local database on this client's Host clock (contract-v1.6).
+    #[wasm_bindgen(js_name = createLocal, unchecked_return_type = "Promise<Vault>")]
+    pub fn create_local(
+        &self,
+        name: String,
+        #[wasm_bindgen(unchecked_param_type = "KdbxCredentials")] credentials: JsValue,
+        signal: Option<AbortSignal>,
+    ) -> Promise {
+        let c = self.0.clone();
+        call(signal, move |t| async move { c.create_local(name, arg(&credentials, "credentials")?, t).await })
+    }
+
     /// Remembered accounts, most recently used first (SPEC §21).
     #[wasm_bindgen(js_name = rememberedAccounts, unchecked_return_type = "Promise<RememberedAccount[]>")]
     pub fn remembered_accounts(&self) -> Promise {
@@ -945,6 +969,71 @@ impl VaultJs {
         error::js(self.0.add_entry(group_id, input))
     }
 
+    /// Adds an entry with an id the caller chose; returns it normalized (contract-v1.6).
+    #[wasm_bindgen(js_name = addEntryWithId, unchecked_return_type = "string")]
+    pub fn add_entry_with_id(
+        &self,
+        entry_id: String,
+        group_id: String,
+        #[wasm_bindgen(unchecked_param_type = "EntryInput")] input: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let input = arg(&input, "input").map_err(arg_err)?;
+        error::js(self.0.add_entry_with_id(entry_id, group_id, input))
+    }
+
+    /// Sets a local database's key derivation (contract-v1.6).
+    #[wasm_bindgen(js_name = setKdf, unchecked_return_type = "undefined")]
+    pub fn set_kdf(&self, #[wasm_bindgen(unchecked_param_type = "KdbxKdf")] kdf: JsValue) -> Result<JsValue, JsValue> {
+        let kdf = arg(&kdf, "kdf").map_err(arg_err)?;
+        error::js(self.0.set_kdf(kdf))
+    }
+
+    /// A local copy without sync-server remotes; `credentials` default to a local file's own
+    /// (contract-v1.6).
+    #[wasm_bindgen(js_name = copyWithoutRemotes, unchecked_return_type = "Vault")]
+    pub fn copy_without_remotes(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "KdbxCredentials | undefined")] credentials: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let credentials = arg(&credentials, "credentials").map_err(arg_err)?;
+        error::js(self.0.copy_without_remotes(credentials))
+    }
+
+    /// A database custom data value (contract-v1.6).
+    #[wasm_bindgen(js_name = metaCustomData)]
+    pub fn meta_custom_data(&self, key: String) -> Option<String> {
+        self.0.meta_custom_data(key)
+    }
+
+    /// Every entry with its values (contract-v1.6).
+    #[wasm_bindgen(js_name = entryRecords, unchecked_return_type = "EntryRecord[]")]
+    pub fn entry_records(&self, include_recycle_bin: bool) -> JsValue {
+        self.0.entry_records(include_recycle_bin).to_js()
+    }
+
+    /// Imports another open vault into this one (contract-v1.6).
+    #[wasm_bindgen(js_name = importFrom, unchecked_return_type = "ImportSummary")]
+    pub fn import_from(
+        &self,
+        source: &VaultJs,
+        #[wasm_bindgen(unchecked_param_type = "LocalImportMode")] mode: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let mode = arg(&mode, "mode").map_err(arg_err)?;
+        error::js(self.0.import_from(source.0.clone(), mode))
+    }
+
+    /// What importing this vault elsewhere would bring in (contract-v1.6).
+    #[wasm_bindgen(js_name = importPreview, unchecked_return_type = "ImportPreview")]
+    pub fn import_preview(&self) -> JsValue {
+        self.0.import_preview().to_js()
+    }
+
+    /// The groups an import can go into (contract-v1.6).
+    #[wasm_bindgen(js_name = importTargets, unchecked_return_type = "ImportTarget[]")]
+    pub fn import_targets(&self) -> JsValue {
+        self.0.import_targets().to_js()
+    }
+
     /// Edits an entry (keeping a history copy).
     #[wasm_bindgen(js_name = editEntry, unchecked_return_type = "undefined")]
     pub fn edit_entry(
@@ -1018,6 +1107,21 @@ impl VaultJs {
         call(signal, move |t| async move { v.export_kdbx(arg(&credentials, "credentials")?, group_ids, t).await })
     }
 
+    /// Exports as a `.kdbx` with a chosen key derivation (contract-v1.6).
+    #[wasm_bindgen(js_name = exportKdbxWith, unchecked_return_type = "Promise<Uint8Array>")]
+    pub fn export_kdbx_with(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "KdbxCredentials")] credentials: JsValue,
+        group_ids: Option<Vec<String>>,
+        #[wasm_bindgen(unchecked_param_type = "KdbxKdf")] kdf: JsValue,
+        signal: Option<AbortSignal>,
+    ) -> Promise {
+        let v = self.0.clone();
+        call(signal, move |t| async move {
+            v.export_kdbx_with(arg(&credentials, "credentials")?, group_ids, arg(&kdf, "kdf")?, t).await
+        })
+    }
+
     /// Exports in the clear (CSV or JSON).
     #[wasm_bindgen(js_name = exportPlain, unchecked_return_type = "Uint8Array")]
     pub fn export_plain(
@@ -1053,6 +1157,13 @@ vault_sync! {
     emptyRecycleBin = empty_recycle_bin() -> "undefined";
     /// Adds or replaces an attachment.
     setAttachment = set_attachment(entry_id: String, name: String, data: Vec<u8>) -> "undefined";
+    /// Adds or replaces an attachment with its protected flag; `undefined` keeps the replaced one's
+    /// (contract-v1.6).
+    setAttachmentWith = set_attachment_with(entry_id: String, name: String, data: Vec<u8>, protected: Option<bool>) -> "undefined";
+    /// Renames a local database (contract-v1.6).
+    setName = set_name(name: String) -> "undefined";
+    /// Sets (a string) or removes (`undefined`) a database custom data item (contract-v1.6).
+    setMetaCustomData = set_meta_custom_data(key: String, value: Option<String>) -> "undefined";
     /// Removes an attachment.
     removeAttachment = remove_attachment(entry_id: String, name: String) -> "undefined";
     /// Adds a custom icon; returns its id.
@@ -1095,6 +1206,17 @@ impl ServiceAccountJs {
     /// `sa:<id>`.
     pub fn principal(&self) -> String {
         self.0.principal()
+    }
+
+    /// The server it signed in to (contract-v1.6).
+    #[wasm_bindgen(js_name = serverConfig, unchecked_return_type = "ServerConfig")]
+    pub fn server_config(&self) -> JsValue {
+        self.0.server_config().to_js()
+    }
+
+    /// The server's issuer (contract-v1.6).
+    pub fn issuer(&self) -> String {
+        self.0.issuer()
     }
 
     /// The vaults it can open.
@@ -1226,6 +1348,29 @@ impl SelfHostedJs {
             signal,
             move |t| async move { s.sync_database(database_id, kdbx, arg(&credentials, "credentials")?, t).await },
         )
+    }
+
+    /// The versions the server keeps of a database, newest first (contract-v1.6).
+    #[wasm_bindgen(unchecked_return_type = "Promise<VaultVersion[]>")]
+    pub fn history(&self, database_id: String, signal: Option<AbortSignal>) -> Promise {
+        let s = self.0.clone();
+        call(signal, move |t| async move { s.history(database_id, t).await })
+    }
+
+    /// Opens one kept version of a database, read-only (contract-v1.6).
+    #[wasm_bindgen(js_name = openVersion, unchecked_return_type = "Promise<Vault>")]
+    pub fn open_version(
+        &self,
+        database_id: String,
+        revision: f64,
+        #[wasm_bindgen(unchecked_param_type = "KdbxCredentials")] credentials: JsValue,
+        signal: Option<AbortSignal>,
+    ) -> Promise {
+        let s = self.0.clone();
+        call(signal, move |t| async move {
+            let revision = u64_arg(revision, "revision")?;
+            s.open_version(database_id, revision, arg(&credentials, "credentials")?, t).await
+        })
     }
 
     /// Live updates from the server.

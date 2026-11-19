@@ -1,7 +1,7 @@
 //! `cargo xtask cpp`: build the C++ static libs + headers. Owned by W1-BC (only that task edits this file).
 //!
 //! ```text
-//! cargo xtask cpp [--target <triple>]... [--out <dir>] [--debug]
+//! cargo xtask cpp [--target <triple>]... [--out <dir>] [--debug] [--features <list>]
 //! cargo xtask cpp --check-coverage
 //! ```
 //!
@@ -17,7 +17,10 @@
 //! <out>/<target>/lib/cmake/OpenVireoCore/OpenVireoCoreConfig.cmake (+ ConfigVersion)
 //! ```
 //!
-//! `<out>` defaults to `target/ovcore-cpp`. `--target universal-apple-darwin` builds
+//! `--features test-server` builds the test-only OPAQUE server and seeded steps in (never for a
+//! release); the package records its features in `OpenVireoCore_FEATURES`.
+//!
+//! `<out>` defaults to `<cargo target dir>/ovcore-cpp` (`CARGO_TARGET_DIR` is honoured). `--target universal-apple-darwin` builds
 //! aarch64-apple-darwin and x86_64-apple-darwin and joins them with `lipo` (macOS hosts only).
 //! Without `--target`, it builds `universal-apple-darwin` on macOS and the host triple elsewhere.
 //! Release targets: universal-apple-darwin, x86_64-pc-windows-msvc, aarch64-pc-windows-msvc,
@@ -43,6 +46,8 @@ struct Options {
     targets: Vec<String>,
     out: PathBuf,
     release: bool,
+    /// Cargo features of ov-ffi-cpp, comma-separated (empty: none).
+    features: String,
 }
 
 pub fn run(args: &[String]) -> Result {
@@ -70,7 +75,7 @@ pub fn run(args: &[String]) -> Result {
             let mut slices = Vec::new();
             let mut native = Vec::new();
             for t in MACOS_TARGETS {
-                let (lib, libs) = build(t, &include, opts.release)?;
+                let (lib, libs) = build(t, &include, &opts)?;
                 slices.push(lib);
                 native = libs;
             }
@@ -80,13 +85,13 @@ pub fn run(args: &[String]) -> Result {
             crate::run("lipo -create", &mut lipo)?;
             ("libovcore.a".to_string(), native)
         } else {
-            let (lib, native) = build(target, &include, opts.release)?;
+            let (lib, native) = build(target, &include, &opts)?;
             let name = if target.ends_with("-msvc") { "ovcore.lib" } else { "libovcore.a" };
             fs::copy(&lib, lib_dir.join(name)).map_err(|e| format!("{}: {e}", lib.display()))?;
             (name.to_string(), native)
         };
 
-        write_cmake_package(&pkg, target, &lib_file, &native, &version, opts.release)?;
+        write_cmake_package(&pkg, target, &lib_file, &native, &version, &opts)?;
         println!("\nOpenVireoCore {version} for {target}: {}", pkg.display());
         println!("  CMake: -DOpenVireoCore_DIR={}", pkg.join("lib/cmake/OpenVireoCore").display());
     }
@@ -102,8 +107,9 @@ fn check_coverage() -> Result {
 
 fn parse(args: &[String]) -> Result<Options> {
     let mut targets = Vec::new();
-    let mut out = root().join("target").join("ovcore-cpp");
+    let mut out = target_dir()?.join("ovcore-cpp");
     let mut release = true;
+    let mut features = String::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -113,12 +119,15 @@ fn parse(args: &[String]) -> Result<Options> {
                 out = if p.is_absolute() { p } else { env::current_dir().map_err(|e| e.to_string())?.join(p) };
             }
             "--debug" => release = false,
+            "--features" => features = it.next().ok_or("--features needs a list (e.g. test-server)")?.clone(),
             "-h" | "--help" => {
-                return Err("usage: cargo xtask cpp [--target <triple>]... [--out <dir>] [--debug]\n\
+                return Err(
+                    "usage: cargo xtask cpp [--target <triple>]... [--out <dir>] [--debug] [--features <list>]\n\
                      \x20      cargo xtask cpp --check-coverage\n\
                      targets: universal-apple-darwin (macOS host), x86_64/aarch64-pc-windows-msvc,\n\
                      x86_64/aarch64-unknown-linux-gnu, or any triple rustup knows"
-                    .into())
+                        .into(),
+                )
             }
             other => return Err(format!("cpp: unknown argument `{other}` (try --help)")),
         }
@@ -126,7 +135,15 @@ fn parse(args: &[String]) -> Result<Options> {
     if targets.is_empty() {
         targets.push(if cfg!(target_os = "macos") { UNIVERSAL_MACOS.to_string() } else { host_triple()? });
     }
-    Ok(Options { targets, out, release })
+    Ok(Options { targets, out, release, features })
+}
+
+/// Cargo's target directory (`CARGO_TARGET_DIR` or `build.target-dir` aware).
+fn target_dir() -> Result<PathBuf> {
+    metadata()?["target_directory"]
+        .as_str()
+        .map(PathBuf::from)
+        .ok_or_else(|| "cargo metadata has no target_directory".into())
 }
 
 fn host_triple() -> Result<String> {
@@ -151,11 +168,15 @@ fn core_version() -> Result<String> {
 
 /// Builds the static library for one triple, exporting the headers to `include`. Returns the
 /// library path and the system libraries it needs (`rustc --print native-static-libs`).
-fn build(target: &str, include: &Path, release: bool) -> Result<(PathBuf, Vec<String>)> {
+fn build(target: &str, include: &Path, opts: &Options) -> Result<(PathBuf, Vec<String>)> {
+    let release = opts.release;
     let mut cmd = cargo();
     cmd.args(["rustc", "--locked", "-p", PACKAGE, "--lib", "--crate-type", "staticlib", "--target", target]);
     if release {
         cmd.arg("--release");
+    }
+    if !opts.features.is_empty() {
+        cmd.args(["--features", &opts.features]);
     }
     cmd.args(["--", "--print", "native-static-libs"]);
     cmd.env("OV_CXX_INCLUDE_DIR", include);
@@ -176,7 +197,7 @@ fn build(target: &str, include: &Path, release: bool) -> Result<(PathBuf, Vec<St
         ));
     }
 
-    let profile_dir = root().join("target").join(target).join(if release { "release" } else { "debug" });
+    let profile_dir = target_dir()?.join(target).join(if release { "release" } else { "debug" });
     let lib = profile_dir.join(if target.ends_with("-msvc") {
         format!("{CRATE_LIB}.lib")
     } else {
@@ -212,8 +233,9 @@ fn write_cmake_package(
     lib_file: &str,
     native: &[String],
     version: &str,
-    release: bool,
+    opts: &Options,
 ) -> Result {
+    let release = opts.release;
     if !pkg.join("include/ovcore.h").exists() {
         return Err(format!("{}: the build exported no headers", pkg.join("include").display()));
     }
@@ -228,6 +250,7 @@ fn write_cmake_package(
             .replace("@PROFILE@", if release { "release" } else { "debug" })
             .replace("@LIB_FILE@", lib_file)
             .replace("@NATIVE_LIBS@", &native.join(";"))
+            .replace("@FEATURES@", &opts.features.replace(',', ";"))
             .replace("@VERSION_MAJOR@", major)
             .replace("@VERSION@", version))
     };

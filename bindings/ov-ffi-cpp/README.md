@@ -1,7 +1,9 @@
 # ov-ffi-cpp
 
 The C++17 binding of the openvireo-core facade, made with [cxx](https://cxx.rs). The desktop (Qt) links it as
-`libovcore` and includes `<ovcore.h>`.
+`libovcore` and includes `<ovcore.h>`. Next to the facade it bridges the pieces below it that the desktop's account
+code calls directly: the ov v1 crypto, the OPAQUE client steps (plus a test-only server half) and the sync merge on
+serialized vaults (see [Below the facade](#below-the-facade) and [Desktop swap](#desktop-swap)).
 
 ## Getting it
 
@@ -25,6 +27,20 @@ Pick one:
   configure, so a universal macOS app uses the prebuilt package (or one configure per arch, then `lipo`).
   **On aarch64, pass `CARGO_TARGET_<TRIPLE>_RUSTFLAGS=--cfg aes_armv8`** (the example does): Corrosion runs cargo
   outside this repo, so `.cargo/config.toml` isn't read, and without the cfg AES-KDF runs in software (~30x slower).
+
+- **Test server:** the `test-server` cargo feature (off by default) builds in opaque-ke's server half and the
+  seeded OPAQUE client steps, for tests that stand in for the auth server. Without it those functions still
+  exist (same header) but fail with `internal`; `ov::test_server_enabled()` says which build you have. Turn it on
+  only for test builds:
+
+  ```cmake
+  # Corrosion (the desktop: only when WITH_TESTS)
+  corrosion_import_crate(MANIFEST_PATH ... CRATES ov-ffi-cpp CRATE_TYPES staticlib FEATURES test-server)
+  ```
+
+  For the prebuilt package, `cargo xtask cpp --features test-server`; its `OpenVireoCoreConfig.cmake` then sets
+  `OpenVireoCore_FEATURES` to `test-server`. A wrapper crate that depends on ov-ffi-cpp forwards it with
+  `test-server = ["ov-ffi-cpp/test-server"]`. Never ship a release built with it.
 
 Both paths build for macOS 11.0 and later unless `MACOSX_DEPLOYMENT_TARGET` / `CMAKE_OSX_DEPLOYMENT_TARGET`
 says otherwise.
@@ -110,6 +126,66 @@ Records cross as flat shared structs. cxx shared structs can't hold `Option`, so
 Secrets (`password`, `secret_key`, `auk`, field values, `.kdbx` bytes) cross as `rust::Vec<uint8_t>`. Inputs
 move into the core, which wipes them. The caller wipes outputs with `ov::wipe()`.
 
+## Below the facade
+
+Free functions in namespace `ov`, synchronous and CPU-only (the OPAQUE steps run Argon2id, so keep them off the GUI
+thread). They take `rust::Slice<const uint8_t>` inputs the caller keeps and wipes, and return secrets as
+`rust::Vec<uint8_t>` for the caller to `ov::wipe()`. Text passed as bytes (AADs, passwords, `idU`/`idS`, the OPAQUE
+context) must be UTF-8. Fixed nonces, ephemeral keys and seeds exist for the test vectors only: pass them empty to
+get fresh random ones. Failures throw `rust::Error` (`"<wire code>: <message>"`), so `ov::call()` works as for
+the facade.
+
+| Area | Functions |
+|---|---|
+| Secret Key, NFKC (SPEC §2, §3) | `generate_secret_key`, `format_secret_key`, `parse_secret_key`, `nfkc_utf8` |
+| Envelopes (SPEC §4, §6) | `wrap(key, plaintext, aad, nonce)`, `unwrap`, `seal(recipient_pk, plaintext, aad, ephemeral_sk, nonce)` (ov-crypto `seal_with`), `unseal`, `seal_derived_key` |
+| Curves | `x25519_public_key`, `x25519_shared`, `ed25519_public_key`, `ed25519_sign`, `ed25519_verify` |
+| Keysets (SPEC §5, §7) | `keyset_from_secrets` (returns `ov::PublicKeys` with the fingerprint), `verify_public_keys`, `fingerprint`, `vault_name_key` |
+| Tokens (SPEC §9, §15) | `refresh_token_hash`, `build_service_account_token`, `parse_service_account_token` (`ov::ServiceAccountToken`), `service_account_secret_hash`, `service_account_secret_prefix` |
+| OPAQUE client (SPEC §8) | `opaque_start_registration`, `opaque_finish_registration`, `opaque_start_login`, `opaque_finish_login` (`ov::OpaqueStart`, `ov::OpaqueLogin`) |
+| OPAQUE, test-server only | `test_server_enabled`; seeded client steps `opaque_{start,finish}_{registration,login}_seeded` (a ChaCha20 seed, as in `vectors/opaque-transcripts.json`); server half `opaque_server_registration_response[_seeded]`, `opaque_server_store_record`, `opaque_server_credential_response[_seeded]`, `opaque_server_user_auth` (`ov::OpaqueServerStep`) |
+| Sync merge | `merge_kdbx(local, local_key, remote, remote_key, base, base_key, now)` → `ov::KdbxMergeResult` |
+
+`merge_kdbx` is ov-merge's three-way `merge_in_place` on two KDBX copies and their common base (empty `base`: none),
+at `now` (Unix seconds). Each key is the copy's composite key as one or two raw 32-byte components (password and/or
+key file, in KeePassXC's order). The intended use, as the desktop does: serialise the copies with a **throwaway
+key** (32 random bytes as the password component), so the user's vault key never crosses; load the merged bytes back
+with the same key. A copy comes back (written with its own key and KDF) only when the merge changed it
+(`local_changed` / `remote_changed`); otherwise its bytes are empty. `changes` lists every change
+(`ov::KdbxMergeChange`: `ov::ChangeType`, `ov::ChangeSubject`, the 16-byte RFC 4122 uuid or empty for the database,
+title, group, details) and `conflicts` the entries both sides edited differently.
+
+## Desktop swap
+
+W3-ID's desktop-local `ovd` bridge (`src/account/ovcore/`, header `<ovdesktop.h>`) moved here. For W3-ID2:
+
+1. Include `<ovcore.h>` instead of `<ovdesktop.h>`, and replace `ovd::` with `ov::`.
+2. Build ov-ffi-cpp instead of `ov-desktop`. Either import it with Corrosion from a pinned openvireo-core checkout
+   (`CRATES ov-ffi-cpp`, link `ov_ffi_cpp`, `FEATURES test-server` under `WITH_TESTS`), or keep
+   `src/account/ovcore/` as a wrapper crate with no bridge of its own: `ov-ffi-cpp` as its only dependency (git
+   rev, so `Cargo.lock` still pins the core), `src/lib.rs` = `pub use ov_ffi_cpp;`, and
+   `[features] test-server = ["ov-ffi-cpp/test-server"]`. Either way `OV_CXX_INCLUDE_DIR` makes ov-ffi-cpp's build
+   script export the headers, and the `--cfg aes_armv8` rustflags stay. Delete `ovd`'s `build.rs` and bridge.
+3. The two calls below change shape; everything else is the same name, arguments and result fields.
+
+| `ovd::` (W3-ID) | `ov::` (ov-ffi-cpp) |
+|---|---|
+| `nfkc_utf8`, `generate_secret_key`, `format_secret_key`, `parse_secret_key` | same |
+| `wrap`, `unwrap`, `seal`, `unseal`, `seal_derived_key` | same |
+| `x25519_public_key`, `x25519_shared`, `ed25519_public_key`, `ed25519_sign`, `ed25519_verify` | same |
+| `keyset_from_secrets` → `ovd::PublicKeys{enc_pk, sign_pk, sig}` | `keyset_from_secrets` → `ov::PublicKeys{enc_pk, sign_pk, sig, fingerprint}` (the facade's record; one more field) |
+| `verify_public_keys`, `fingerprint`, `vault_name_key`, `refresh_token_hash` | same |
+| `build_service_account_token`, `parse_service_account_token` → `ovd::ServiceAccountToken` | same → `ov::ServiceAccountToken` (same fields) |
+| `service_account_secret_hash`, `service_account_secret_prefix` | same |
+| `opaque_start_registration`, `opaque_finish_registration`, `opaque_start_login`, `opaque_finish_login` (`ovd::OpaqueStart`, `ovd::OpaqueLogin`) | same (`ov::OpaqueStart`, `ov::OpaqueLogin`, same fields) |
+| `opaque_start_login_seeded`, `opaque_finish_login_seeded` (feature `test-server`) | same (feature `test-server`); new: `opaque_start_registration_seeded`, `opaque_finish_registration_seeded` |
+| `opaque_server_registration_response`, `opaque_server_store_record`, `opaque_server_credential_response`, `opaque_server_user_auth` (`ovd::OpaqueServerStep`) | same (`ov::OpaqueServerStep`); new: `opaque_server_registration_response_seeded`, `opaque_server_credential_response_seeded`, `test_server_enabled` |
+| `merge_kdbx(local, local_key, remote, remote_key, base, base_key, now)` → `ovd::MergeResult` | same arguments → `ov::KdbxMergeResult`: `local`, `remote`, `local_changed`, `remote_changed` as before; `changes` are `ov::KdbxMergeChange` whose `change` is `ov::ChangeType` (was `uint8_t` 0 added … 4 metadata) and `subject` is `ov::ChangeSubject` (was 0 entry, 1 group, 2 database); `uuid` and `details` as before, plus `title` and `group`; new `conflicts` |
+| errors: `rust::Error`, `what()` = `"<wire code>: <message>"` | the same, and `ov::call()` turns it into `ov::Error` with the whole OvError |
+
+In `SyncEngine::mergeAccountVault`, `changeType(change.change)` switches on `ov::ChangeType`, and
+`change.subject == 0` / `== 1` become `== ov::ChangeSubject::Entry` / `Group`.
+
 ## Coverage
 
 **All bridged:** every public method and free function of `ov_core::api` (213 items, see
@@ -130,7 +206,7 @@ How facade names become C++ names:
 
 | Area | Bridged |
 |---|---|
-| Free | `version`, `take_last_error`, the crypto primitives; `deletion_expired`, `default_share_fields`, `shareable_fields`, `item_share_payload`, `text_share_payload`, `parse_totp_uri`, `totp_code`, `entry_totp_uri`; record helpers `plan_limit`, `plan_has`, `plan_has_billing`, `platform_as_str` |
+| Free | `version`, `take_last_error`, the crypto primitives, the functions [below the facade](#below-the-facade); `deletion_expired`, `default_share_fields`, `shareable_fields`, `item_share_payload`, `text_share_payload`, `parse_totp_uri`, `totp_code`, `entry_totp_uri`; record helpers `plan_limit`, `plan_has`, `plan_has_billing`, `platform_as_str` |
 | `CancelToken` | `new_cancel_token`, `clone`, `cancel`, `is_cancelled`, `check` |
 | `ov::Client` | everything: discovery, `connect`, `config`, remembered accounts (`remembered_accounts`, `remember_account`, `set_remembered_deletion`, `mark_remembered_checked`, `forget_remembered`), `session_state`, `has_pending_edits`, signed-out share links (`share_info`, `open_share`) |
 | `Account` | everything: state and sessions (incl. `signed_out`, `verify_session`, parked sessions, `sign_out_on_unload`, `unlocked_keyset_secret` / `resume_unlocked`), register / login / TOTP / unlock, vaults and import, history, AutoFill edits, settings and two-step, devices, recovery, deletion, plans and In-App Purchase, vault sharing, orgs, audit log, service-account admin, share links |
@@ -149,8 +225,11 @@ Deliberately not bridged:
 ## Tests
 
 - `cargo test -p ov-ffi-cpp`: the edge (panics, error fields, cancellation), conversions (records round-trip,
-  made-up enum values rejected), primitives, the record helpers, and `tests/coverage.rs` (every facade item is
-  bridged; `cargo xtask cpp --check-coverage` prints its report).
+  made-up enum values rejected), primitives, the record helpers, `tests/coverage.rs` (every facade item is
+  bridged; `cargo xtask cpp --check-coverage` prints its report), the crypto functions against
+  `vectors/test-vectors.json`, the OPAQUE client steps, and `tests/merge_kdbx.rs` (all 14 merge fixtures through
+  `merge_kdbx` as KDBX bytes, plus a check that `smoke/fixtures/*.kdbx` still are those fixtures).
+  `cargo test -p ov-ffi-cpp --features test-server` adds the OPAQUE transcript replays (libopaque and opaque-ke).
 - `smoke/`: builds against the `cargo xtask cpp` package and runs with an offline Host (no server). It calls
   `version()` and `sha256("abc")`, checks an OvError through `ov::call` and a cancelled call coming back as
   `aborted`, then calls at least one method of every bridged area: network calls (register, recovery, settings,
@@ -159,4 +238,10 @@ Deliberately not bridged:
   crash; local work is checked for its values (a local vault: add, edit with history, version diff, plain export,
   delete to the Recycle Bin, save and reopen; RFC 6238 TOTP; share payloads; the record helpers;
   `Client::config`). A compiled-but-never-called function type-checks more of the API against the header.
+  `below_facade.cpp` checks every function below the facade against `vectors/test-vectors.json`,
+  `vectors/opaque-transcripts.json` (with a `--features test-server` package: the replay of a login to an account
+  libopaque registered, and the whole opaque-ke run through the server half) and two merge fixtures
+  (`smoke/fixtures/*.kdbx`, written by `cargo test -p ov-ffi-cpp --test merge_kdbx -- --ignored
+  write_smoke_fixtures`), whose merged copies it opens with `vault_open_local` and compares with the fixture's
+  expected result.
 - `example/`: the Corrosion build of the same core.

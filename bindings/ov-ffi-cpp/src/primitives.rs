@@ -7,11 +7,11 @@ use zeroize::Zeroizing;
 
 use crate::edge::{edge, FfiError};
 
-fn take(mut z: Zeroizing<Vec<u8>>) -> Vec<u8> {
+pub(crate) fn take(mut z: Zeroizing<Vec<u8>>) -> Vec<u8> {
     std::mem::take(&mut *z)
 }
 
-fn array<const N: usize>(what: &str, bytes: &[u8]) -> Result<Zeroizing<[u8; N]>, OvError> {
+pub(crate) fn array<const N: usize>(what: &str, bytes: &[u8]) -> Result<Zeroizing<[u8; N]>, OvError> {
     let arr: [u8; N] = bytes.try_into().map_err(|_| {
         OvError::new(OvErrorCode::InvalidRequest, format!("{what} must be {N} bytes, got {}", bytes.len()))
     })?;

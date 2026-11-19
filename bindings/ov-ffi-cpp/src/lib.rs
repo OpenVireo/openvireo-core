@@ -17,10 +17,13 @@
 
 mod account_ext;
 mod convert;
+mod crypto;
 mod edge;
 mod handles;
 pub mod host;
+mod merge;
 mod more;
+mod opaque;
 mod primitives;
 mod records;
 
@@ -37,7 +40,21 @@ pub use more::{
     ServiceAccount,
 };
 
+use crypto::{
+    build_service_account_token, ed25519_public_key, ed25519_sign, ed25519_verify, fingerprint, format_secret_key,
+    generate_secret_key, keyset_from_secrets, nfkc_utf8, parse_secret_key, parse_service_account_token,
+    refresh_token_hash, seal, seal_derived_key, service_account_secret_hash, service_account_secret_prefix, unseal,
+    unwrap, vault_name_key, verify_public_keys, wrap, x25519_public_key, x25519_shared,
+};
 use edge::take_last_error;
+pub use merge::merge_kdbx;
+use opaque::{
+    opaque_finish_login, opaque_finish_login_seeded, opaque_finish_registration, opaque_finish_registration_seeded,
+    opaque_server_credential_response, opaque_server_credential_response_seeded, opaque_server_registration_response,
+    opaque_server_registration_response_seeded, opaque_server_store_record, opaque_server_user_auth,
+    opaque_start_login, opaque_start_login_seeded, opaque_start_registration, opaque_start_registration_seeded,
+    test_server_enabled,
+};
 use primitives::{aead_decrypt, aead_encrypt, argon2id, hkdf_sha256, random_bytes, sha256};
 
 /// The core's version, as C++ sees it (`ov::version()`).
@@ -1185,6 +1202,87 @@ pub mod ffi {
         remaining: u32,
     }
 
+    // ------------------------------------------------ below the facade (crypto, OPAQUE, merge)
+    //
+    // The pieces of the core the desktop's account code calls directly (README.md, "Desktop swap").
+
+    /// The two outputs of an OPAQUE client start: what goes to the server, and the state the next
+    /// step needs.
+    #[derive(Clone, Default)]
+    struct OpaqueStart {
+        /// The registration request, or KE1.
+        message: Vec<u8>,
+        /// Secret: wipe it.
+        state: Vec<u8>,
+    }
+
+    /// A finished OPAQUE login. All three are secret except `auth_u` (sent to the server).
+    #[derive(Clone, Default)]
+    struct OpaqueLogin {
+        auth_u: Vec<u8>,
+        session_key: Vec<u8>,
+        export_key: Vec<u8>,
+    }
+
+    /// The server half of an OPAQUE step (test-server only): the message to the client and the
+    /// server's (secret) state.
+    #[derive(Clone, Default)]
+    struct OpaqueServerStep {
+        message: Vec<u8>,
+        state: Vec<u8>,
+    }
+
+    /// A parsed `ov_sa_…` token (SPEC §15). `secret` and `kek` are secret.
+    #[derive(Clone, Default)]
+    struct ServiceAccountToken {
+        url: String,
+        sa_id: String,
+        secret: Vec<u8>,
+        kek: Vec<u8>,
+    }
+
+    /// What a [`KdbxMergeChange`] is about.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ChangeSubject {
+        Entry,
+        Group,
+        Database,
+    }
+
+    /// One change `merge_kdbx` made (ov-merge `MergeChange`).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct KdbxMergeChange {
+        change: ChangeType,
+        subject: ChangeSubject,
+        /// 16 bytes (RFC 4122 order), or empty for the database.
+        uuid: Vec<u8>,
+        /// The entry's title, or empty.
+        title: String,
+        /// The entry's group name, or the group's own name, or empty.
+        group: String,
+        details: String,
+    }
+
+    /// An entry both copies edited with fields changed differently (the newer value was kept).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct KdbxMergeConflict {
+        /// Hyphenated, lowercase.
+        uuid: String,
+        title: String,
+        fields: Vec<String>,
+    }
+
+    /// The result of `merge_kdbx`. A copy's bytes are empty unless the merge changed it.
+    #[derive(Clone, Default)]
+    struct KdbxMergeResult {
+        local: Vec<u8>,
+        remote: Vec<u8>,
+        local_changed: bool,
+        remote_changed: bool,
+        changes: Vec<KdbxMergeChange>,
+        conflicts: Vec<KdbxMergeConflict>,
+    }
+
     // ------------------------------------------------------------------- the Host, in C++
 
     unsafe extern "C++" {
@@ -1705,5 +1803,111 @@ pub mod ffi {
         fn is_paired(self: &RestoredSelfHosted) -> bool;
         /// The server, when paired (call once); else `invalid_request`.
         fn take(self: &mut RestoredSelfHosted) -> Result<Box<SelfHosted>>;
+    }
+
+    // ------------------------------------------- below the facade, for C++ (README.md, "Desktop swap")
+    //
+    // Synchronous and CPU-only (the OPAQUE steps run Argon2id: keep them off the GUI thread). Byte
+    // inputs are borrowed: the caller wipes its secrets. Text given as bytes must be UTF-8. Fixed
+    // nonces, ephemeral keys and seeds are for the test vectors only: pass them empty to get fresh
+    // random ones.
+    extern "Rust" {
+        // ---- ov v1 crypto (ov-crypto, SPEC §1-§9)
+        fn nfkc_utf8(text: &[u8]) -> Result<Vec<u8>>;
+        fn generate_secret_key() -> Result<Vec<u8>>;
+        fn format_secret_key(raw: &[u8]) -> Result<String>;
+        fn parse_secret_key(text: &str) -> Result<Vec<u8>>;
+        fn wrap(key: &[u8], plaintext: &[u8], aad: &[u8], nonce: &[u8]) -> Result<Vec<u8>>;
+        fn unwrap(key: &[u8], wrapped: &[u8], aad: &[u8]) -> Result<Vec<u8>>;
+        fn seal(
+            recipient_pk: &[u8],
+            plaintext: &[u8],
+            aad: &[u8],
+            ephemeral_sk: &[u8],
+            nonce: &[u8],
+        ) -> Result<Vec<u8>>;
+        fn unseal(recipient_sk: &[u8], sealed: &[u8], aad: &[u8]) -> Result<Vec<u8>>;
+        fn seal_derived_key(recipient_sk: &[u8], sealed: &[u8]) -> Result<Vec<u8>>;
+        fn x25519_public_key(secret_key: &[u8]) -> Result<Vec<u8>>;
+        fn x25519_shared(secret_key: &[u8], public_key: &[u8]) -> Result<Vec<u8>>;
+        fn ed25519_public_key(seed: &[u8]) -> Result<Vec<u8>>;
+        fn ed25519_sign(seed: &[u8], message: &[u8]) -> Result<Vec<u8>>;
+        fn ed25519_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool;
+        /// The public half (with fingerprint) of a keyset's two secret halves (SPEC §5).
+        fn keyset_from_secrets(enc_sk: &[u8], sign_seed: &[u8]) -> Result<PublicKeys>;
+        fn verify_public_keys(enc_pk: &[u8], sign_pk: &[u8], sig: &[u8]) -> bool;
+        fn fingerprint(enc_pk: &[u8], sign_pk: &[u8]) -> String;
+        fn vault_name_key(vault_key: &[u8]) -> Result<Vec<u8>>;
+        fn refresh_token_hash(token: &str) -> String;
+        fn build_service_account_token(url: &str, sa_id: &str, secret: &[u8], kek: &[u8]) -> Result<String>;
+        fn parse_service_account_token(text: &str) -> Result<ServiceAccountToken>;
+        fn service_account_secret_hash(secret: &[u8]) -> Result<String>;
+        fn service_account_secret_prefix(secret: &[u8]) -> Result<String>;
+
+        // ---- OPAQUE client (ov-opaque, SPEC §8). `password` is UTF-8, NFKC-normalised here.
+        fn opaque_start_registration(password: &[u8]) -> Result<OpaqueStart>;
+        fn opaque_finish_registration(state: &[u8], response: &[u8], id_u: &[u8], id_s: &[u8]) -> Result<Vec<u8>>;
+        fn opaque_start_login(password: &[u8]) -> Result<OpaqueStart>;
+        fn opaque_finish_login(
+            state: &[u8],
+            ke2: &[u8],
+            id_u: &[u8],
+            id_s: &[u8],
+            context: &[u8],
+        ) -> Result<OpaqueLogin>;
+
+        // ---- tests only: built with the `test-server` cargo feature, else they fail with `internal`
+        /// Whether this library was built with the `test-server` feature.
+        fn test_server_enabled() -> bool;
+        fn opaque_start_registration_seeded(password: &[u8], seed: &[u8]) -> Result<OpaqueStart>;
+        fn opaque_finish_registration_seeded(
+            state: &[u8],
+            response: &[u8],
+            id_u: &[u8],
+            id_s: &[u8],
+            seed: &[u8],
+        ) -> Result<Vec<u8>>;
+        fn opaque_start_login_seeded(password: &[u8], seed: &[u8]) -> Result<OpaqueStart>;
+        fn opaque_finish_login_seeded(
+            state: &[u8],
+            ke2: &[u8],
+            id_u: &[u8],
+            id_s: &[u8],
+            context: &[u8],
+            seed: &[u8],
+        ) -> Result<OpaqueLogin>;
+        fn opaque_server_registration_response(request: &[u8]) -> Result<OpaqueServerStep>;
+        fn opaque_server_registration_response_seeded(request: &[u8], seed: &[u8]) -> Result<OpaqueServerStep>;
+        fn opaque_server_store_record(setup: &[u8], record: &[u8]) -> Result<Vec<u8>>;
+        fn opaque_server_credential_response(
+            ke1: &[u8],
+            stored_record: &[u8],
+            id_u: &[u8],
+            id_s: &[u8],
+            context: &[u8],
+        ) -> Result<OpaqueServerStep>;
+        fn opaque_server_credential_response_seeded(
+            ke1: &[u8],
+            stored_record: &[u8],
+            id_u: &[u8],
+            id_s: &[u8],
+            context: &[u8],
+            seed: &[u8],
+        ) -> Result<OpaqueServerStep>;
+        fn opaque_server_user_auth(state: &[u8], auth_u: &[u8]) -> Result<Vec<u8>>;
+
+        // ---- the sync merge (ov-merge on ov-kdbx), bytes in, bytes out
+        /// Each copy is a KDBX file with its composite key as one or two raw 32-byte components
+        /// (password and/or key file, in order). An empty `base` means no common base. Serialise
+        /// with a throwaway key: the user's vault key need not cross.
+        fn merge_kdbx(
+            local: &[u8],
+            local_key: &[u8],
+            remote: &[u8],
+            remote_key: &[u8],
+            base: &[u8],
+            base_key: &[u8],
+            now: i64,
+        ) -> Result<KdbxMergeResult>;
     }
 }

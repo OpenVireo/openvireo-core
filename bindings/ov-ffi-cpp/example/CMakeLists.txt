@@ -29,11 +29,20 @@ FetchContent_MakeAvailable(Corrosion)
 #   FetchContent_MakeAvailable(openvireo_core)   # then use ${openvireo_core_SOURCE_DIR}
 set(OPENVIREO_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../.." CACHE PATH "openvireo-core checkout")
 
+# The test-only OPAQUE server half and seeded steps (README.md, "Test server"). The desktop turns it
+# on for WITH_TESTS builds only; never for a release.
+option(OVCORE_TEST_SERVER "Build openvireo-core with the test-server feature" OFF)
+set(_ov_features)
+if(OVCORE_TEST_SERVER)
+  set(_ov_features FEATURES test-server)
+endif()
+
 corrosion_import_crate(
   MANIFEST_PATH "${OPENVIREO_CORE_DIR}/Cargo.toml"
   CRATES ov-ffi-cpp
   CRATE_TYPES staticlib
   LOCKED
+  ${_ov_features}
 )
 
 set(OVCORE_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/ovcore-include")

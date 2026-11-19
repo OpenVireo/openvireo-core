@@ -1,6 +1,7 @@
 // openvireo-core for C++: include this header (installed as <ovcore.h>).
 //
-// - ov::version(), the crypto primitives, ov::new_client() and the handles (ov::Client,
+// - ov::version(), the crypto primitives, the functions below the facade (ov v1 crypto, OPAQUE
+//   steps, ov::merge_kdbx; README.md), ov::new_client() and the handles (ov::Client,
 //   ov::Account, ov::Vault, ov::ServiceAccount, ov::SelfHosted, ov::EventStream, ov::TotpChallenge,
 //   ov::LoginStep, ov::CancelToken)
 //   come from the generated bridge (ov-ffi-cpp/src/lib.rs.h).

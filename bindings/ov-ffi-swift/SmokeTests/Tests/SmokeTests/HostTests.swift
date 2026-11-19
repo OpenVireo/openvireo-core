@@ -54,13 +54,14 @@ final class HostTests: XCTestCase {
         XCTAssertEqual(config.device.platform, .ios)
     }
 
-    /// An async facade call on today's stubs comes back as `OvError(internal)`.
-    func testAsyncStubIsInternalError() async {
+    /// An async facade call runs through the Swift Host: the fake transport is offline, so discovery
+    /// fails with `network_error` (at W1-BS the facade was stubs and this was `internal`).
+    func testAsyncCallUsesTheHost() async {
         do {
             _ = try await makeClient().discover(issuer: "https://example.test", cancel: CancelToken())
             XCTFail("expected an error")
         } catch let e as OvError {
-            XCTAssertEqual(e.code, .internal)
+            XCTAssertEqual(e.code, .networkError)
         } catch {
             XCTFail("unexpected \(error)")
         }

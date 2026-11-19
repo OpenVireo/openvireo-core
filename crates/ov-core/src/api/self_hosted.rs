@@ -6,7 +6,10 @@ use std::sync::Arc;
 
 use ov_error::OvError;
 
-use super::{BlobMeta, CancelToken, EventStream, KdbxCredentials, OvClient, Rfc3339, SecretBytes, SyncReport};
+use super::{
+    BlobMeta, CancelToken, EventStream, KdbxCredentials, OvClient, Rfc3339, SecretBytes, SyncReport, Vault,
+    VaultVersion,
+};
 use crate::state::SelfHostedState;
 
 /// A pairing code for another device.
@@ -99,6 +102,25 @@ impl SelfHosted {
         cancel: CancelToken,
     ) -> Result<SelfHostedSyncResult, OvError> {
         crate::impls::syncing::sync_database(self, &database_id, &kdbx, &credentials, &cancel).await
+    }
+
+    /// The versions the server keeps of `databases/<database_id>`, newest first (`GET
+    /// databases/<id>/history`). Contract-v1.6.
+    pub async fn history(&self, database_id: String, cancel: CancelToken) -> Result<Vec<VaultVersion>, OvError> {
+        self.history_impl(&database_id, &cancel).await
+    }
+
+    /// Downloads one kept version of `databases/<database_id>` and opens it with `credentials` as a
+    /// read-only [`Vault`] ([`Vault::is_read_only`]; compare or restore entries from it, or save it
+    /// with [`Vault::copy_without_remotes`]). Contract-v1.6.
+    pub async fn open_version(
+        &self,
+        database_id: String,
+        revision: u64,
+        credentials: KdbxCredentials,
+        cancel: CancelToken,
+    ) -> Result<Vault, OvError> {
+        self.open_version_impl(&database_id, revision, credentials, &cancel).await
     }
 
     /// The legacy `event: database` stream

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use ov_error::OvError;
 
-use super::{AutoFillEdits, CancelToken, SecretBytes, SyncConflict, SyncOptions, SyncReport, VaultInfo};
+use super::{AutoFillEdits, CancelToken, MergeChange, SecretBytes, SyncConflict, SyncOptions, SyncReport, VaultInfo};
 use crate::state::VaultState;
 
 /// An open vault. Cheap to clone; clones share the same working copy.
@@ -74,6 +74,11 @@ pub struct EntrySummary {
     pub expires_at: Option<i64>,
     /// In the Recycle Bin.
     pub in_recycle_bin: bool,
+    /// `LastAccessTime`, when the entry was ever used (`UsageCount` > 0); `None` otherwise
+    /// (contract-v1.6).
+    pub last_access_at: Option<i64>,
+    /// `UsageCount` (saturated to `u32`; contract-v1.6).
+    pub usage_count: u32,
 }
 
 /// One string field of an entry. `Debug` hides the value.
@@ -100,6 +105,8 @@ pub struct AttachmentInfo {
     pub name: String,
     /// Size in bytes.
     pub size: u64,
+    /// Kept protected in memory (the KDBX 4 inner-header flag; contract-v1.6).
+    pub protected: bool,
 }
 
 /// A whole entry with its field values.
@@ -137,6 +144,11 @@ pub struct EntryRecord {
     pub history_count: u32,
     /// Included in password health reports (KDBX 4.1 `QualityCheck`).
     pub quality_check: bool,
+    /// `LastAccessTime`, when the entry was ever used (`UsageCount` > 0); `None` otherwise
+    /// (contract-v1.6).
+    pub last_access_at: Option<i64>,
+    /// `UsageCount` (saturated to `u32`; contract-v1.6).
+    pub usage_count: u32,
 }
 
 /// A group.
@@ -204,6 +216,18 @@ pub struct EntryInput {
     pub icon_id: Option<u32>,
     /// New expiry.
     pub expiry: EntryExpiry,
+    /// New foreground colour: `#RRGGBB`, or empty to clear (contract-v1.6). `invalid_request` for
+    /// anything else.
+    pub foreground_color: Option<String>,
+    /// New background colour, as [`foreground_color`](Self::foreground_color) (contract-v1.6).
+    pub background_color: Option<String>,
+    /// Custom icon: `None` leaves it, `Some(None)` clears it, `Some(Some(id))` sets it to a custom
+    /// icon of this database (from [`Vault::add_custom_icon`]; `not_found` otherwise). Contract-v1.6.
+    pub custom_icon: Option<Option<String>>,
+    /// The custom fields in this order, after the standard ones (`Title`, `UserName`, `Password`,
+    /// `URL`, `Notes` keep their places). Custom fields not named here follow in their current order;
+    /// names the entry doesn't have are ignored (contract-v1.6).
+    pub field_order: Option<Vec<String>>,
 }
 
 /// Whether [`Vault::set_fields`] may create the entry.
@@ -247,51 +271,110 @@ pub enum ExportFormat {
     Json,
 }
 
+/// How [`Vault::import_from`] brings another database's entries in (contract-v1.6).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LocalImportMode {
+    /// Merge by UUID: the newer version of each entry wins (the older goes to its history), nothing
+    /// is deleted, so importing twice changes nothing (Database > Merge).
+    Merge,
+    /// Every entry and group as a new copy with a fresh UUID, in one new group named after the
+    /// source's root group, under `parent_group_id` (the root when `None`).
+    Copies {
+        /// The group to put the copy under.
+        parent_group_id: Option<String>,
+    },
+}
+
+/// What [`Vault::import_from`] did (contract-v1.6).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportSummary {
+    /// Entries new to this vault.
+    pub added: u32,
+    /// Entries this vault had that the import changed.
+    pub updated: u32,
+    /// Entries this vault already had as they are.
+    pub unchanged: u32,
+    /// Groups new to this vault.
+    pub groups_added: u32,
+    /// Every change, in order.
+    pub changes: Vec<MergeChange>,
+}
+
+/// What importing a vault would bring in ([`Vault::import_preview`], contract-v1.6): its
+/// Recycle Bin is never imported.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ImportPreview {
+    /// Entries outside the Recycle Bin.
+    pub entries: u32,
+    /// Groups below the root, outside the Recycle Bin.
+    pub groups: u32,
+}
+
+/// A group an import can go into ([`Vault::import_targets`], contract-v1.6).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportTarget {
+    /// Group UUID.
+    pub group_id: String,
+    /// `Root / Sub / Leaf` (the root's path is its name).
+    pub path: String,
+}
+
+/// The key derivation a password-protected `.kdbx` is saved with (contract-v1.6). Every choice
+/// gets a fresh salt.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum KdbxKdf {
+    /// KeePassXC's default for new databases: Argon2d, 64 MiB, 10 iterations, 2 lanes (about a
+    /// second of work).
+    #[default]
+    DatabaseDefault,
+    /// Argon2d with these settings.
+    Argon2d {
+        /// Memory in bytes (at least 8 KiB per lane).
+        memory: u64,
+        /// Iterations (at least 1).
+        iterations: u64,
+        /// Lanes (1 to 255).
+        parallelism: u32,
+    },
+    /// Argon2id with these settings.
+    Argon2id {
+        /// Memory in bytes (at least 8 KiB per lane).
+        memory: u64,
+        /// Iterations (at least 1).
+        iterations: u64,
+        /// Lanes (1 to 255).
+        parallelism: u32,
+    },
+    /// AES-KDF (KDBX 3.1 compatible) with this many rounds (at least 1).
+    AesKdf {
+        /// Transform rounds.
+        rounds: u64,
+    },
+}
+
 impl Vault {
     // ---------------------------------------------------------------------- local files
 
     /// Opens a local `.kdbx` (not an account vault). TS `decryptKdbx`. `kdbx_error` for a wrong key
-    /// or a damaged file.
+    /// or a damaged file. Edits are stamped with the system clock (on wasm32, one second after the
+    /// newest time in the file); [`OvClient::open_local`](crate::api::OvClient::open_local) uses the
+    /// Host clock instead.
     pub async fn open_local(
         kdbx: Vec<u8>,
         credentials: KdbxCredentials,
         cancel: CancelToken,
     ) -> Result<Vault, OvError> {
-        cancel.check()?;
-        let key = crate::impls::vaults::local_key(&credentials)?;
-        let db = ov_kdbx::read(&kdbx, &key).map_err(|e| {
-            if e.is(ov_error::OvErrorCode::VaultKeyMismatch) {
-                OvError::new(ov_error::OvErrorCode::KdbxError, "the password or key file is wrong")
-            } else {
-                e
-            }
-        })?;
-        Ok(crate::impls::vaults::new_vault(crate::state::VaultSource::Local(credentials), None, db, false, None))
+        crate::impls::local_meta::open_local(None, kdbx, credentials, &cancel)
     }
 
     /// A new empty local database named `name` (KDBX 4, ChaCha20, Argon2id). TS `createNewKdbx`.
+    /// [`OvClient::create_local`](crate::api::OvClient::create_local) does the same on the Host clock.
     pub async fn create_local(
         name: String,
         credentials: KdbxCredentials,
         cancel: CancelToken,
     ) -> Result<Vault, OvError> {
-        cancel.check()?;
-        crate::impls::vaults::local_key(&credentials)?;
-        let v = crate::impls::vaults::new_vault(
-            crate::state::VaultSource::Local(credentials),
-            None,
-            ov_kdbx::vault::create_kdbx(&name, 0)?,
-            false,
-            None,
-        );
-        let now = v.now();
-        let mut db = ov_kdbx::vault::create_kdbx(&name, now)?;
-        db.header.cipher = ov_kdbx::model::Cipher::ChaCha20;
-        if let ov_kdbx::model::Kdf::Argon2 { kind, .. } = &mut db.header.kdf {
-            *kind = ov_kdbx::model::Argon2Type::Id;
-        }
-        *v.db() = db;
-        Ok(v)
+        crate::impls::local_meta::create_local(None, name, credentials, &cancel)
     }
 
     /// Saves a local database with its credentials. `invalid_request` for an account vault (use
@@ -304,6 +387,43 @@ impl Vault {
         let key = crate::impls::vaults::local_key(creds)?;
         let db = self.db().clone();
         ov_kdbx::write(&db, &key)
+    }
+
+    /// Renames a local database (`Meta/DatabaseName`; the root group keeps its name). Account vaults
+    /// are renamed with [`Account::rename_vault`](crate::api::Account::rename_vault):
+    /// `invalid_request` here. Contract-v1.6.
+    pub fn set_name(&self, name: String) -> Result<(), OvError> {
+        crate::impls::local_meta::set_name(self, name)
+    }
+
+    /// Sets the key derivation a local database is saved with by [`save_local`](Self::save_local)
+    /// (a KDBX 3.1 file is upgraded to KDBX 4 for Argon2). `invalid_request` for an account vault,
+    /// whose KDF belongs to its raw vault key. Contract-v1.6.
+    pub fn set_kdf(&self, kdf: KdbxKdf) -> Result<(), OvError> {
+        crate::impls::local_meta::set_kdf(self, kdf)
+    }
+
+    /// A separate local copy of this vault with its unsaved changes, without the sync-server and
+    /// account-vault remotes in KeePassXC's `KPXC_REMOTE_SYNC_SETTINGS` (command remotes stay):
+    /// "Save a copy", or "Export" of a whole database. It is saved with `credentials`, or a local
+    /// file's own credentials when `None` (`invalid_request` for an account vault or a version without
+    /// credentials). A copy of an account vault (or of a version or SA vault) gets the
+    /// [`KdbxKdf::DatabaseDefault`] KDF, since its vault KDF is only light because its key is random;
+    /// change it with [`set_kdf`](Self::set_kdf). Contract-v1.6.
+    pub fn copy_without_remotes(&self, credentials: Option<KdbxCredentials>) -> Result<Vault, OvError> {
+        crate::impls::local_meta::copy_without_remotes(self, credentials)
+    }
+
+    /// The database custom data value for `key` (`Meta/CustomData`, e.g.
+    /// `KPXC_REMOTE_SYNC_SETTINGS`). Contract-v1.6.
+    pub fn meta_custom_data(&self, key: String) -> Option<String> {
+        self.db().meta.custom_data.iter().find(|i| i.key == key).map(|i| i.value.clone())
+    }
+
+    /// Sets (`Some`) or removes (`None`) a database custom data item. Edits are local until saved or
+    /// synced, as every edit. Contract-v1.6.
+    pub fn set_meta_custom_data(&self, key: String, value: Option<String>) -> Result<(), OvError> {
+        crate::impls::local_meta::set_meta_custom_data(self, key, value)
     }
 
     // ------------------------------------------------------------------------------ state
@@ -372,6 +492,12 @@ impl Vault {
     /// Every group in tree order, the root first.
     pub fn groups(&self) -> Vec<GroupInfo> {
         crate::impls::kdbx_ops::groups(&self.db())
+    }
+
+    /// Every entry with its values in one call (as [`entry`](Self::entry) for each of
+    /// [`entries`](Self::entries)), in the same order. Contract-v1.6.
+    pub fn entry_records(&self, include_recycle_bin: bool) -> Vec<EntryRecord> {
+        crate::impls::kdbx_ops::entry_records(&self.db(), include_recycle_bin)
     }
 
     /// One entry with its values; `entry_not_found` if missing.
@@ -471,6 +597,14 @@ impl Vault {
         self.edit(|db, now| crate::impls::kdbx_ops::add_entry(db, &group_id, input, now))
     }
 
+    /// Adds an entry with an id the caller chose (32 hex digits, a dashed UUID or base64); returns it
+    /// as 32 lowercase hex digits. `conflict` if an entry with that id exists, `invalid_request` for
+    /// a malformed or nil id. A deletion record for that id is dropped, so the entry syncs as new.
+    /// Contract-v1.6.
+    pub fn add_entry_with_id(&self, entry_id: String, group_id: String, input: EntryInput) -> Result<String, OvError> {
+        self.edit(|db, now| crate::impls::kdbx_ops::add_entry_with_id(db, &entry_id, &group_id, input, now))
+    }
+
     /// Edits an entry (history first).
     pub fn edit_entry(&self, entry_id: String, input: EntryInput) -> Result<(), OvError> {
         self.edit(|db, now| crate::impls::kdbx_ops::edit_entry(db, &entry_id, input, now))
@@ -505,9 +639,22 @@ impl Vault {
         self.edit(ov_kdbx::entries::empty_recycle_bin)
     }
 
-    /// Sets or replaces an attachment.
+    /// Sets or replaces an attachment, kept protected in memory (as
+    /// [`set_attachment_with`](Self::set_attachment_with) with `Some(true)`).
     pub fn set_attachment(&self, entry_id: String, name: String, data: SecretBytes) -> Result<(), OvError> {
-        self.edit(|db, now| crate::impls::kdbx_ops::set_attachment(db, &entry_id, &name, data, now))
+        self.set_attachment_with(entry_id, name, data, Some(true))
+    }
+
+    /// Sets or replaces an attachment with its protected flag; `None` keeps the flag of the
+    /// attachment it replaces (protected for a new one). Contract-v1.6.
+    pub fn set_attachment_with(
+        &self,
+        entry_id: String,
+        name: String,
+        data: SecretBytes,
+        protected: Option<bool>,
+    ) -> Result<(), OvError> {
+        self.edit(|db, now| crate::impls::kdbx_ops::set_attachment(db, &entry_id, &name, data, protected, now))
     }
 
     /// Removes an attachment.
@@ -594,6 +741,29 @@ impl Vault {
         })
     }
 
+    // ------------------------------------------------------------------------------ import
+
+    /// Imports `source` (another open vault: a local file, an account vault, a version) into this
+    /// one, without changing `source`. Its Recycle Bin and database custom data stay behind; with
+    /// [`LocalImportMode::Copies`], references between the copied entries follow them. An account
+    /// vault uploads the result on its next [`sync`](Self::sync); a local file on
+    /// [`save_local`](Self::save_local). Contract-v1.6.
+    pub fn import_from(&self, source: Vault, mode: LocalImportMode) -> Result<ImportSummary, OvError> {
+        crate::impls::local_meta::import_from(self, source, mode)
+    }
+
+    /// What importing this vault elsewhere would bring in (entries and groups outside its Recycle
+    /// Bin), to show before [`import_from`](Self::import_from). Contract-v1.6.
+    pub fn import_preview(&self) -> ImportPreview {
+        crate::impls::local_meta::import_preview(&self.db())
+    }
+
+    /// The groups of this vault an import can go into (not the Recycle Bin or anything in it), the
+    /// root first. Contract-v1.6.
+    pub fn import_targets(&self) -> Vec<ImportTarget> {
+        crate::impls::local_meta::import_targets(&self.db())
+    }
+
     // -------------------------------------------------------------------------------- sync
 
     /// Downloads, merges local edits and uploads them (conditional PUT; merge and retry on 412),
@@ -626,7 +796,9 @@ impl Vault {
     // ------------------------------------------------------------------------------ export
 
     /// The groups `group_ids` (every group when `None`) as a new `.kdbx` with `credentials`. TS
-    /// `exportSelectedGroupsToKdbx`.
+    /// `exportSelectedGroupsToKdbx`. The KDF is kdbxweb's `Kdbx.create` one (Argon2d, 1 MiB, 2
+    /// iterations, 1 lane), as the TS SDK writes it; choose another with
+    /// [`export_kdbx_with`](Self::export_kdbx_with).
     pub async fn export_kdbx(
         &self,
         credentials: KdbxCredentials,
@@ -637,6 +809,23 @@ impl Vault {
         let key = crate::impls::vaults::local_key(&credentials)?;
         let now = self.now();
         let out = crate::impls::kdbx_ops::export_db(&self.db(), group_ids, now)?;
+        ov_kdbx::write(&out, &key)
+    }
+
+    /// As [`export_kdbx`](Self::export_kdbx), saved with the key derivation `kdf`. Contract-v1.6.
+    pub async fn export_kdbx_with(
+        &self,
+        credentials: KdbxCredentials,
+        group_ids: Option<Vec<String>>,
+        kdf: KdbxKdf,
+        cancel: CancelToken,
+    ) -> Result<Vec<u8>, OvError> {
+        cancel.check()?;
+        let key = crate::impls::vaults::local_key(&credentials)?;
+        let now = self.now();
+        let mut out = crate::impls::kdbx_ops::export_db(&self.db(), group_ids, now)?;
+        crate::impls::local_meta::apply_kdf(&mut out, kdf)?;
+        cancel.check()?;
         ov_kdbx::write(&out, &key)
     }
 

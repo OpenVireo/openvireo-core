@@ -6,7 +6,10 @@ use std::sync::Arc;
 use ov_error::OvError;
 
 use super::share_links::{OpenedShare, ShareInfo};
-use super::{Account, CancelToken, ClientConfig, RememberedAccount, Rfc3339, SecretBytes, ServerConfig, SessionState};
+use super::{
+    Account, CancelToken, ClientConfig, KdbxCredentials, RememberedAccount, Rfc3339, SecretBytes, ServerConfig,
+    SessionState, Vault,
+};
 use crate::host::Host;
 use crate::state::ClientState;
 
@@ -39,6 +42,28 @@ impl OvClient {
     /// successful call (kept in the [BlobCache](crate::host::BlobCache)).
     pub async fn discover(&self, issuer: String, cancel: CancelToken) -> Result<ServerConfig, OvError> {
         crate::impls::client::discover(self, &issuer, &cancel).await
+    }
+
+    /// Opens a local `.kdbx` as [`Vault::open_local`] does, with this client's Host: edits are
+    /// stamped with the Host [Clock](crate::host::Clock). Contract-v1.6.
+    pub async fn open_local(
+        &self,
+        kdbx: Vec<u8>,
+        credentials: KdbxCredentials,
+        cancel: CancelToken,
+    ) -> Result<Vault, OvError> {
+        crate::impls::local_meta::open_local(Some(self.inner.host.clone()), kdbx, credentials, &cancel)
+    }
+
+    /// A new empty local database as [`Vault::create_local`] makes it, with this client's Host (its
+    /// clock stamps the times). Contract-v1.6.
+    pub async fn create_local(
+        &self,
+        name: String,
+        credentials: KdbxCredentials,
+        cancel: CancelToken,
+    ) -> Result<Vault, OvError> {
+        crate::impls::local_meta::create_local(Some(self.inner.host.clone()), name, credentials, &cancel)
     }
 
     /// Discovers the server (or uses [`ClientConfig::server`]) and loads a stored session if any:

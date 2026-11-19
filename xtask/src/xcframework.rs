@@ -13,7 +13,12 @@
 //! - `build/OpenVireoCore.xcframework`
 //! - `Sources/OpenVireoRustCore/OpenVireoRustCore.swift`
 //!
-//! `--smoke` then runs `swift test` in `bindings/ov-ffi-swift/SmokeTests`.
+//! Flags:
+//! - `--test-server`: builds with the crate's `test-server` feature (the `opaque_server_*` steps the
+//!   iOS test servers use). Release builds leave it off.
+//! - `--macos-only`: builds only the macOS slice (enough for `swift test`; saves disk and time).
+//! - `--smoke`: then runs `swift test` in `bindings/ov-ffi-swift/SmokeTests`. Implies `--test-server`,
+//!   because the smoke tests replay the OPAQUE transcript through the server steps.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,16 +38,28 @@ const MACOS: [&str; 2] = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
 
 pub fn run(args: &[String]) -> Result {
     let mut smoke = false;
+    let mut test_server = false;
+    let mut macos_only = false;
     for a in args {
         match a.as_str() {
             "--smoke" => smoke = true,
-            other => return Err(format!("xcframework: unknown argument `{other}` (only --smoke)")),
+            "--test-server" => test_server = true,
+            "--macos-only" => macos_only = true,
+            other => {
+                return Err(format!("xcframework: unknown argument `{other}` (--smoke, --test-server, --macos-only)"))
+            }
         }
     }
+    test_server |= smoke;
     if !cfg!(target_os = "macos") {
         return Err("xcframework needs a macOS host with Xcode".into());
     }
-    check_targets()?;
+    let targets: Vec<&str> =
+        if macos_only { MACOS.to_vec() } else { std::iter::once(IOS).chain(SIM).chain(MACOS).collect() };
+    check_targets(&targets)?;
+    // The static libraries and the bindgen dylib must have the same features, or the generated
+    // Swift calls symbols the libraries lack.
+    let features: &[&str] = if test_server { &["--features", "test-server"] } else { &[] };
 
     let crate_dir = root().join("bindings").join(PACKAGE);
     let build = crate_dir.join("build");
@@ -50,21 +67,26 @@ pub fn run(args: &[String]) -> Result {
 
     // 1. Static libraries.
     let mut cmd = cargo();
-    cmd.args(["build", "--locked", "--release", "--lib", "-p", PACKAGE]);
-    for t in std::iter::once(IOS).chain(SIM).chain(MACOS) {
+    cmd.args(["build", "--locked", "--release", "--lib", "-p", PACKAGE]).args(features);
+    for t in &targets {
         cmd.args(["--target", t]);
     }
-    step("xcframework: release static libraries (ios, ios-sim, macos)", &mut cmd)?;
+    let what = if macos_only { "macos" } else { "ios, ios-sim, macos" };
+    step(&format!("xcframework: release static libraries ({what})"), &mut cmd)?;
 
     // 2. Swift sources from the host debug dylib.
-    step("xcframework: host debug build for bindgen", cargo().args(["build", "--locked", "--lib", "-p", PACKAGE]))?;
+    step(
+        "xcframework: host debug build for bindgen",
+        cargo().args(["build", "--locked", "--lib", "-p", PACKAGE]).args(features),
+    )?;
     let dylib = target.join("debug").join(format!("{LIB}.dylib"));
     let swift_out = build.join("swift");
     reset_dir(&swift_out)?;
     step(
         "xcframework: uniffi-bindgen (Swift)",
         cargo()
-            .args(["run", "--locked", "-q", "-p", PACKAGE, "--features", "cli", "--bin", "uniffi-bindgen", "--"])
+            .args(["run", "--locked", "-q", "-p", PACKAGE, "--bin", "uniffi-bindgen"])
+            .args(["--features", if test_server { "cli,test-server" } else { "cli" }, "--"])
             .args(["generate", "--language", "swift", "--metadata-no-deps", "--out-dir"])
             .arg(&swift_out)
             .arg(&dylib),
@@ -83,8 +105,9 @@ pub fn run(args: &[String]) -> Result {
     let lib = |t: &str| target.join(t).join("release").join(format!("{LIB}.a"));
     let fat = build.join("lib");
     reset_dir(&fat)?;
-    let sim = lipo(&fat.join("ios-simulator"), &SIM.map(lib))?;
     let mac = lipo(&fat.join("macos"), &MACOS.map(lib))?;
+    let slices =
+        if macos_only { vec![mac] } else { vec![lib(IOS), lipo(&fat.join("ios-simulator"), &SIM.map(lib))?, mac] };
 
     let out = build.join(XCFRAMEWORK);
     if out.exists() {
@@ -92,7 +115,7 @@ pub fn run(args: &[String]) -> Result {
     }
     let mut x = Command::new("xcrun");
     x.arg("xcodebuild").arg("-create-xcframework");
-    for l in [lib(IOS), sim, mac] {
+    for l in slices {
         x.arg("-library").arg(l).arg("-headers").arg(&headers);
     }
     x.arg("-output").arg(&out);
@@ -107,6 +130,11 @@ pub fn run(args: &[String]) -> Result {
     }
     println!("{:<48} {:>12}", XCFRAMEWORK, dir_size(&out)?);
     println!("\nwrote {}\nwrote {}", out.display(), sources.join(format!("{SWIFT_MODULE}.swift")).display());
+    println!(
+        "slices: {}; feature test-server: {}",
+        if macos_only { "macos only" } else { "ios, ios-sim, macos" },
+        if test_server { "on" } else { "off" }
+    );
 
     if smoke {
         let mut t = Command::new("swift");
@@ -121,15 +149,14 @@ fn target_dir() -> PathBuf {
 }
 
 /// Fails early, with the fix, when a Rust target isn't installed.
-fn check_targets() -> Result {
+fn check_targets(targets: &[&str]) -> Result {
     let out = Command::new("rustup")
         .args(["target", "list", "--installed"])
         .current_dir(root())
         .output()
         .map_err(|e| format!("rustup: {e}"))?;
     let installed = String::from_utf8_lossy(&out.stdout);
-    let missing: Vec<&str> =
-        std::iter::once(IOS).chain(SIM).chain(MACOS).filter(|t| !installed.lines().any(|l| l.trim() == *t)).collect();
+    let missing: Vec<&str> = targets.iter().copied().filter(|t| !installed.lines().any(|l| l.trim() == *t)).collect();
     if missing.is_empty() {
         Ok(())
     } else {

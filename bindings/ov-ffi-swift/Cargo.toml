@@ -20,11 +20,20 @@ required-features = ["cli"]
 
 [features]
 cli = ["uniffi/cli"]
+# opaque-ke's server steps (`opaque_server_*`), for tests and local mock servers only. Off in release
+# builds; `cargo xtask xcframework --test-server` (and `--smoke`) turns it on.
+test-server = ["ov-opaque/test-server"]
 
 [dependencies]
 ov-core = { path = "../../crates/ov-core" }
 ov-error = { path = "../../crates/ov-error" }
 ov-crypto = { path = "../../crates/ov-crypto" }
+ov-kdbx = { path = "../../crates/ov-kdbx" }
+ov-opaque = { path = "../../crates/ov-opaque", default-features = false }
+ov-share = { path = "../../crates/ov-share" }
+rand_core = { workspace = true, features = ["getrandom"] }
+rand_chacha.workspace = true
+serde_json.workspace = true
 uniffi.workspace = true
 async-trait.workspace = true
 futures.workspace = true
@@ -32,6 +41,8 @@ zeroize.workspace = true
 
 [dev-dependencies]
 futures = { workspace = true, features = ["executor"] }
+ov-opaque = { path = "../../crates/ov-opaque", default-features = false, features = ["test-server"] }
+ov-testkit = { path = "../../crates/ov-testkit" }
 
 [lints]
 workspace = true

@@ -1,5 +1,6 @@
 // Calls the core through the OpenVireoCore package: version(), one primitive (SHA-256 "abc",
-// FIPS 180-2), cancellation, and at least one method of every bridged area. There is no server:
+// FIPS 180-2), cancellation, at least one method of every bridged area, and (below_facade.cpp)
+// every function below the facade against the contract vectors. There is no server:
 // network calls must come back as an ov::Error (any code but internal), never crash; local work
 // (a local vault, TOTP, share payloads, record helpers) is checked for its values.
 
@@ -9,6 +10,9 @@
 #include <memory>
 #include <string>
 #include <utility>
+
+// below_facade.cpp: the crypto, OPAQUE and merge functions against the vectors; failed checks.
+int below_facade(bool test_server);
 
 namespace {
 
@@ -335,6 +339,8 @@ int main() {
     check(std::string(ov::call([&] { return ov::platform_as_str(ov::Platform::QtMacos); })) == "qt-macos",
           "platform_as_str(QtMacos) == qt-macos");
     check(survives("CancelToken::check on a fresh token", [&] { token->check(); }), "a fresh token isn't cancelled");
+
+    failures += below_facade(OV_EXPECT_TEST_SERVER != 0);
 
     std::printf("%s\n", failures == 0 ? "smoke: all passed" : "smoke: FAILED");
     return failures == 0 ? 0 : 1;

@@ -169,7 +169,7 @@ impl Account {
     // --------------------------------------------------------------------- requests
 
     /// An access token; when a refresh is refused the session ends here (lock, offline data).
-    pub(crate) async fn access_token(&self, force: bool, cancel: &CancelToken) -> Result<Zeroizing<String>, OvError> {
+    pub(crate) async fn bearer_token(&self, force: bool, cancel: &CancelToken) -> Result<Zeroizing<String>, OvError> {
         match self.inner.tokens.access_token(force, cancel).await {
             Ok(t) => Ok(t),
             Err(e) => {
@@ -183,7 +183,7 @@ impl Account {
 
     /// Forces a refresh (new `vlt` claims, or a token issued in the last five minutes).
     pub(crate) async fn refresh_token(&self, cancel: &CancelToken) -> Result<(), OvError> {
-        self.access_token(true, cancel).await.map(|_| ())
+        self.bearer_token(true, cancel).await.map(|_| ())
     }
 
     /// An authenticated auth-server call, retried once with a fresh token after a 401 (except the
@@ -194,12 +194,12 @@ impl Account {
         build: impl Fn(&AuthApi, &str) -> HttpRequest,
         parse: impl Fn(&HttpResponse) -> Result<T, OvError>,
     ) -> Result<T, OvError> {
-        let token = self.access_token(false, cancel).await?;
+        let token = self.bearer_token(false, cancel).await?;
         let req = build(self.auth(), &token);
         let retry = retries_on_401(&req);
         let mut res = send(self.host(), req, cancel).await?;
         if res.status == 401 && retry {
-            let token = self.access_token(true, cancel).await?;
+            let token = self.bearer_token(true, cancel).await?;
             res = send(self.host(), build(self.auth(), &token), cancel).await?;
         }
         parse(&res)

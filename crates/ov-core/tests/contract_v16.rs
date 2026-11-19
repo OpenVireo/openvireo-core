@@ -386,3 +386,83 @@ async fn local_vaults_from_the_client_use_the_host_clock() {
     let wrong = c.open_local(v.save_local(nc()).await.unwrap(), creds("no"), nc()).await.unwrap_err();
     assert_eq!(wrong.code, OvErrorCode::KdbxError);
 }
+
+/// Light Argon2id so the test files open fast.
+const LIGHT: KdbxKdf = KdbxKdf::Argon2id { memory: 1 << 20, iterations: 2, parallelism: 1 };
+
+#[tokio::test]
+async fn syncs_an_account_vault_held_as_kdbx_bytes() {
+    let s = servers();
+    let a = connect(&device(&s, true), &s).await; // offline data on: the sync state is cached
+    let kit = register(&a, "desk@example.com", "pw desk").await;
+    let vault = a.create_vault("Desk".into(), None, nc()).await.unwrap();
+    add_entry(&vault, "Mail", "m");
+    vault.sync(SyncOptions::default(), nc()).await.unwrap();
+    let id = vault.id();
+
+    // The desktop's file: the vault under its vault key.
+    let creds = a.vault_kdbx_credentials(id.clone(), nc()).await.unwrap();
+    assert!(creds.password.is_none() && creds.key_file.as_ref().is_some_and(|k| k.len() == 32));
+    let copy = vault.copy_without_remotes(Some(creds.clone())).unwrap();
+    copy.set_kdf(LIGHT).unwrap();
+    let file = copy.save_local(nc()).await.unwrap();
+
+    // Nothing changed locally: nothing to upload.
+    let r = a.sync_vault_kdbx(id.clone(), file, None, SyncOptions::default(), nc()).await.unwrap();
+    assert!(matches!(r.report.outcome, SyncOutcome::Unchanged | SyncOutcome::Pulled), "{:?}", r.report.outcome);
+    assert_eq!(r.credentials, creds);
+    assert!(r.report.etag.is_some());
+
+    // An edit in the file uploads; the vault handle sees it.
+    let local = Vault::open_local(r.kdbx, r.credentials.clone(), nc()).await.unwrap();
+    add_entry(&local, "From desktop", "d");
+    let r = a
+        .sync_vault_kdbx(id.clone(), local.save_local(nc()).await.unwrap(), None, SyncOptions::default(), nc())
+        .await
+        .unwrap();
+    assert_eq!(r.report.outcome, SyncOutcome::Uploaded);
+    vault.sync(SyncOptions::default(), nc()).await.unwrap();
+    assert_eq!(field(&find_title(&vault, "From desktop"), "Password"), b"d");
+
+    // An edit on the other side comes down into the file.
+    add_entry(&vault, "From web", "w");
+    vault.sync(SyncOptions::default(), nc()).await.unwrap();
+    let r = a
+        .sync_vault_kdbx(id.clone(), r.kdbx, None, SyncOptions { local_changed: false, ..Default::default() }, nc())
+        .await
+        .unwrap();
+    assert_eq!(r.report.outcome, SyncOutcome::Pulled);
+    let merged = Vault::open_local(r.kdbx.clone(), r.credentials.clone(), nc()).await.unwrap();
+    assert_eq!(field(&find_title(&merged, "From web"), "Password"), b"w");
+
+    // The server lost the vault: an error, then "continue anyway" uploads the file again.
+    s.lose_vault(&id);
+    let e = a.sync_vault_kdbx(id.clone(), r.kdbx.clone(), None, SyncOptions::default(), nc()).await.unwrap_err();
+    assert_eq!(e.code, OvErrorCode::ServerLostDatabase);
+    let accept = SyncOptions { accept_server_state: true, ..Default::default() };
+    let again = a.sync_vault_kdbx(id.clone(), r.kdbx, None, accept, nc()).await.unwrap();
+    assert_eq!(again.report.outcome, SyncOutcome::Created);
+
+    // A base passed in is used when there is no cached state (another device, offline data off).
+    let b = connect(&device(&s, false), &s).await;
+    login(&b, "desk@example.com", "pw desk", Some(&kit.secret_key)).await;
+    let r = b.sync_vault_kdbx(id.clone(), again.kdbx.clone(), Some(again.kdbx.clone()), SyncOptions::default(), nc());
+    assert!(r.await.is_ok());
+    let e = b.sync_vault_kdbx(id, b"not a kdbx".to_vec(), None, SyncOptions::default(), nc()).await.unwrap_err();
+    assert_eq!(e.code, OvErrorCode::KdbxError);
+}
+
+#[tokio::test]
+async fn lends_the_session_token_and_refreshes_it() {
+    let s = servers();
+    let a = connect(&device(&s, false), &s).await;
+    register(&a, "tok@example.com", "pw tok").await;
+    let t1 = a.access_token(false, nc()).await.unwrap();
+    assert_eq!(a.access_token(false, nc()).await.unwrap(), t1, "a valid token is reused");
+    let t2 = a.access_token(true, nc()).await.unwrap();
+    assert_ne!(t2, t1, "force_refresh refreshes");
+    let jwt = String::from_utf8(t2).unwrap();
+    assert_eq!(jwt.split('.').count(), 3);
+    a.sign_out(false, nc()).await.unwrap();
+    assert_eq!(a.access_token(false, nc()).await.unwrap_err().code, OvErrorCode::SignedOut);
+}

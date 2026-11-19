@@ -228,7 +228,7 @@ impl ServiceAccount {
         let now = v.now();
         let result = async {
             ov_vault::write_field(&mut v.db(), &r, value, create, None, now)?;
-            super::syncing::sync_vault(&v, SyncOptions { local_changed: true }, None, cancel).await
+            super::syncing::sync_vault(&v, SyncOptions::default(), None, cancel).await
         }
         .await;
         if result.is_err() {

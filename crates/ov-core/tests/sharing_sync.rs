@@ -136,7 +136,7 @@ async fn checks_with_a_head_and_skips_the_download_when_the_etag_still_matches()
         s.requests()[from..].iter().filter(|r| r.path.contains("/vaults/")).map(|r| r.method).collect()
     };
     let before = s.requests().len();
-    let r = vault.sync(SyncOptions { local_changed: false }, nc()).await.unwrap();
+    let r = vault.sync(SyncOptions { local_changed: false, ..Default::default() }, nc()).await.unwrap();
     assert_eq!(r.outcome, SyncOutcome::Unchanged);
     assert_eq!(sync_methods(before), vec![Method::Head]);
 
@@ -147,7 +147,7 @@ async fn checks_with_a_head_and_skips_the_download_when_the_etag_still_matches()
     add_entry(&theirs, "New", "x");
     theirs.sync(SyncOptions::default(), nc()).await.unwrap();
     let mark = s.requests().len();
-    vault.sync(SyncOptions { local_changed: false }, nc()).await.unwrap();
+    vault.sync(SyncOptions { local_changed: false, ..Default::default() }, nc()).await.unwrap();
     let m = sync_methods(mark);
     assert!(m.contains(&Method::Get) && !m.contains(&Method::Put), "{m:?}");
     assert_eq!(vault.etag(), theirs.etag());

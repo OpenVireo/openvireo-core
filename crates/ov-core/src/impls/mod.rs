@@ -19,5 +19,6 @@ pub(crate) mod signin;
 pub(crate) mod syncing;
 pub(crate) mod tokens;
 pub(crate) mod util;
+pub(crate) mod vault_files;
 pub(crate) mod vault_handle;
 pub(crate) mod vaults;

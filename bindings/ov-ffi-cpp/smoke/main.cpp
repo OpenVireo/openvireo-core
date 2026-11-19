@@ -13,6 +13,8 @@
 
 // below_facade.cpp: the crypto, OPAQUE and merge functions against the vectors; failed checks.
 int below_facade(bool test_server);
+// contract_v16.cpp: the contract-v1.6 additions; failed checks.
+int contract_v16();
 
 namespace {
 
@@ -341,6 +343,7 @@ int main() {
     check(survives("CancelToken::check on a fresh token", [&] { token->check(); }), "a fresh token isn't cancelled");
 
     failures += below_facade(OV_EXPECT_TEST_SERVER != 0);
+    failures += contract_v16();
 
     std::printf("%s\n", failures == 0 ? "smoke: all passed" : "smoke: FAILED");
     return failures == 0 ? 0 : 1;

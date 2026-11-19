@@ -26,6 +26,7 @@ mod more;
 mod opaque;
 mod primitives;
 mod records;
+mod v16;
 
 pub use edge::FfiError;
 pub use handles::{
@@ -280,6 +281,10 @@ pub mod ffi {
         has_expires_at: bool,
         expires_at: i64,
         in_recycle_bin: bool,
+        /// contract-v1.6: `LastAccessTime` when `usage_count > 0`.
+        has_last_access_at: bool,
+        last_access_at: i64,
+        usage_count: u32,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -778,6 +783,8 @@ pub mod ffi {
     struct AttachmentInfo {
         name: String,
         size: u64,
+        /// contract-v1.6; Rust `protected` (a C++ keyword).
+        is_protected: bool,
     }
 
     /// Rust `EntryRecord`.
@@ -800,6 +807,10 @@ pub mod ffi {
         attachments: Vec<AttachmentInfo>,
         history_count: u32,
         quality_check: bool,
+        /// contract-v1.6: `LastAccessTime` when `usage_count > 0`.
+        has_last_access_at: bool,
+        last_access_at: i64,
+        usage_count: u32,
     }
 
     #[derive(Clone)]
@@ -844,7 +855,17 @@ pub mod ffi {
         at: i64,
     }
 
-    /// Rust `EntryInput`.
+    /// What [`EntryInput`] does to the custom icon (contract-v1.6).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum CustomIconChange {
+        Keep,
+        Clear,
+        /// Set to `EntryInput::custom_icon`.
+        Set,
+    }
+
+    /// Rust `EntryInput`. The fields after `expiry` are contract-v1.6; left value-initialized they
+    /// change nothing.
     struct EntryInput {
         fields: Vec<FieldInput>,
         remove_fields: Vec<String>,
@@ -853,6 +874,82 @@ pub mod ffi {
         has_icon_id: bool,
         icon_id: u32,
         expiry: EntryExpiry,
+        /// `#RRGGBB`, or empty to clear.
+        has_foreground_color: bool,
+        foreground_color: String,
+        has_background_color: bool,
+        background_color: String,
+        custom_icon_change: CustomIconChange,
+        custom_icon: String,
+        /// Custom fields in this order after the standard ones.
+        has_field_order: bool,
+        field_order: Vec<String>,
+    }
+
+    /// Rust `LocalImportMode` kind (contract-v1.6).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum LocalImportKind {
+        Merge,
+        Copies,
+    }
+
+    /// Rust `LocalImportMode`: `Copies` goes under `parent_group_id` (empty = the root).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct LocalImportMode {
+        kind: LocalImportKind,
+        parent_group_id: String,
+    }
+
+    /// Rust `ImportSummary` (contract-v1.6).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct ImportSummary {
+        added: u32,
+        updated: u32,
+        unchanged: u32,
+        groups_added: u32,
+        changes: Vec<MergeChange>,
+    }
+
+    /// Rust `ImportPreview` (contract-v1.6).
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    struct ImportPreview {
+        entries: u32,
+        groups: u32,
+    }
+
+    /// Rust `ImportTarget` (contract-v1.6).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct ImportTarget {
+        group_id: String,
+        path: String,
+    }
+
+    /// Rust `KdbxKdf` variant (contract-v1.6).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum KdbxKdfKind {
+        /// Argon2d, 64 MiB, 10 iterations, 2 lanes.
+        DatabaseDefault,
+        Argon2d,
+        Argon2id,
+        AesKdf,
+    }
+
+    /// Rust `KdbxKdf`: Argon2 reads `memory` (bytes), `iterations`, `parallelism`; AES-KDF reads
+    /// `rounds`.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct KdbxKdf {
+        kind: KdbxKdfKind,
+        memory: u64,
+        iterations: u64,
+        parallelism: u32,
+        rounds: u64,
+    }
+
+    /// An optional string (contract-v1.6 `Vault::meta_custom_data`).
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct OptionalString {
+        has: bool,
+        value: String,
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1803,6 +1900,60 @@ pub mod ffi {
         fn is_paired(self: &RestoredSelfHosted) -> bool;
         /// The server, when paired (call once); else `invalid_request`.
         fn take(self: &mut RestoredSelfHosted) -> Result<Box<SelfHosted>>;
+
+        // ---- contract-v1.6 (docs/adr/0001-contract.md)
+        /// A local `.kdbx` on this client's Host clock.
+        fn open_local(
+            self: &Client,
+            kdbx: Vec<u8>,
+            credentials: KdbxCredentials,
+            cancel: &CancelToken,
+        ) -> Result<Box<Vault>>;
+        fn create_local(
+            self: &Client,
+            name: &str,
+            credentials: KdbxCredentials,
+            cancel: &CancelToken,
+        ) -> Result<Box<Vault>>;
+        fn set_name(self: &Vault, name: &str) -> Result<()>;
+        fn set_kdf(self: &Vault, kdf: KdbxKdf) -> Result<()>;
+        /// Empty `credentials` (no password, no key file) keep a local file's own.
+        fn copy_without_remotes(self: &Vault, credentials: KdbxCredentials) -> Result<Box<Vault>>;
+        fn meta_custom_data(self: &Vault, key: &str) -> Result<OptionalString>;
+        /// `has_value == false` removes the item.
+        fn set_meta_custom_data(self: &Vault, key: &str, has_value: bool, value: &str) -> Result<()>;
+        fn entry_records(self: &Vault, include_recycle_bin: bool) -> Result<Vec<EntryRecord>>;
+        fn add_entry_with_id(self: &Vault, entry_id: &str, group_id: &str, input: EntryInput) -> Result<String>;
+        /// `has_protected == false` keeps the replaced attachment's flag (protected for a new one).
+        fn set_attachment_with(
+            self: &Vault,
+            entry_id: &str,
+            name: &str,
+            data: Vec<u8>,
+            has_protected: bool,
+            is_protected: bool,
+        ) -> Result<()>;
+        fn import_from(self: &Vault, source: &Vault, mode: &LocalImportMode) -> Result<ImportSummary>;
+        fn import_preview(self: &Vault) -> Result<ImportPreview>;
+        fn import_targets(self: &Vault) -> Result<Vec<ImportTarget>>;
+        /// An empty `group_ids` exports every group.
+        fn export_kdbx_with(
+            self: &Vault,
+            credentials: KdbxCredentials,
+            group_ids: Vec<String>,
+            kdf: KdbxKdf,
+            cancel: &CancelToken,
+        ) -> Result<Vec<u8>>;
+        fn history(self: &SelfHosted, database_id: &str, cancel: &CancelToken) -> Result<Vec<VaultVersion>>;
+        fn open_version(
+            self: &SelfHosted,
+            database_id: &str,
+            revision: u64,
+            credentials: KdbxCredentials,
+            cancel: &CancelToken,
+        ) -> Result<Box<Vault>>;
+        fn server_config(self: &ServiceAccount) -> Result<ServerConfig>;
+        fn issuer(self: &ServiceAccount) -> Result<String>;
     }
 
     // ------------------------------------------- below the facade, for C++ (README.md, "Desktop swap")

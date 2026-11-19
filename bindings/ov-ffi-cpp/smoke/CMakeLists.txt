@@ -19,7 +19,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(OpenVireoCore 0.0 REQUIRED)
 
-add_executable(ovcore_smoke main.cpp below_facade.cpp)
+add_executable(ovcore_smoke main.cpp below_facade.cpp contract_v16.cpp)
 target_link_libraries(ovcore_smoke PRIVATE OpenVireoCore::ovcore)
 # The contract vectors and the .kdbx merge copies are read at run time.
 get_filename_component(OV_VECTORS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../vectors" ABSOLUTE)

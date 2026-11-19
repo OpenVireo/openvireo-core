@@ -29,11 +29,10 @@ final class SmokeTests: XCTestCase {
         }
     }
 
-    /// The facade is still `todo!()` stubs: a call must come back as `OvError(internal)`, not a crash.
-    func testPanicBecomesInternalError() {
-        XCTAssertThrowsError(try defaultShareFields()) {
-            XCTAssertEqual(($0 as! OvError).code, .internal)
-        }
+    /// A facade free function returns its value (the facade was `todo!()` stubs at W1-BS; a panic
+    /// becoming `OvError(internal)` is covered by the crate's `guard` tests).
+    func testFacadeFreeFunction() throws {
+        XCTAssertEqual(try defaultShareFields(), ["UserName", "Password", "URL"])
     }
 
     func testWireCodes() {

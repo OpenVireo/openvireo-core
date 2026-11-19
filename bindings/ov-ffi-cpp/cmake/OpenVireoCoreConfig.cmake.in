@@ -24,4 +24,6 @@ set_target_properties(OpenVireoCore::ovcore PROPERTIES
 
 set(OpenVireoCore_VERSION "@VERSION@")
 set(OpenVireoCore_TARGET "@TARGET@")
+# Cargo features it was built with (`cargo xtask cpp --features`), e.g. "test-server"; empty for none.
+set(OpenVireoCore_FEATURES "@FEATURES@")
 unset(_ovcore_prefix)

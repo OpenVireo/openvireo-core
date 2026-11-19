@@ -119,8 +119,9 @@ User-approved 2026-11-19 (rust-core-tasks.md §9): the eight facade CONTRACT-REQ
 (`bindings/ov-ffi-swift/README.md`), W3-L3's `ServiceAccount` issuer, and W2-A's local-vault clock.
 Everything is **additive** (new fields, new methods, new records); no existing method signature
 changed. The one source-level break is for Rust code that builds `EntrySummary`, `EntryRecord`,
-`AttachmentInfo` or `EntryInput` with a struct literal that lists every field: such code needs the new
-fields (`EntryInput` has `Default`, so `..Default::default()` keeps working).
+`AttachmentInfo`, `EntryInput` or `SyncOptions` with a struct literal that lists every field: such
+code needs the new fields (`EntryInput` and `SyncOptions` have `Default`, so
+`..Default::default()` keeps working).
 
 | # | Request | Added |
 |---|---|---|
@@ -134,6 +135,22 @@ fields (`EntryInput` has `Default`, so `..Default::default()` keeps working).
 | 8 | self-hosted version history | `SelfHosted::history(database_id)`, `SelfHosted::open_version(database_id, revision, credentials)` (a read-only `Vault`) |
 | 9 | the SA's server (W3-L3) | `ServiceAccount::server_config()`, `ServiceAccount::issuer()` |
 | 10 | local vaults on the Host clock (W2-A) | `OvClient::open_local`, `OvClient::create_local`: as `Vault::open_local` / `create_local`, but edits are stamped with the Host `Clock`. The `Vault` constructors keep their behaviour (system clock; on wasm32 one second after the newest time in the file) |
+
+Added the same day for the desktop (W3-ID2, user-approved, relayed by the lead):
+
+| # | Request | Added |
+|---|---|---|
+| 11 | sync an account vault the desktop holds as a file | `Account::sync_vault_kdbx(vault_id, kdbx, base: Option<Vec<u8>>, SyncOptions) -> VaultKdbxSyncResult { kdbx, credentials, report: SyncReport }` on `ov_sync::sync_kdbx` (all key versions open the file; 412 merge-and-retry; one token refresh on 403); `Account::vault_kdbx_credentials(vault_id) -> KdbxCredentials` (the newest vault key as a raw key file). The sync state is kept in the BlobCache record `kdbx-file:<vault id>`, apart from `Vault::sync`'s |
+| 12 | "continue anyway" | `SyncOptions::accept_server_state` (default `false`), honoured by `Vault::sync` too. `server_rolled_back` / `server_lost_database` stay errors, as in `ov-sync` |
+| 13 | borrow the core's session | `Account::access_token(force_refresh: bool) -> SecretBytes` (refreshes when about to expire; a refused refresh ends the session) |
+
+Deviations from the request: (11) the result reuses `SyncReport` (outcome, ETag, conflicts, changes,
+attempts, clock offset) instead of separate `etag` / `outcome` / `MergeReport` / `conflicts` /
+`clock_offset_ms` fields, and adds the `credentials` the merged file is under (after a rotation the
+server copy can still be under an older key). (13) `force_refresh: bool` instead of
+`audience: Option<String>`: SPEC §9 has one access token for the auth and sync servers, so there is
+no audience to choose; forcing a refresh is what a caller needs after a 403 for a newly shared
+vault. `SyncOptions` gained a field, so struct literals need `..Default::default()`.
 
 `KdbxKdf` is `DatabaseDefault` (KeePassXC's default for new databases: Argon2d, 64 MiB, 10 iterations,
 2 lanes, as iOS `KDF.databaseDefault`), `Argon2d` / `Argon2id { memory (bytes), iterations, parallelism }`

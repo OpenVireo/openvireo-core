@@ -445,4 +445,6 @@ Details in `docs/adr/0001-contract.md` § contract-v1.6.
 | Swift Kit `server.history`, `openVersion` (self-hosted) | `SelfHosted::history`, `SelfHosted::open_version` | request 8 |
 | TS `ServiceAccount.config` (`sa.config.issuer`, used by `ov`) | `ServiceAccount::server_config`, `ServiceAccount::issuer` | W3-L3; replaces `bins/ov`'s own token decoding |
 | local `.kdbx` opened or created with the app's clock | `OvClient::open_local`, `OvClient::create_local` | W2-A; `Vault::open_local` / `create_local` unchanged |
-
+| desktop `SyncEngine` account-vault sync of the open `Database` (serialized) | `Account::sync_vault_kdbx`, `Account::vault_kdbx_credentials` | W3-ID2; `VaultKdbxSyncResult` |
+| desktop "continue anyway" after a server rollback / lost database | `SyncOptions::accept_server_state` | W3-ID2 |
+| desktop code still on its own HTTP (`AuthClient`) borrowing the session | `Account::access_token` | W3-ID2 |

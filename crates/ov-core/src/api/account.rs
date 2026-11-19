@@ -12,7 +12,7 @@ use ov_error::OvError;
 use super::{
     AutoFillEdits, CancelToken, EntryRecord, EventStream, ImportMode, ImportOutcome, KdbxCredentials, KdfOverrides,
     KdfParams, NewAccount, ParkedCheck, Principal, ReconnectResult, Rfc3339, SecretBytes, ServerConfig,
-    SignedOutReason, StoredSession, Vault, VaultInfo, VaultVersion,
+    SignedOutReason, StoredSession, SyncOptions, Vault, VaultInfo, VaultKdbxSyncResult, VaultVersion,
 };
 use crate::host::HttpRequest;
 use crate::state::{AccountState, TotpState};
@@ -462,6 +462,50 @@ impl Account {
     /// Whether a vault has edits waiting on this device for its next upload.
     pub async fn has_pending_edits(&self, vault_id: String) -> Result<bool, OvError> {
         self.pending_for(Some(&vault_id)).await
+    }
+
+    // ------------------------------------------------- vault files and the session token
+
+    /// The credentials an account vault's `.kdbx` is under: its newest vault key as a raw key file
+    /// (no password). A secret: wipe it. For a client that keeps the vault as a file (the desktop)
+    /// and syncs it with [`sync_vault_kdbx`](Self::sync_vault_kdbx). Contract-v1.6.
+    pub async fn vault_kdbx_credentials(
+        &self,
+        vault_id: String,
+        cancel: CancelToken,
+    ) -> Result<KdbxCredentials, OvError> {
+        crate::impls::vault_files::credentials(self, &vault_id, &cancel).await
+    }
+
+    /// Syncs an account vault held as `.kdbx` bytes, as
+    /// [`SelfHosted::sync_database`](crate::api::SelfHosted::sync_database) does for a self-hosted
+    /// database: download, three-way merge, conditional upload with retries on 412 (SPEC §11, §20),
+    /// on `ov-sync`'s state machine.
+    /// `kdbx` may be under any of the vault's key versions. The merge base is `base` (the server's
+    /// bytes from this device's last sync) or else the one in the cached sync state, which is kept
+    /// in the [BlobCache](crate::host::BlobCache) record `kdbx-file:<vault id>` when the account keeps
+    /// offline data (apart from [`Vault::sync`]'s: the file is its own working copy).
+    /// `server_rolled_back` / `server_lost_database` are errors; sync again with
+    /// [`SyncOptions::accept_server_state`] to continue anyway. A vault shared after the token was
+    /// issued refreshes the token once. Contract-v1.6.
+    pub async fn sync_vault_kdbx(
+        &self,
+        vault_id: String,
+        kdbx: Vec<u8>,
+        base: Option<Vec<u8>>,
+        options: SyncOptions,
+        cancel: CancelToken,
+    ) -> Result<VaultKdbxSyncResult, OvError> {
+        crate::impls::vault_files::sync(self, &vault_id, kdbx, base, options, &cancel).await
+    }
+
+    /// The session's access token (the JWT for the auth and sync servers; SPEC §9 has one audience),
+    /// refreshed first when it is about to expire, or when `force_refresh` (after a 403 for a vault
+    /// shared since it was issued). For code that still makes its own calls with the core's session;
+    /// it never starts a second session. A refused refresh ends the session (`signed_out`). A secret:
+    /// don't log it. Contract-v1.6.
+    pub async fn access_token(&self, force_refresh: bool, cancel: CancelToken) -> Result<SecretBytes, OvError> {
+        Ok(self.bearer_token(force_refresh, &cancel).await?.as_bytes().to_vec())
     }
 
     // ---------------------------------------------------------------------------- history

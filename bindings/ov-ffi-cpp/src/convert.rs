@@ -226,6 +226,9 @@ pub(crate) fn entry_summary(e: core::EntrySummary) -> ffi::EntrySummary {
         has_expires_at: e.expires_at.is_some(),
         expires_at: e.expires_at.unwrap_or(0),
         in_recycle_bin: e.in_recycle_bin,
+        has_last_access_at: e.last_access_at.is_some(),
+        last_access_at: e.last_access_at.unwrap_or(0),
+        usage_count: e.usage_count,
     }
 }
 
@@ -255,6 +258,22 @@ pub(crate) fn sync_conflict(c: core::SyncConflict) -> ffi::SyncConflict {
     }
 }
 
+pub(crate) fn merge_change(c: core::MergeChange) -> ffi::MergeChange {
+    ffi::MergeChange {
+        change: match c.change {
+            core::ChangeType::Added => ffi::ChangeType::Added,
+            core::ChangeType::Modified => ffi::ChangeType::Modified,
+            core::ChangeType::Moved => ffi::ChangeType::Moved,
+            core::ChangeType::Deleted => ffi::ChangeType::Deleted,
+            core::ChangeType::Metadata => ffi::ChangeType::Metadata,
+        },
+        uuid: opt_string(c.uuid),
+        title: opt_string(c.title),
+        group: opt_string(c.group),
+        details: c.details,
+    }
+}
+
 pub(crate) fn sync_report(r: core::SyncReport) -> ffi::SyncReport {
     ffi::SyncReport {
         outcome: match r.outcome {
@@ -264,23 +283,7 @@ pub(crate) fn sync_report(r: core::SyncReport) -> ffi::SyncReport {
             core::SyncOutcome::Created => ffi::SyncOutcome::Created,
         },
         conflicts: r.conflicts.into_iter().map(sync_conflict).collect(),
-        changes: r
-            .changes
-            .into_iter()
-            .map(|c| ffi::MergeChange {
-                change: match c.change {
-                    core::ChangeType::Added => ffi::ChangeType::Added,
-                    core::ChangeType::Modified => ffi::ChangeType::Modified,
-                    core::ChangeType::Moved => ffi::ChangeType::Moved,
-                    core::ChangeType::Deleted => ffi::ChangeType::Deleted,
-                    core::ChangeType::Metadata => ffi::ChangeType::Metadata,
-                },
-                uuid: opt_string(c.uuid),
-                title: opt_string(c.title),
-                group: opt_string(c.group),
-                details: c.details,
-            })
-            .collect(),
+        changes: r.changes.into_iter().map(merge_change).collect(),
         attempts: r.attempts,
         etag: opt_string(r.etag),
         has_clock_offset: r.clock_offset_ms.is_some(),

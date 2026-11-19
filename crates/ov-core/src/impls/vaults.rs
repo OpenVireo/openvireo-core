@@ -41,6 +41,20 @@ pub(crate) fn new_vault(
     }
 }
 
+/// Kept versions as facade records; the newest is the current one.
+pub(crate) fn versions(list: Vec<ov_protocol::types::BlobMeta>) -> Vec<VaultVersion> {
+    let newest = list.iter().map(|b| b.revision).max();
+    list.into_iter()
+        .map(|b| VaultVersion {
+            is_current: Some(b.revision) == newest,
+            revision: b.revision.max(0) as u64,
+            etag: b.etag,
+            size: Some(b.size),
+            saved_at: Some(b.updated_at),
+        })
+        .collect()
+}
+
 /// Opens local `.kdbx` credentials.
 pub(crate) fn local_key(c: &KdbxCredentials) -> Result<ov_kdbx::CompositeKey, OvError> {
     let password = c
@@ -271,17 +285,7 @@ impl Account {
     ) -> Result<Vec<VaultVersion>, OvError> {
         cancel.check()?;
         let list = self.sync_client().vault(vault_id).history().await?;
-        let newest = list.iter().map(|b| b.revision).max();
-        Ok(list
-            .into_iter()
-            .map(|b| VaultVersion {
-                is_current: Some(b.revision) == newest,
-                revision: b.revision.max(0) as u64,
-                etag: b.etag,
-                size: Some(b.size),
-                saved_at: Some(b.updated_at),
-            })
-            .collect())
+        Ok(versions(list))
     }
 
     pub(crate) async fn open_version_impl(
@@ -296,7 +300,7 @@ impl Account {
         cancel.check()?;
         let r = self.sync_client().vault(vault_id).revision(rev).await?;
         let (db, _) = open_with_key_versions(&r.data, e.keys())?;
-        let v = new_vault(VaultSource::Version { info: e.info }, Some(self.host().clone()), db, false, None);
+        let v = new_vault(VaultSource::Version { info: Some(e.info) }, Some(self.host().clone()), db, false, None);
         *lock(&v.inner.etag) = Some(r.version.etag);
         Ok(v)
     }
@@ -372,7 +376,7 @@ impl Account {
 }
 
 /// Enough fresh UUIDs for every entry (with history) and group of `source`, drawn up front.
-fn fresh_uuids(source: &Database) -> Result<Vec<Uuid>, OvError> {
+pub(crate) fn fresh_uuids(source: &Database) -> Result<Vec<Uuid>, OvError> {
     fn count(g: &ov_kdbx::model::Group) -> usize {
         1 + g.entries.iter().map(|e| 1 + e.history.len()).sum::<usize>() + g.groups.iter().map(count).sum::<usize>()
     }

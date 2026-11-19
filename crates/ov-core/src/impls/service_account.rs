@@ -50,6 +50,7 @@ impl ServiceAccount {
         let expires = host.clock.now_unix_ms() + ex.expires_in.saturating_mul(1000);
         let state = ServiceAccountState {
             client: client.inner.clone(),
+            config,
             auth,
             sync,
             sa_id: t.sa_id.clone(),
@@ -227,7 +228,7 @@ impl ServiceAccount {
         let now = v.now();
         let result = async {
             ov_vault::write_field(&mut v.db(), &r, value, create, None, now)?;
-            super::syncing::sync_vault(&v, SyncOptions { local_changed: true }, None, cancel).await
+            super::syncing::sync_vault(&v, SyncOptions::default(), None, cancel).await
         }
         .await;
         if result.is_err() {

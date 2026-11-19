@@ -41,5 +41,9 @@ tokio = { workspace = true, features = ["io-std", "io-util", "net", "process", "
 # No-echo prompts (termios) and the host name; only in src/tty.rs (contract-v1.4).
 libc.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# No-echo prompts on the console (GetConsoleMode / SetConsoleMode); only in src/tty.rs (W3-A3).
+windows-sys.workspace = true
+
 [lints]
 workspace = true

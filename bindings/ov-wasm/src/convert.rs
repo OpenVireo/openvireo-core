@@ -71,6 +71,30 @@ pub(crate) fn arg<T: FromJs>(v: &JsValue, name: &str) -> Result<T, OvError> {
     T::from_js(v, name)
 }
 
+/// Reads field `key` as `T`, or `T::default()` when it is missing or null (fields added after a
+/// record was first exported: contract-v1.6's `usageCount`, `protected`, …).
+pub(crate) fn field_or_default<T: FromJs + Default>(v: &JsValue, key: &str, path: &str) -> Result<T, OvError> {
+    let f = get(v, key, path)?;
+    if is_nullish(&f) {
+        Ok(T::default())
+    } else {
+        T::from_js(&f, &format!("{path}.{key}"))
+    }
+}
+
+/// Reads an `Option<Option<T>>` change: missing (`undefined`) leaves it, `null` clears it, a value
+/// sets it (contract-v1.6 `EntryInput.customIcon`).
+pub(crate) fn field_change<T: FromJs>(v: &JsValue, key: &str, path: &str) -> Result<Option<Option<T>>, OvError> {
+    let f = get(v, key, path)?;
+    if f.is_undefined() {
+        Ok(None)
+    } else if f.is_null() {
+        Ok(Some(None))
+    } else {
+        T::from_js(&f, &format!("{path}.{key}")).map(|t| Some(Some(t)))
+    }
+}
+
 fn is_nullish(v: &JsValue) -> bool {
     v.is_undefined() || v.is_null()
 }
@@ -282,9 +306,11 @@ pub(crate) fn array<const N: usize>(b: &[u8], path: &str) -> Result<[u8; N], OvE
 ///
 /// The literal after the JS key is the rest of the TypeScript property (`": string"` or
 /// `"?: string"`). Implements `ToJs`, `FromJs` and `Elem`, and emits `export interface TsName`.
+/// `rust_field: jsKey "?: ts" via reader` reads that field with `reader(v, "jsKey", path)` instead
+/// of [`field`] (e.g. [`field_or_default`] for a field added later that callers may leave out).
 macro_rules! record {
-    ($ty:path => $name:ident { $($f:ident : $js:ident $ts:literal),* $(,)? }) => {
-        $crate::convert::record!(@no_ts $ty => $name { $($f : $js $ts),* });
+    ($ty:path => $name:ident { $($f:ident : $js:ident $ts:literal $(via $reader:path)?),* $(,)? }) => {
+        $crate::convert::record!(@no_ts $ty => $name { $($f : $js $ts $(via $reader)?),* });
         #[::wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section)]
         const _: &str = concat!(
             "export interface ", stringify!($name), " {\n",
@@ -294,7 +320,7 @@ macro_rules! record {
     };
     // The conversions only: the TypeScript type is declared elsewhere (a shared module declares the
     // same JS shape for the domain type).
-    (@no_ts $ty:path => $name:ident { $($f:ident : $js:ident $ts:literal),* $(,)? }) => {
+    (@no_ts $ty:path => $name:ident { $($f:ident : $js:ident $ts:literal $(via $reader:path)?),* $(,)? }) => {
         impl $crate::convert::ToJs for $ty {
             fn to_js(&self) -> ::wasm_bindgen::JsValue {
                 let o = $crate::convert::obj();
@@ -307,7 +333,7 @@ macro_rules! record {
                 if !v.is_object() {
                     return Err($crate::convert::bad(path, concat!("a ", stringify!($name), " object")));
                 }
-                Ok(Self { $( $f: $crate::convert::field(v, stringify!($js), path)?, )* })
+                Ok(Self { $( $f: $crate::convert::record_field!(v, $js, path $(, $reader)?), )* })
             }
         }
         impl $crate::convert::Elem for $ty {}
@@ -344,4 +370,14 @@ macro_rules! unit_enum {
     };
 }
 
-pub(crate) use {record, unit_enum};
+/// One field of a [`record!`]: [`field`], or the field's own reader.
+macro_rules! record_field {
+    ($v:expr, $js:ident, $path:expr) => {
+        $crate::convert::field($v, stringify!($js), $path)?
+    };
+    ($v:expr, $js:ident, $path:expr, $reader:path) => {
+        $reader($v, stringify!($js), $path)?
+    };
+}
+
+pub(crate) use {record, record_field, unit_enum};

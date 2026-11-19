@@ -29,7 +29,7 @@ pub(crate) struct AccountTokens(pub(crate) Account);
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 impl TokenSource for AccountTokens {
     async fn access_token(&self, force_refresh: bool) -> Result<Option<String>, OvError> {
-        Ok(Some(self.0.access_token(force_refresh, &CancelToken::new()).await?.to_string()))
+        Ok(Some(self.0.bearer_token(force_refresh, &CancelToken::new()).await?.to_string()))
     }
 }
 
@@ -75,7 +75,7 @@ impl Account {
         self.keeps_offline_data().then(|| VaultCache::new(self.host().cache.clone(), user, vault_id))
     }
 
-    fn note_clock(&self, offset: Option<i64>) {
+    pub(crate) fn note_clock(&self, offset: Option<i64>) {
         if offset.is_some() {
             lock(&self.inner.inner).clock_offset_ms = offset;
         }
@@ -158,7 +158,7 @@ pub(crate) async fn sync_vault(
     let rekey = rekey_to.map(|k| Zeroizing::new(k.to_vec()));
     let opts = SessionSyncOptions {
         local_changed: Some(options.local_changed),
-        accept_server_state: false,
+        accept_server_state: options.accept_server_state,
         rekey_to: rekey.as_deref().map(|k| &k[..]),
         cancel: Some(&cw),
     };

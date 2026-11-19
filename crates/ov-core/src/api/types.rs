@@ -681,17 +681,41 @@ pub struct ImportOutcome {
     pub report: Option<SyncReport>,
 }
 
-/// Options for [`Vault::sync`](crate::api::Vault::sync).
+/// Options for [`Vault::sync`](crate::api::Vault::sync) and
+/// [`Account::sync_vault_kdbx`](crate::api::Account::sync_vault_kdbx).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SyncOptions {
     /// `false`: nothing changed here, so ask the server with a HEAD first and stop if it didn't
     /// change either.
     pub local_changed: bool,
+    /// "Continue anyway" after `server_rolled_back` or `server_lost_database`: forget what this
+    /// device knew of the server (revision, sync generation, base) and take the server's state as it
+    /// is, merging the local copy into it, or uploading it as the first version (contract-v1.6).
+    pub accept_server_state: bool,
 }
 
 impl Default for SyncOptions {
     fn default() -> Self {
-        SyncOptions { local_changed: true }
+        SyncOptions { local_changed: true, accept_server_state: false }
+    }
+}
+
+/// The result of [`Account::sync_vault_kdbx`](crate::api::Account::sync_vault_kdbx)
+/// (contract-v1.6).
+#[derive(Clone, PartialEq, Eq)]
+pub struct VaultKdbxSyncResult {
+    /// The merged vault, encrypted under `credentials`: keep it as the local copy.
+    pub kdbx: Vec<u8>,
+    /// The credentials `kdbx` is under (the vault key the server copy uses, as a raw key file).
+    /// A secret: wipe it.
+    pub credentials: crate::api::KdbxCredentials,
+    /// What the sync did: outcome, conflicts, changes, attempts, the new ETag and the clock offset.
+    pub report: SyncReport,
+}
+
+impl std::fmt::Debug for VaultKdbxSyncResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VaultKdbxSyncResult").field("report", &self.report).finish_non_exhaustive()
     }
 }
 

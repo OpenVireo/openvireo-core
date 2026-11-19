@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use ov_error::OvError;
 
-use super::{CancelToken, OvClient, Principal, SecretBytes, Vault, VaultRole};
+use super::{CancelToken, OvClient, Principal, SecretBytes, ServerConfig, Vault, VaultRole};
 use crate::state::ServiceAccountState;
 
 /// A vault granted to a service account.
@@ -57,6 +57,18 @@ impl ServiceAccount {
         cancel: CancelToken,
     ) -> Result<ServiceAccount, OvError> {
         ServiceAccount::from_token_impl(client, token, &cancel).await
+    }
+
+    /// The server this SA signed in to: the client's
+    /// [`ClientConfig::server`](crate::api::ClientConfig::server), or the one discovered from the
+    /// token's URL (TS `sa.config`). Contract-v1.6.
+    pub fn server_config(&self) -> ServerConfig {
+        self.inner.config.clone()
+    }
+
+    /// The server's issuer (`server_config().issuer`). Contract-v1.6.
+    pub fn issuer(&self) -> String {
+        self.inner.config.issuer.clone()
     }
 
     /// The SA's id.

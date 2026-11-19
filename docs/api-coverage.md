@@ -419,3 +419,32 @@ not the facade, and are out of scope here.
 | `protocol SecureStore` (`get` / `set` / `delete`) | `crate::host::SecureStore` | a Host trait; values are bytes, not strings |
 | `MemoryStore` | not ported: a test/in-memory Host implementation stays on each platform (`ov-testkit` has the Rust one) | |
 | `KeychainStore` | not ported: the iOS Host's `SecureStore` implementation (W3-II) | |
+
+## 10. contract-v1.6 additions (2026-11-19)
+
+The iOS OpenVireoKit calls that moved onto the core `Vault` (W3-BS2's CONTRACT-REQUESTs 1-8, see
+`bindings/ov-ffi-swift/README.md`), the `ov` CLI's issuer lookup and local vaults on the Host clock.
+Details in `docs/adr/0001-contract.md` § contract-v1.6.
+
+| Client | Rust | Notes |
+|---|---|---|
+| Swift Kit `lastUsed` (`times.usageCount > 0 ? times.lastAccess`) | `EntrySummary::last_access_at`, `EntryRecord::last_access_at`, `usage_count` | request 1 |
+| Swift Kit `applyExtras`: custom fields in the editor's order | `EntryInput::field_order` | request 2 |
+| Swift Kit `backgroundColor` / `foregroundColor` write | `EntryInput::{foreground_color, background_color}` | request 2 |
+| Swift Kit `entry.customIcon = uuid` (and clear) | `EntryInput::custom_icon` | request 2; ids from `Vault::add_custom_icon` |
+| Swift Kit `addEntry(_, groupPath:)` with the model's UUID | `Vault::add_entry_with_id` | request 3 |
+| Swift Kit attachment protected flag (read, write) | `AttachmentInfo::protected`, `Vault::set_attachment_with` | request 4 |
+| Swift Kit `entries()` → `model(...)` for every entry; AutoFill `CredentialRecord.records(for:)` | `Vault::entry_records` | request 5 |
+| Swift `Importer.merge` / `importCopies(into:under:)` into a local database | `Vault::import_from` (`LocalImportMode`) | request 6; `ImportSummary` |
+| Swift `Importer.importableEntries(_:).count`, `importableGroupCount(_:)` | `Vault::import_preview` | request 6; `ImportPreview` |
+| Swift `Importer.importTargets(_:)` | `Vault::import_targets` | request 6; `ImportTarget` |
+| Swift Kit `meta.databaseName = …` (local) | `Vault::set_name` | request 7 |
+| Swift Kit `meta[customData:]` get / set (`KPXC_REMOTE_SYNC_SETTINGS`, links) | `Vault::meta_custom_data`, `Vault::set_meta_custom_data` | request 7 |
+| Swift Kit `exportCopy` / "save a copy" (remotes dropped) | `Vault::copy_without_remotes` + `Vault::set_name` + `Vault::save_local` | request 7 |
+| Swift Kit `copy.kdf = .databaseDefault` | `Vault::set_kdf(KdbxKdf::DatabaseDefault)`; `Vault::export_kdbx_with` | request 7; `KdbxKdf` |
+| Swift Kit `server.history`, `openVersion` (self-hosted) | `SelfHosted::history`, `SelfHosted::open_version` | request 8 |
+| TS `ServiceAccount.config` (`sa.config.issuer`, used by `ov`) | `ServiceAccount::server_config`, `ServiceAccount::issuer` | W3-L3; replaces `bins/ov`'s own token decoding |
+| local `.kdbx` opened or created with the app's clock | `OvClient::open_local`, `OvClient::create_local` | W2-A; `Vault::open_local` / `create_local` unchanged |
+| desktop `SyncEngine` account-vault sync of the open `Database` (serialized) | `Account::sync_vault_kdbx`, `Account::vault_kdbx_credentials` | W3-ID2; `VaultKdbxSyncResult` |
+| desktop "continue anyway" after a server rollback / lost database | `SyncOptions::accept_server_state` | W3-ID2 |
+| desktop code still on its own HTTP (`AuthClient`) borrowing the session | `Account::access_token` | W3-ID2 |

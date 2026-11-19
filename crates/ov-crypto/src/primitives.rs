@@ -129,8 +129,11 @@ pub fn argon2(
     let weak = |e: argon2::Error| OvError::new(OvErrorCode::WeakKdf, format!("Argon2 refused the parameters: {e}"));
     let p = argon2::Params::new(params.m_kib, params.t, params.p, Some(params.out_len)).map_err(weak)?;
     let mut out = Zeroizing::new(vec![0u8; params.out_len]);
+    // The work area holds password-derived blocks: keep it in wiped-on-drop memory (argon2's own
+    // `hash_password_into` frees it without wiping).
+    let mut blocks = Zeroizing::new(vec![argon2::Block::default(); p.block_count()]);
     argon2::Argon2::new(algorithm, argon2::Version::V0x13, p)
-        .hash_password_into(password, salt, &mut out)
+        .hash_password_into_with_memory(password, salt, &mut out[..], blocks.as_mut_slice())
         .map_err(weak)?;
     Ok(out)
 }

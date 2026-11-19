@@ -40,4 +40,4 @@ pub use payload::{
     default_share_fields, item_share_payload, shareable_fields, text_share_payload, EntryField, ShareField,
     SharePayload, ShareRef, ShareableField, DEFAULT_SHARE_FIELDS,
 };
-pub use totp::{entry_totp_uri, parse_totp_uri, totp_code, TotpAlgorithm, TotpCode, TotpParams};
+pub use totp::{base32_decode, entry_totp_uri, parse_totp_uri, totp_code, TotpAlgorithm, TotpCode, TotpParams};

@@ -71,6 +71,26 @@ impl OvClient {
         guard_async(self.0.connect(issuer, tok(&cancel))).await.map(Account::wrap)
     }
 
+    /// Opens a local `.kdbx` on this client's Host clock (contract-v1.6).
+    pub async fn open_local(
+        &self,
+        kdbx: Vec<u8>,
+        credentials: core::KdbxCredentials,
+        cancel: Arc<CancelToken>,
+    ) -> R<Arc<Vault>> {
+        guard_async(self.0.open_local(kdbx, credentials, tok(&cancel))).await.map(Vault::wrap)
+    }
+
+    /// Creates a new local database on this client's Host clock (contract-v1.6).
+    pub async fn create_local(
+        &self,
+        name: String,
+        credentials: core::KdbxCredentials,
+        cancel: Arc<CancelToken>,
+    ) -> R<Arc<Vault>> {
+        guard_async(self.0.create_local(name, credentials, tok(&cancel))).await.map(Vault::wrap)
+    }
+
     /// The remembered accounts (SPEC §21).
     pub async fn remembered_accounts(&self) -> R<Vec<core::RememberedAccount>> {
         guard_async(self.0.remembered_accounts()).await
@@ -406,6 +426,30 @@ impl Account {
         guard_async(self.0.has_pending_edits(vault_id)).await
     }
 
+    // ------------------------------------------- vault files and the session token (v1.6)
+
+    /// The credentials an account vault's `.kdbx` is under (contract-v1.6). Wipe them.
+    pub async fn vault_kdbx_credentials(&self, vault_id: String, cancel: Arc<CancelToken>) -> R<core::KdbxCredentials> {
+        guard_async(self.0.vault_kdbx_credentials(vault_id, tok(&cancel))).await
+    }
+
+    /// Syncs an account vault held as `.kdbx` bytes (contract-v1.6).
+    pub async fn sync_vault_kdbx(
+        &self,
+        vault_id: String,
+        kdbx: Vec<u8>,
+        base: Option<Vec<u8>>,
+        options: core::SyncOptions,
+        cancel: Arc<CancelToken>,
+    ) -> R<core::VaultKdbxSyncResult> {
+        guard_async(self.0.sync_vault_kdbx(vault_id, kdbx, base, options, tok(&cancel))).await
+    }
+
+    /// The session's access token, refreshed when needed (contract-v1.6). Don't log it.
+    pub async fn access_token(&self, force_refresh: bool, cancel: Arc<CancelToken>) -> R<Vec<u8>> {
+        guard_async(self.0.access_token(force_refresh, tok(&cancel))).await
+    }
+
     // ------------------------------------------------------------------------ history
 
     /// The saved versions of a vault.
@@ -508,6 +552,31 @@ impl Vault {
         guard_async(self.0.save_local(tok(&cancel))).await
     }
 
+    /// Renames a local database (contract-v1.6).
+    pub fn set_name(&self, name: String) -> R<()> {
+        guard(|| self.0.set_name(name))
+    }
+
+    /// Sets a local database's key derivation (contract-v1.6).
+    pub fn set_kdf(&self, kdf: core::KdbxKdf) -> R<()> {
+        guard(|| self.0.set_kdf(kdf))
+    }
+
+    /// A local copy without sync-server remotes (contract-v1.6).
+    pub fn copy_without_remotes(&self, credentials: Option<core::KdbxCredentials>) -> R<Arc<Vault>> {
+        guard(|| self.0.copy_without_remotes(credentials)).map(Vault::wrap)
+    }
+
+    /// A database custom data value (contract-v1.6).
+    pub fn meta_custom_data(&self, key: String) -> R<Option<String>> {
+        guard_ok(|| self.0.meta_custom_data(key))
+    }
+
+    /// Sets or removes a database custom data item (contract-v1.6).
+    pub fn set_meta_custom_data(&self, key: String, value: Option<String>) -> R<()> {
+        guard(|| self.0.set_meta_custom_data(key, value))
+    }
+
     // ------------------------------------------------------------------------- state
 
     /// The vault id.
@@ -560,6 +629,11 @@ impl Vault {
     /// Every group.
     pub fn groups(&self) -> R<Vec<core::GroupInfo>> {
         guard_ok(|| self.0.groups())
+    }
+
+    /// Every entry with its values in one call (contract-v1.6).
+    pub fn entry_records(&self, include_recycle_bin: bool) -> R<Vec<core::EntryRecord>> {
+        guard_ok(|| self.0.entry_records(include_recycle_bin))
     }
 
     /// One entry with its fields.
@@ -630,6 +704,11 @@ impl Vault {
         guard(|| self.0.add_entry(group_id, input))
     }
 
+    /// Adds an entry with a chosen id (contract-v1.6).
+    pub fn add_entry_with_id(&self, entry_id: String, group_id: String, input: core::EntryInput) -> R<String> {
+        guard(|| self.0.add_entry_with_id(entry_id, group_id, input))
+    }
+
     /// Edits an entry.
     pub fn edit_entry(&self, entry_id: String, input: core::EntryInput) -> R<()> {
         guard(|| self.0.edit_entry(entry_id, input))
@@ -658,6 +737,12 @@ impl Vault {
     /// Adds or replaces an attachment.
     pub fn set_attachment(&self, entry_id: String, name: String, data: Vec<u8>) -> R<()> {
         guard(|| self.0.set_attachment(entry_id, name, data))
+    }
+
+    /// Adds or replaces an attachment with its protected flag (`nil` keeps the replaced one's;
+    /// contract-v1.6).
+    pub fn set_attachment_with(&self, entry_id: String, name: String, data: Vec<u8>, protected: Option<bool>) -> R<()> {
+        guard(|| self.0.set_attachment_with(entry_id, name, data, protected))
     }
 
     /// Removes an attachment.
@@ -715,6 +800,23 @@ impl Vault {
         guard(|| self.0.apply_autofill_edits(edits))
     }
 
+    // ------------------------------------------------------------------------ import
+
+    /// Imports another open vault into this one (contract-v1.6).
+    pub fn import_from(&self, source: Arc<Vault>, mode: core::LocalImportMode) -> R<core::ImportSummary> {
+        guard(|| self.0.import_from(source.0.clone(), mode))
+    }
+
+    /// What importing this vault would bring in (contract-v1.6).
+    pub fn import_preview(&self) -> R<core::ImportPreview> {
+        guard_ok(|| self.0.import_preview())
+    }
+
+    /// The groups an import can go into (contract-v1.6).
+    pub fn import_targets(&self) -> R<Vec<core::ImportTarget>> {
+        guard_ok(|| self.0.import_targets())
+    }
+
     // -------------------------------------------------------------------------- sync
 
     /// Syncs with the server (SPEC §10).
@@ -744,6 +846,17 @@ impl Vault {
         guard_async(self.0.export_kdbx(credentials, group_ids, tok(&cancel))).await
     }
 
+    /// Exports as a `.kdbx` file with a chosen key derivation (contract-v1.6).
+    pub async fn export_kdbx_with(
+        &self,
+        credentials: core::KdbxCredentials,
+        group_ids: Option<Vec<String>>,
+        kdf: core::KdbxKdf,
+        cancel: Arc<CancelToken>,
+    ) -> R<Vec<u8>> {
+        guard_async(self.0.export_kdbx_with(credentials, group_ids, kdf, tok(&cancel))).await
+    }
+
     /// Exports as plain CSV or JSON (secret: the caller wipes it).
     pub fn export_plain(&self, format: core::ExportFormat, group_ids: Option<Vec<String>>) -> R<Vec<u8>> {
         guard(|| self.0.export_plain(format, group_ids))
@@ -764,6 +877,16 @@ impl ServiceAccount {
         guard_async(core::ServiceAccount::from_token(client.0.clone(), token, tok(&cancel)))
             .await
             .map(|s| Arc::new(ServiceAccount(s)))
+    }
+
+    /// The server this service account signed in to (contract-v1.6).
+    pub fn server_config(&self) -> R<core::ServerConfig> {
+        guard_ok(|| self.0.server_config())
+    }
+
+    /// The server's issuer (contract-v1.6).
+    pub fn issuer(&self) -> R<String> {
+        guard_ok(|| self.0.issuer())
     }
 
     /// The service account's id.
@@ -878,6 +1001,22 @@ impl SelfHosted {
         cancel: Arc<CancelToken>,
     ) -> R<core::SelfHostedSyncResult> {
         guard_async(self.0.sync_database(database_id, kdbx, credentials, tok(&cancel))).await
+    }
+
+    /// The versions the server keeps of a database (contract-v1.6).
+    pub async fn history(&self, database_id: String, cancel: Arc<CancelToken>) -> R<Vec<core::VaultVersion>> {
+        guard_async(self.0.history(database_id, tok(&cancel))).await
+    }
+
+    /// Opens one kept version of a database, read-only (contract-v1.6).
+    pub async fn open_version(
+        &self,
+        database_id: String,
+        revision: u64,
+        credentials: core::KdbxCredentials,
+        cancel: Arc<CancelToken>,
+    ) -> R<Arc<Vault>> {
+        guard_async(self.0.open_version(database_id, revision, credentials, tok(&cancel))).await.map(Vault::wrap)
     }
 
     /// Subscribes to the server's events.

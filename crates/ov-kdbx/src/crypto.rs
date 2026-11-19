@@ -234,6 +234,8 @@ fn argon2_full(
         b.data(argon2::AssociatedData::new(a).map_err(weak)?);
     }
     let params = b.build().map_err(weak)?;
+    // Wiped on drop (argon2 `zeroize`): the blocks are derived from the composite key.
+    let mut blocks = zeroize::Zeroizing::new(vec![argon2::Block::default(); params.block_count()]);
     let algorithm = match kind {
         Argon2Type::D => argon2::Algorithm::Argon2d,
         Argon2Type::Id => argon2::Algorithm::Argon2id,
@@ -243,7 +245,7 @@ fn argon2_full(
         None => argon2::Argon2::new(algorithm, version, params),
     };
     let mut out = Zeroizing::new(vec![0u8; 32]);
-    ctx.hash_password_into(raw, salt, &mut out).map_err(weak)?;
+    ctx.hash_password_into_with_memory(raw, salt, &mut out[..], blocks.as_mut_slice()).map_err(weak)?;
     Ok(out)
 }
 

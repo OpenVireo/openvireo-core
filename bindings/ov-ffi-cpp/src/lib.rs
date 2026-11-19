@@ -26,6 +26,8 @@ mod more;
 mod opaque;
 mod primitives;
 mod records;
+mod test_servers;
+mod v16;
 
 pub use edge::FfiError;
 pub use handles::{
@@ -56,6 +58,7 @@ use opaque::{
     test_server_enabled,
 };
 use primitives::{aead_decrypt, aead_encrypt, argon2id, hkdf_sha256, random_bytes, sha256};
+pub use test_servers::{test_servers_start, TestServers, TestStream};
 
 /// The core's version, as C++ sees it (`ov::version()`).
 pub fn version() -> String {
@@ -280,6 +283,10 @@ pub mod ffi {
         has_expires_at: bool,
         expires_at: i64,
         in_recycle_bin: bool,
+        /// contract-v1.6: `LastAccessTime` when `usage_count > 0`.
+        has_last_access_at: bool,
+        last_access_at: i64,
+        usage_count: u32,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -778,6 +785,8 @@ pub mod ffi {
     struct AttachmentInfo {
         name: String,
         size: u64,
+        /// contract-v1.6; Rust `protected` (a C++ keyword).
+        is_protected: bool,
     }
 
     /// Rust `EntryRecord`.
@@ -800,6 +809,10 @@ pub mod ffi {
         attachments: Vec<AttachmentInfo>,
         history_count: u32,
         quality_check: bool,
+        /// contract-v1.6: `LastAccessTime` when `usage_count > 0`.
+        has_last_access_at: bool,
+        last_access_at: i64,
+        usage_count: u32,
     }
 
     #[derive(Clone)]
@@ -844,7 +857,17 @@ pub mod ffi {
         at: i64,
     }
 
-    /// Rust `EntryInput`.
+    /// What [`EntryInput`] does to the custom icon (contract-v1.6).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum CustomIconChange {
+        Keep,
+        Clear,
+        /// Set to `EntryInput::custom_icon`.
+        Set,
+    }
+
+    /// Rust `EntryInput`. The fields after `expiry` are contract-v1.6; left value-initialized they
+    /// change nothing.
     struct EntryInput {
         fields: Vec<FieldInput>,
         remove_fields: Vec<String>,
@@ -853,6 +876,98 @@ pub mod ffi {
         has_icon_id: bool,
         icon_id: u32,
         expiry: EntryExpiry,
+        /// `#RRGGBB`, or empty to clear.
+        has_foreground_color: bool,
+        foreground_color: String,
+        has_background_color: bool,
+        background_color: String,
+        custom_icon_change: CustomIconChange,
+        custom_icon: String,
+        /// Custom fields in this order after the standard ones.
+        has_field_order: bool,
+        field_order: Vec<String>,
+    }
+
+    /// Rust `LocalImportMode` kind (contract-v1.6).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum LocalImportKind {
+        Merge,
+        Copies,
+    }
+
+    /// Rust `LocalImportMode`: `Copies` goes under `parent_group_id` (empty = the root).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct LocalImportMode {
+        kind: LocalImportKind,
+        parent_group_id: String,
+    }
+
+    /// Rust `ImportSummary` (contract-v1.6).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct ImportSummary {
+        added: u32,
+        updated: u32,
+        unchanged: u32,
+        groups_added: u32,
+        changes: Vec<MergeChange>,
+    }
+
+    /// Rust `ImportPreview` (contract-v1.6).
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    struct ImportPreview {
+        entries: u32,
+        groups: u32,
+    }
+
+    /// Rust `ImportTarget` (contract-v1.6).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct ImportTarget {
+        group_id: String,
+        path: String,
+    }
+
+    /// Rust `KdbxKdf` variant (contract-v1.6).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum KdbxKdfKind {
+        /// Argon2d, 64 MiB, 10 iterations, 2 lanes.
+        DatabaseDefault,
+        Argon2d,
+        Argon2id,
+        AesKdf,
+    }
+
+    /// Rust `KdbxKdf`: Argon2 reads `memory` (bytes), `iterations`, `parallelism`; AES-KDF reads
+    /// `rounds`.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct KdbxKdf {
+        kind: KdbxKdfKind,
+        memory: u64,
+        iterations: u64,
+        parallelism: u32,
+        rounds: u64,
+    }
+
+    /// What [`TestStream::poll_chunk`] found (feature `test-server`).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum TestStreamPollKind {
+        Data,
+        /// Nothing yet: poll again later.
+        Pending,
+        /// The stream ended.
+        End,
+    }
+
+    /// One poll of a test event stream.
+    struct TestStreamPoll {
+        kind: TestStreamPollKind,
+        data: Vec<u8>,
+    }
+
+    /// An optional string (contract-v1.6 `Vault::meta_custom_data`).
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct OptionalString {
+        has: bool,
+        value: String,
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1075,6 +1190,21 @@ pub mod ffi {
     /// Rust `SelfHostedSyncResult`: save `kdbx` as the local file.
     struct SelfHostedSyncResult {
         kdbx: Vec<u8>,
+        report: SyncReport,
+    }
+
+    /// Rust `SyncOptions` (contract-v1.6 `accept_server_state`: "continue anyway").
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct SyncOptions {
+        local_changed: bool,
+        accept_server_state: bool,
+    }
+
+    /// Rust `VaultKdbxSyncResult` (contract-v1.6): keep `kdbx` as the local copy, under
+    /// `credentials` (the vault key as a raw key file; wipe it).
+    struct VaultKdbxSyncResult {
+        kdbx: Vec<u8>,
+        credentials: KdbxCredentials,
         report: SyncReport,
     }
 
@@ -1803,6 +1933,136 @@ pub mod ffi {
         fn is_paired(self: &RestoredSelfHosted) -> bool;
         /// The server, when paired (call once); else `invalid_request`.
         fn take(self: &mut RestoredSelfHosted) -> Result<Box<SelfHosted>>;
+
+        // ---- contract-v1.6 (docs/adr/0001-contract.md)
+        /// A local `.kdbx` on this client's Host clock.
+        fn open_local(
+            self: &Client,
+            kdbx: Vec<u8>,
+            credentials: KdbxCredentials,
+            cancel: &CancelToken,
+        ) -> Result<Box<Vault>>;
+        fn create_local(
+            self: &Client,
+            name: &str,
+            credentials: KdbxCredentials,
+            cancel: &CancelToken,
+        ) -> Result<Box<Vault>>;
+        fn set_name(self: &Vault, name: &str) -> Result<()>;
+        fn set_kdf(self: &Vault, kdf: KdbxKdf) -> Result<()>;
+        /// Empty `credentials` (no password, no key file) keep a local file's own.
+        fn copy_without_remotes(self: &Vault, credentials: KdbxCredentials) -> Result<Box<Vault>>;
+        fn meta_custom_data(self: &Vault, key: &str) -> Result<OptionalString>;
+        /// `has_value == false` removes the item.
+        fn set_meta_custom_data(self: &Vault, key: &str, has_value: bool, value: &str) -> Result<()>;
+        fn entry_records(self: &Vault, include_recycle_bin: bool) -> Result<Vec<EntryRecord>>;
+        fn add_entry_with_id(self: &Vault, entry_id: &str, group_id: &str, input: EntryInput) -> Result<String>;
+        /// `has_protected == false` keeps the replaced attachment's flag (protected for a new one).
+        fn set_attachment_with(
+            self: &Vault,
+            entry_id: &str,
+            name: &str,
+            data: Vec<u8>,
+            has_protected: bool,
+            is_protected: bool,
+        ) -> Result<()>;
+        fn import_from(self: &Vault, source: &Vault, mode: &LocalImportMode) -> Result<ImportSummary>;
+        fn import_preview(self: &Vault) -> Result<ImportPreview>;
+        fn import_targets(self: &Vault) -> Result<Vec<ImportTarget>>;
+        /// An empty `group_ids` exports every group.
+        fn export_kdbx_with(
+            self: &Vault,
+            credentials: KdbxCredentials,
+            group_ids: Vec<String>,
+            kdf: KdbxKdf,
+            cancel: &CancelToken,
+        ) -> Result<Vec<u8>>;
+        fn history(self: &SelfHosted, database_id: &str, cancel: &CancelToken) -> Result<Vec<VaultVersion>>;
+        fn open_version(
+            self: &SelfHosted,
+            database_id: &str,
+            revision: u64,
+            credentials: KdbxCredentials,
+            cancel: &CancelToken,
+        ) -> Result<Box<Vault>>;
+        fn server_config(self: &ServiceAccount) -> Result<ServerConfig>;
+        fn issuer(self: &ServiceAccount) -> Result<String>;
+        /// The newest vault key as `.kdbx` credentials (a raw key file). Wipe them.
+        fn vault_kdbx_credentials(self: &Account, vault_id: &str, cancel: &CancelToken) -> Result<KdbxCredentials>;
+        /// Syncs an account vault held as `.kdbx` bytes; `has_base == false` uses the cached base.
+        fn sync_vault_kdbx(
+            self: &Account,
+            vault_id: &str,
+            kdbx: Vec<u8>,
+            has_base: bool,
+            base: Vec<u8>,
+            options: SyncOptions,
+            cancel: &CancelToken,
+        ) -> Result<VaultKdbxSyncResult>;
+        /// The session's access token (UTF-8), refreshed when needed. Never log it.
+        fn access_token(self: &Account, force_refresh: bool, cancel: &CancelToken) -> Result<Vec<u8>>;
+        /// [`Vault::sync`] with every option (`accept_server_state`).
+        fn sync_with_options(self: &Vault, options: SyncOptions, cancel: &CancelToken) -> Result<SyncReport>;
+
+        // ---- in-process test servers (feature `test-server`; README.md "Test servers")
+        type TestServers;
+        type TestStream;
+        /// Fresh auth + sync servers, the clock at `now_ms` (0: the testkit default). Fails with
+        /// `internal` without the feature.
+        fn test_servers_start(now_ms: i64) -> Result<Box<TestServers>>;
+        fn issuer(self: &TestServers) -> Result<String>;
+        fn api_url(self: &TestServers) -> Result<String>;
+        fn sync_url(self: &TestServers) -> Result<String>;
+        fn now_ms(self: &TestServers) -> Result<i64>;
+        fn set_now_ms(self: &TestServers, ms: i64) -> Result<()>;
+        fn advance_ms(self: &TestServers, delta_ms: i64) -> Result<i64>;
+        /// For a C++ `HttpTransport::send`: answers in process; failures go to `failure`.
+        fn handle(self: &TestServers, req: &HttpRequest, failure: &mut TransportFailure) -> Result<HttpResponse>;
+        /// For a C++ `HttpTransport::open_stream`.
+        fn open_stream(
+            self: &TestServers,
+            req: &HttpRequest,
+            failure: &mut TransportFailure,
+        ) -> Result<Box<TestStream>>;
+        /// A Client on the servers' own Host (memory store and cache, the test clock).
+        fn client(self: &TestServers, config: &ClientConfig) -> Result<Box<Client>>;
+        fn set_offline(self: &TestServers, offline: bool) -> Result<()>;
+        /// `status == 0` is a transport failure; empty `server` / `method` / `path_contains` match any.
+        fn fail_next(
+            self: &TestServers,
+            server: &str,
+            method: &str,
+            path_contains: &str,
+            status: u16,
+            times: usize,
+        ) -> Result<()>;
+        fn clear_faults(self: &TestServers) -> Result<()>;
+        fn set_server_clock_skew_ms(self: &TestServers, ms: i64) -> Result<()>;
+        fn requests(self: &TestServers) -> Result<Vec<String>>;
+        fn clear_requests(self: &TestServers) -> Result<()>;
+        fn set_live_access(self: &TestServers, live: bool) -> Result<()>;
+        fn vault_blob(self: &TestServers, vault_id: &str) -> Result<OptionalBytes>;
+        fn vault_revision(self: &TestServers, vault_id: &str) -> Result<i64>;
+        fn put_vault_blob(self: &TestServers, vault_id: &str, data: &[u8]) -> Result<()>;
+        fn rollback_vault(self: &TestServers, vault_id: &str, to_revision: i64) -> Result<()>;
+        fn lose_vault(self: &TestServers, vault_id: &str) -> Result<()>;
+        fn add_device_token(self: &TestServers, token: &str, user: &str) -> Result<()>;
+        fn close_streams(self: &TestServers) -> Result<()>;
+        fn user_id(self: &TestServers, email: &str) -> Result<String>;
+        fn set_totp_code(self: &TestServers, email: &str, code: &str) -> Result<bool>;
+        fn totp_now(self: &TestServers, email: &str) -> Result<String>;
+        fn email_code(self: &TestServers, user_id: &str) -> Result<String>;
+        fn approve_reset(self: &TestServers, email: &str, delay_secs: i64) -> Result<String>;
+        fn invitation_token(self: &TestServers, org_id: &str, email: &str) -> Result<String>;
+        fn add_member(self: &TestServers, org_id: &str, email: &str, role: &str) -> Result<bool>;
+        fn revoke_sessions(self: &TestServers, principal: &str) -> Result<()>;
+        fn access_events(self: &TestServers) -> Result<String>;
+        fn set_deletion_days(self: &TestServers, days: i64) -> Result<()>;
+        fn set_access_token_ttl_secs(self: &TestServers, secs: i64) -> Result<()>;
+        fn set_recent_token_ms(self: &TestServers, ms: i64) -> Result<()>;
+        fn status(self: &TestStream) -> Result<u16>;
+        fn poll_chunk(self: &TestStream) -> Result<TestStreamPoll>;
+        fn close(self: &TestStream) -> Result<()>;
     }
 
     // ------------------------------------------- below the facade, for C++ (README.md, "Desktop swap")

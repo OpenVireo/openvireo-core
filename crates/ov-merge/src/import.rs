@@ -42,6 +42,16 @@ fn importable_entries(source: &Database) -> usize {
     walk(&source.root, bin)
 }
 
+/// What importing `source` would bring in: `(entries, groups)` outside its Recycle Bin, the root
+/// group not counted (Swift `Importer.importableEntries(_:).count`, `importableGroupCount`).
+pub fn import_preview(source: &Database) -> (usize, usize) {
+    let bin = recycle_bin_of(source);
+    fn groups(g: &Group, bin: Option<Uuid>) -> usize {
+        g.groups.iter().filter(|c| Some(c.uuid) != bin).map(|c| 1 + groups(c, bin)).sum()
+    }
+    (importable_entries(source), groups(&source.root, bin))
+}
+
 /// Merges `source` into `target` by UUID, keeping the newer version of each entry (the older one goes
 /// into its history) and deleting nothing, so importing the same file twice changes nothing. The
 /// target's root group (an account vault's name) and database custom data are left as they are.

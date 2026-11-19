@@ -70,8 +70,9 @@ pub(crate) enum VaultSource {
     Local(KdbxCredentials),
     /// An account vault.
     Account { account: crate::api::Account, info: Mutex<VaultInfo> },
-    /// An old version from history (read-only).
-    Version { info: VaultInfo },
+    /// An old version from history (read-only): of an account vault (`info`), or of a self-hosted
+    /// database (`None`).
+    Version { info: Option<VaultInfo> },
     /// A vault opened by a service account (weak: the SA keeps its opened vaults).
     ServiceAccount { sa: std::sync::Weak<ServiceAccountState>, info: VaultInfo },
 }
@@ -92,6 +93,8 @@ pub(crate) struct VaultState {
 /// Behind [`ServiceAccount`](crate::api::ServiceAccount).
 pub(crate) struct ServiceAccountState {
     pub(crate) client: Arc<ClientState>,
+    /// The server it signed in to.
+    pub(crate) config: ServerConfig,
     pub(crate) auth: AuthApi,
     pub(crate) sync: SyncApi,
     pub(crate) sa_id: String,

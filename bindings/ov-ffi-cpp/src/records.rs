@@ -18,7 +18,7 @@ pub(crate) fn some(s: &str) -> Option<String> {
     (!s.is_empty()).then(|| s.to_string())
 }
 
-fn bad_enum(what: &str, repr: impl std::fmt::Debug) -> OvError {
+pub(crate) fn bad_enum(what: &str, repr: impl std::fmt::Debug) -> OvError {
     OvError::new(OvErrorCode::InvalidRequest, format!("unknown {what} value {repr:?}"))
 }
 
@@ -465,9 +465,16 @@ pub(crate) fn entry_record(e: core::EntryRecord) -> ffi::EntryRecord {
         modified_at: e.modified_at,
         has_expires_at: e.expires_at.is_some(),
         expires_at: e.expires_at.unwrap_or(0),
-        attachments: e.attachments.into_iter().map(|a| ffi::AttachmentInfo { name: a.name, size: a.size }).collect(),
+        attachments: e
+            .attachments
+            .into_iter()
+            .map(|a| ffi::AttachmentInfo { name: a.name, size: a.size, is_protected: a.protected })
+            .collect(),
         history_count: e.history_count,
         quality_check: e.quality_check,
+        has_last_access_at: e.last_access_at.is_some(),
+        last_access_at: e.last_access_at.unwrap_or(0),
+        usage_count: e.usage_count,
     }
 }
 
@@ -489,10 +496,12 @@ pub(crate) fn entry_record_in(e: &ffi::EntryRecord) -> core::EntryRecord {
         attachments: e
             .attachments
             .iter()
-            .map(|a| core::AttachmentInfo { name: a.name.clone(), size: a.size })
+            .map(|a| core::AttachmentInfo { name: a.name.clone(), size: a.size, protected: a.is_protected })
             .collect(),
         history_count: e.history_count,
         quality_check: e.quality_check,
+        last_access_at: e.has_last_access_at.then_some(e.last_access_at),
+        usage_count: e.usage_count,
     }
 }
 
@@ -544,6 +553,15 @@ pub(crate) fn entry_input(e: ffi::EntryInput) -> Result<core::EntryInput, OvErro
         remove_fields: e.remove_fields,
         tags: e.has_tags.then_some(e.tags),
         icon_id: e.has_icon_id.then_some(e.icon_id),
+        foreground_color: e.has_foreground_color.then_some(e.foreground_color),
+        background_color: e.has_background_color.then_some(e.background_color),
+        custom_icon: match e.custom_icon_change {
+            ffi::CustomIconChange::Keep => None,
+            ffi::CustomIconChange::Clear => Some(None),
+            ffi::CustomIconChange::Set => Some(Some(e.custom_icon)),
+            other => return Err(bad_enum("CustomIconChange", other.repr)),
+        },
+        field_order: e.has_field_order.then_some(e.field_order),
     })
 }
 
@@ -888,9 +906,11 @@ mod tests {
             created_at: 1,
             modified_at: 2,
             expires_at: Some(9),
-            attachments: vec![core::AttachmentInfo { name: "f".into(), size: 4 }],
+            attachments: vec![core::AttachmentInfo { name: "f".into(), size: 4, protected: false }],
             history_count: 1,
             quality_check: true,
+            last_access_at: Some(5),
+            usage_count: 2,
         }
     }
 
@@ -975,6 +995,14 @@ mod tests {
             has_icon_id: true,
             icon_id: 4,
             expiry: ffi::EntryExpiry { kind: ffi::ExpiryKind::At, at: 99 },
+            has_foreground_color: true,
+            foreground_color: "#010203".into(),
+            has_background_color: false,
+            background_color: "ignored".into(),
+            custom_icon_change: ffi::CustomIconChange::Clear,
+            custom_icon: "ignored".into(),
+            has_field_order: true,
+            field_order: vec!["B".into(), "A".into()],
         };
         let core_input = entry_input(input).unwrap();
         assert_eq!(core_input.fields[0].protected, None);
@@ -982,6 +1010,11 @@ mod tests {
             (core_input.tags, core_input.icon_id, core_input.expiry),
             (None, Some(4), core::EntryExpiry::At(99))
         );
+        assert_eq!(
+            (core_input.foreground_color.as_deref(), core_input.background_color, core_input.custom_icon),
+            (Some("#010203"), None, Some(None))
+        );
+        assert_eq!(core_input.field_order, Some(vec!["B".to_string(), "A".to_string()]));
 
         assert_eq!(kdf_overrides_in(ffi::KdfOverrides::default()), None);
         let k = ffi::KdfOverrides { has_t: true, t: 4, ..Default::default() };

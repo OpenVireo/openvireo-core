@@ -13,12 +13,13 @@ publish = false
 crate-type = ["staticlib", "rlib"]
 
 [features]
-# opaque-ke's server half and the seeded OPAQUE client steps (`ov::opaque_server_*`,
-# `ov::opaque_*_seeded`), for the desktop's tests only. Off by default: without it those functions
+# opaque-ke's server half, the seeded OPAQUE client steps (`ov::opaque_server_*`,
+# `ov::opaque_*_seeded`) and the in-process test servers (`ov::test_servers_start`), for the
+# desktop's tests only. Off by default: without it those functions
 # are still declared (the header doesn't change) but fail with `internal`. Corrosion turns it on
 # with `corrosion_import_crate(... FEATURES test-server)`, `cargo xtask cpp --features test-server`
 # for the prebuilt package (README.md, "Test server").
-test-server = ["ov-opaque/test-server", "dep:rand_chacha"]
+test-server = ["ov-opaque/test-server", "dep:rand_chacha", "dep:ov-testkit", "dep:serde_json"]
 
 [dependencies]
 ov-core = { path = "../../crates/ov-core" }
@@ -30,6 +31,9 @@ ov-merge = { path = "../../crates/ov-merge" }
 ov-opaque = { path = "../../crates/ov-opaque", default-features = false }
 rand_core = { workspace = true, features = ["getrandom"] }
 rand_chacha = { workspace = true, optional = true }
+# W2-E's in-process auth + sync servers for the desktop's tests (`ov::test_servers_start`).
+ov-testkit = { path = "../../crates/ov-testkit", optional = true }
+serde_json = { workspace = true, optional = true }
 async-trait.workspace = true
 cxx.workspace = true
 # `executor` for block_on: the bridge's calls block their (worker) thread, see README.md.

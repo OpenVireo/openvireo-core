@@ -377,6 +377,8 @@ fn builds_share_payloads_and_totp() {
         attachments: vec![],
         history_count: 0,
         quality_check: true,
+        last_access_at: None,
+        usage_count: 0,
     };
     assert_eq!(default_share_fields(), ["UserName", "Password", "URL"]);
     let names: Vec<String> = shareable_fields(entry.clone()).into_iter().map(|f| f.name).collect();

@@ -244,7 +244,7 @@ impl Vault {
 // ----------------------------------------------------------------------- ServiceAccount
 
 /// `ov::ServiceAccount`: [`core::ServiceAccount`].
-pub struct ServiceAccount(core::ServiceAccount);
+pub struct ServiceAccount(pub(crate) core::ServiceAccount);
 
 /// `ov::service_account_from_token()`: [`core::ServiceAccount::from_token`].
 pub fn service_account_from_token(client: &Client, token: Vec<u8>, cancel: &CancelToken) -> R<Box<ServiceAccount>> {
@@ -314,7 +314,7 @@ impl ServiceAccount {
 // --------------------------------------------------------------------------- SelfHosted
 
 /// `ov::SelfHosted`: [`core::SelfHosted`].
-pub struct SelfHosted(core::SelfHosted);
+pub struct SelfHosted(pub(crate) core::SelfHosted);
 
 /// `ov::RestoredSelfHosted`: the `Option<SelfHosted>` of [`core::SelfHosted::restore`].
 pub struct RestoredSelfHosted(Option<core::SelfHosted>);

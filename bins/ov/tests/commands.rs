@@ -112,13 +112,17 @@ async fn injects_bare_and_braced_references_from_stdin_or_a_file() {
 // --------------------------------------------------------------------------------- ov run
 
 /// The TS test's Node script, as a shell script: writes the secret whole and split across two
-/// writes 20 ms apart, then stderr, then whether the token reached the child.
+/// writes 20 ms apart, then stderr, then whether the token reached the child. Both halves are cut
+/// before the first write, so the gap between the writes is only the sleep: forking `cut` in
+/// between took longer than the masker's 100 ms hold on slow CI runners and leaked the halves.
 #[cfg(unix)]
 const RUN_SCRIPT: &str = r#"p="$DB_PASSWORD"
+a="$(printf %s "$p" | cut -c1-4)"
+b="$(printf %s "$p" | cut -c5-)"
 printf 'pw=%s\n' "$p"
-printf 'half=%s' "$(printf %s "$p" | cut -c1-4)"
+printf 'half=%s' "$a"
 sleep 0.02
-printf '%s\n' "$(printf %s "$p" | cut -c5-)"
+printf '%s\n' "$b"
 echo "stderr $GH user=$DB_USER plain=$PLAIN" >&2
 echo "token-in-env=${OPENVIREO_SERVICE_ACCOUNT_TOKEN:-none} len=${#p}"
 exit 3"#;

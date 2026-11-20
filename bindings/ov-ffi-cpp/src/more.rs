@@ -402,6 +402,24 @@ impl SelfHosted {
         })
     }
 
+    /// [`core::SelfHosted::sync_database_with`] (contract-v1.7).
+    pub fn sync_database_with(
+        &self,
+        database_id: &str,
+        kdbx: Vec<u8>,
+        credentials: ffi::KdbxCredentials,
+        options: ffi::SyncOptions,
+        cancel: &CancelToken,
+    ) -> R<ffi::SelfHostedSyncResult> {
+        let options = crate::v16::sync_options_in(options);
+        run(cancel, |c| async move {
+            self.0
+                .sync_database_with(database_id.into(), kdbx, convert::kdbx_credentials(credentials), options, c)
+                .await
+                .map(rec::self_hosted_sync_result)
+        })
+    }
+
     /// [`core::SelfHosted::events`].
     pub fn events(&self, cancel: &CancelToken) -> R<Box<EventStream>> {
         run(cancel, |c| async move { self.0.events(c).await.map(|s| Box::new(EventStream(s))) })

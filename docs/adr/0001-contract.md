@@ -159,6 +159,22 @@ or `AesKdf { rounds }`; every choice gets a fresh salt, and Argon2 upgrades a KD
 Not added: `SelfHostedSync.normalize` / `sameServer` (BS2's optional extra in request 7); a "mark entry
 used" edit (no client increments `UsageCount` today; iOS only reads it).
 
+## contract-v1.7 (2026-11-20, W3-A4)
+
+User-approved 2026-11-20. Additive, except one error code:
+
+| # | Change |
+|---|---|
+| 1 | `KdbxCredentials.password_hash: Option<SecretBytes>`: the password's SHA-256 (the composite key's password component, TS `passwordHash`) instead of `password`; with or without `key_file`. Both `password` and `password_hash`, or a hash that isn't 32 bytes: `invalid_request`. Honoured everywhere credentials are (open/create/save local, export, import, self-hosted sync and versions) |
+| 2 | `SelfHosted::sync_database_with(database_id, kdbx, credentials, SyncOptions)`: `local_changed: false` sends a HEAD first and, when the server is unchanged, returns `kdbx` itself (`Unchanged`, nothing decrypted, no KDF); `accept_server_state` as for account vaults. `sync_database` = the defaults |
+| 3 | A wrong local-file key is `vault_key_mismatch` (TS 0.11, and what `ov_kdbx::read` / `Kdbx.read` say) from `Vault::open_local`, `OvClient::open_local` and `Account::import_kdbx`; was `kdbx_error`. A damaged file stays `kdbx_error` |
+| 4 | Sign-in `unauthorized` / 401 carries `details` `{"reason":"keyset_unwrap_failed"}` (password accepted, keyset doesn't unwrap: wrong Secret Key; also an offline unlock or password check with a wrong password) or `{"reason":"opaque_refused"}` (OPAQUE refused: wrong email or password). After `keyset_unwrap_failed` on sign-in the core logs out the server session it opened |
+
+Behaviour (no signature change): sync opens the base whenever the copies differ (the snapshot's
+whole-second times missed same-second edits, so a service account's 412 retry kept the other copy
+whole); a service account downloads a vault with one GET and a write to an unopened vault uploads
+against that copy; merging history keeps every item of a second.
+
 ## Consequences
 
 - Wave 1/2 agents build against these files and raise a CONTRACT-REQUEST for any change.

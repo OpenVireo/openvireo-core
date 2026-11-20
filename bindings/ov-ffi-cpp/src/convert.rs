@@ -207,6 +207,7 @@ pub(crate) fn kdbx_credentials(c: ffi::KdbxCredentials) -> core::KdbxCredentials
     core::KdbxCredentials {
         password: c.has_password.then_some(c.password),
         key_file: c.has_key_file.then_some(c.key_file),
+        password_hash: c.has_password_hash.then_some(c.password_hash),
     }
 }
 

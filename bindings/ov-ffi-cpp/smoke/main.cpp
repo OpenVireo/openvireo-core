@@ -144,7 +144,7 @@ rust::Vec<std::uint8_t> vec(const std::string &s) {
     (void)account.signed_out(cancel);
     (void)account.park_session();
     // Vault edit, history, version diff, export
-    ov::EntryInput entry{{}, {}, false, {}, false, 0, ov::EntryExpiry{ov::ExpiryKind::Keep, 0}};
+    ov::EntryInput entry{{}, {}, false, {}, false, 0, ov::EntryExpiry{ov::ExpiryKind::Keep, 0}, false, {}, false, {}, ov::CustomIconChange::Keep, {}, false, {}};
     (void)vault.add_entry(vault.root_group_id(), std::move(entry));
     (void)vault.history("e");
     (void)vault.version_difference(vault, "e");
@@ -279,18 +279,18 @@ int main() {
     }
 
     // ---- Vault: a local database exercises edit, history, version diff and export for real
-    ov::KdbxCredentials creds{true, vec("pw"), false, {}};
+    ov::KdbxCredentials creds{true, vec("pw"), false, {}, false, {}};
     auto vault = ov::call([&] { return ov::vault_create_local("Local", std::move(creds), *token); });
     check(std::string(ov::call([&] { return vault->name(); })) == "Local", "vault_create_local names the vault");
     const std::string group = std::string(ov::call([&] { return vault->add_group("", "Work"); }));
-    ov::EntryInput input{{}, {}, false, {}, false, 0, ov::EntryExpiry{ov::ExpiryKind::Keep, 0}};
+    ov::EntryInput input{{}, {}, false, {}, false, 0, ov::EntryExpiry{ov::ExpiryKind::Keep, 0}, false, {}, false, {}, ov::CustomIconChange::Keep, {}, false, {}};
     input.fields.push_back(ov::FieldInput{"title", vec("Mail"), false, false});
     input.fields.push_back(ov::FieldInput{"password", vec("s3cret"), false, false});
     const std::string entry = std::string(ov::call([&] { return vault->add_entry(group, std::move(input)); }));
     check(!entry.empty(), "Vault::add_entry returns an id");
     const ov::EntryRecord record = ov::call([&] { return vault->entry(entry); });
     check(record.fields.size() >= 2, "Vault::entry returns the fields");
-    ov::EntryInput edit{{}, {}, false, {}, false, 0, ov::EntryExpiry{ov::ExpiryKind::Keep, 0}};
+    ov::EntryInput edit{{}, {}, false, {}, false, 0, ov::EntryExpiry{ov::ExpiryKind::Keep, 0}, false, {}, false, {}, ov::CustomIconChange::Keep, {}, false, {}};
     edit.fields.push_back(ov::FieldInput{"password", vec("n3w"), false, false});
     ov::call([&] { vault->edit_entry(entry, std::move(edit)); });
     check(ov::call([&] { return vault->history(entry); }).size() == 1, "Vault::edit_entry keeps one history version");
@@ -301,7 +301,7 @@ int main() {
     ov::call([&] { vault->delete_entry(entry); });
     check(ov::call([&] { return vault->is_in_recycle_bin(entry); }), "Vault::delete_entry moves it to the Recycle Bin");
     rust::Vec<std::uint8_t> kdbx = ov::call([&] { return vault->save_local(*token); });
-    ov::KdbxCredentials again{true, vec("pw"), false, {}};
+    ov::KdbxCredentials again{true, vec("pw"), false, {}, false, {}};
     auto reopened = ov::call([&] { return ov::vault_open_local(std::move(kdbx), std::move(again), *token); });
     check(ov::call([&] { return reopened->groups(); }).size() >= 2, "save_local + vault_open_local round-trip");
 

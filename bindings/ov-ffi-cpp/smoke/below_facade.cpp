@@ -99,7 +99,6 @@ Bytes from_b64u(const std::string &s) {
 
 Bytes bytes(const std::string &s) { return Bytes(s.begin(), s.end()); }
 Bytes bytes(const rust::Vec<std::uint8_t> &v) { return Bytes(v.begin(), v.end()); }
-Bytes bytes(const rust::String &s) { return Bytes(s.data(), s.data() + s.size()); }
 
 rust::Slice<const std::uint8_t> sl(const Bytes &b) { return {b.data(), b.size()}; }
 rust::Slice<const std::uint8_t> sl(const std::string &s) {
@@ -463,7 +462,7 @@ void opaque(const Json &tr, bool test_server) {
 // Opens a merged copy with the facade and compares it with the fixture's expected projection.
 void compare(const std::string &what, const Bytes &kdbx, const std::string &password, const Json &expected) {
     auto cancel = ov::new_cancel_token();
-    ov::KdbxCredentials creds{true, rvec(bytes(password)), false, {}};
+    ov::KdbxCredentials creds{true, rvec(bytes(password)), false, {}, false, {}};
     auto vault = ov::call([&] { return ov::vault_open_local(rvec(kdbx), std::move(creds), *cancel); });
     const std::string root = bare_id(std::string(vault->root_group_id()));
     const auto entries = ov::call([&] { return vault->entries(true); });

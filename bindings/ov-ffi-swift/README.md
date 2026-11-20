@@ -126,7 +126,8 @@ custom icons, move, Recycle Bin, save/reopen, CSV export).
 | export `.kdbx` with a new password (`kdf = .databaseDefault`, drop `KPXC_REMOTE_SYNC_SETTINGS`, set name) | whole database: `copyWithoutRemotes(credentials:)` (account vaults get `.databaseDefault`) + `setName` + `saveLocal`; selected groups: `exportKdbxWith(credentials:groupIds:kdf:)` | ok (contract-v1.6) |
 | "save a copy" as a new local DB with a new name, remotes dropped | `copyWithoutRemotes(credentials:)` + `setName(name:)` + `setKdf(kdf:)` + `saveLocal` | ok (contract-v1.6) |
 | self-hosted: link/unlink (`linkSyncServer`, `syncServerRemote`, `remotes` in `KPXC_REMOTE_SYNC_SETTINGS`) | `metaCustomData(key:)` / `setMetaCustomData(key:value:)` on `KPXC_REMOTE_SYNC_SETTINGS` | ok (contract-v1.6) |
-| self-hosted sync of a linked DB | `selfHosted.syncDatabase(databaseId:kdbx:credentials:)` on `saveLocal()` bytes, then `Vault.openLocal` on the result | works; Kit re-opens the merged bytes |
+| self-hosted sync of a linked DB | `selfHosted.syncDatabase(databaseId:kdbx:credentials:)` on `saveLocal()` bytes, then `Vault.openLocal` on the result | works; Kit re-opens the merged bytes. `syncDatabaseWith(databaseId:kdbx:credentials:options:)` with `localChanged: false` only sends a HEAD when nothing changed (contract-v1.7) |
+| reopen a DB from the kept password hash | `KdbxCredentials(password: nil, keyFile:, passwordHash: sha256(password))` | ok (contract-v1.7); a wrong key is `.vaultKeyMismatch` |
 | self-hosted version history (`server.history`, `openVersion`) | `selfHosted.history(databaseId:)`, `selfHosted.openVersion(databaseId:revision:credentials:)` (read-only `Vault`) | ok (contract-v1.6) |
 | `database` events while linked | `selfHosted.events()` | ok |
 | offline cache (`OfflineAccessTests`) | the core's `BlobCache` Host + `account.openOffline` / `cachedVaults` | ok; the existing Swift cache needs a one-off migration or a resync (W3-II2) |
@@ -139,3 +140,9 @@ have UniFFI defaults, so existing Swift initializers still compile. Also new: `O
 `createLocal` (local files on the Host clock) and `ServiceAccount.serverConfig()` / `issuer()`.
 `SelfHostedSync.normalize` / `sameServer` were not added. `SmokeTests/ContractV16Tests.swift` covers
 the additions.
+
+**contract-v1.7** (W3-A4, 2026-11-20): `KdbxCredentials.passwordHash` (UniFFI default `nil`, so
+`KdbxCredentials(password:keyFile:)` still compiles), `SelfHosted.syncDatabaseWith(databaseId:kdbx:credentials:options:)`,
+`.vaultKeyMismatch` for a wrong local-file key (was `.kdbxError`), and `OvError.details`
+`{"reason":"keyset_unwrap_failed"}` / `{"reason":"opaque_refused"}` on sign-in failures.
+`SmokeTests/ContractV17Tests.swift` covers them.

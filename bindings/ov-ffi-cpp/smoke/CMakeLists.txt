@@ -21,6 +21,9 @@ find_package(OpenVireoCore 0.0 REQUIRED)
 
 add_executable(ovcore_smoke main.cpp below_facade.cpp contract_v16.cpp)
 target_link_libraries(ovcore_smoke PRIVATE OpenVireoCore::ovcore)
+if(NOT MSVC)
+  target_compile_options(ovcore_smoke PRIVATE -Wall -Wextra -Werror)
+endif()
 # The contract vectors and the .kdbx merge copies are read at run time.
 get_filename_component(OV_VECTORS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../vectors" ABSOLUTE)
 if("test-server" IN_LIST OpenVireoCore_FEATURES)

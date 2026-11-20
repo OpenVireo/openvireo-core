@@ -1371,7 +1371,7 @@ impl SelfHostedJs {
         )
     }
 
-    /// [`syncDatabase`] with options: `localChanged: false` checks with a HEAD first and, when the
+    /// `syncDatabase` with options: `localChanged: false` checks with a HEAD first and, when the
     /// server is unchanged, returns `kdbx` as it is (contract-v1.7).
     #[wasm_bindgen(js_name = syncDatabaseWith, unchecked_return_type = "Promise<SelfHostedSyncResult>")]
     pub fn sync_database_with(

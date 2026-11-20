@@ -1371,6 +1371,24 @@ impl SelfHostedJs {
         )
     }
 
+    /// `syncDatabase` with options: `localChanged: false` checks with a HEAD first and, when the
+    /// server is unchanged, returns `kdbx` as it is (contract-v1.7).
+    #[wasm_bindgen(js_name = syncDatabaseWith, unchecked_return_type = "Promise<SelfHostedSyncResult>")]
+    pub fn sync_database_with(
+        &self,
+        database_id: String,
+        kdbx: Vec<u8>,
+        #[wasm_bindgen(unchecked_param_type = "KdbxCredentials")] credentials: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "SyncOptions")] options: JsValue,
+        signal: Option<AbortSignal>,
+    ) -> Promise {
+        let s = self.0.clone();
+        call(signal, move |t| async move {
+            let (credentials, options) = (arg(&credentials, "credentials")?, arg(&options, "options")?);
+            s.sync_database_with(database_id, kdbx, credentials, options, t).await
+        })
+    }
+
     /// The versions the server keeps of a database, newest first (contract-v1.6).
     #[wasm_bindgen(unchecked_return_type = "Promise<VaultVersion[]>")]
     pub fn history(&self, database_id: String, signal: Option<AbortSignal>) -> Promise {

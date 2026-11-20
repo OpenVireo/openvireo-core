@@ -121,8 +121,10 @@ Records cross as flat shared structs. cxx shared structs can't hold `Option`, so
 - Rust enums with data are flattened to a `kind` plus fields: `ImportMode`, `Grantee`, `EntryExpiry`,
   `ExpiryChange`, `LocalImportMode`, `KdbxKdf`. `EntryInput::custom_icon` (`Option<Option<String>>`) is
   `custom_icon_change` (`Keep` / `Clear` / `Set`) plus `custom_icon`.
-- contract-v1.6 added trailing fields to `EntrySummary`, `EntryRecord`, `AttachmentInfo` and `EntryInput`;
-  aggregate initializers that leave them out still compile and change nothing (`Keep`, `has_* = false`).
+- contract-v1.6 added trailing fields to `EntrySummary`, `EntryRecord`, `AttachmentInfo` and `EntryInput`,
+  and contract-v1.7 `has_password_hash` / `password_hash` to `KdbxCredentials`; aggregate initializers that
+  leave them out still compile and change nothing (`Keep`, `has_* = false`), but `-Wextra` warns
+  (`-Wmissing-field-initializers`), so the smoke lists every field.
 - A record field named `protected` in Rust is `is_protected` (a C++ keyword); an `OvError` inside a record is an
   `ErrorInfo`; a list of secrets is `rust::Vec<ov::Bytes>`.
 
@@ -224,7 +226,7 @@ In `SyncEngine::mergeAccountVault`, `changeType(change.change)` switches on `ov:
 
 ## Coverage
 
-**All bridged:** every public method and free function of `ov_core::api` (234 items since contract-v1.6, see
+**All bridged:** every public method and free function of `ov_core::api` (235 items since contract-v1.7, see
 `docs/api-coverage.md` for how they map to the TS SDK and iOS) has a C++ function, with one deliberate exclusion.
 `cargo xtask cpp --check-coverage` (also part of `cargo test -p ov-ffi-cpp`, so of `cargo xtask ci`) scans
 `crates/ov-core/src/api/*.rs` and the bridge in `src/lib.rs` and fails, naming each one, when a facade item has no
@@ -248,6 +250,7 @@ How facade names become C++ names:
 | `Account` | everything (contract-v1.6: `vault_kdbx_credentials`, `sync_vault_kdbx` with `ov::SyncOptions`, `access_token`): state and sessions (incl. `signed_out`, `verify_session`, parked sessions, `sign_out_on_unload`, `unlocked_keyset_secret` / `resume_unlocked`), register / login / TOTP / unlock, vaults and import, history, AutoFill edits, settings and two-step, devices, recovery, deletion, plans and In-App Purchase, vault sharing, orgs, audit log, service-account admin, share links |
 | `LoginStep` / `TotpChallenge` | `needs_totp`, `challenge`, `take_unlocked`; `attempt`, `last_error` |
 | `Vault` | everything: local files, state, reading, every edit (entries, groups, attachments, icons, Recycle Bin), version diff and restore, AutoFill, sync, `keep_edits`, `export_kdbx`, `export_plain`; contract-v1.6: `entry_records`, `add_entry_with_id`, `set_attachment_with`, `import_from` / `import_preview` / `import_targets`, `set_name`, `set_kdf`, `copy_without_remotes` (empty credentials keep the file's own), `meta_custom_data` / `set_meta_custom_data`, `export_kdbx_with`, `sync_with_options` (`accept_server_state`) |
+| `SelfHosted` (contract-v1.7) | `sync_database_with(database_id, kdbx, credentials, ov::SyncOptions)`: `local_changed = false` sends a HEAD first; `KdbxCredentials::has_password_hash` / `password_hash` everywhere credentials go |
 | `ServiceAccount` | everything (incl. `server_config`, `issuer`) |
 | `SelfHosted` | everything (incl. `history`, `open_version`); `restore` returns `RestoredSelfHosted` (`is_paired()`, then `take()`) |
 | `EventStream` | `next` (`kind == Closed` for the end), `reconnect`, `close` |
@@ -280,5 +283,7 @@ Deliberately not bridged:
   (`smoke/fixtures/*.kdbx`, written by `cargo test -p ov-ffi-cpp --test merge_kdbx -- --ignored
   write_smoke_fixtures`), whose merged copies it opens with `vault_open_local` and compares with the fixture's
   expected result. `contract_v16.cpp` checks the contract-v1.6 additions on local vaults (values, errors,
-  the Host clock) and `SelfHosted::history` / `open_version` over a canned transport.
+  the Host clock) and `SelfHosted::history` / `open_version` over a canned transport, then the contract-v1.7
+  ones (`password_hash`, `vault_key_mismatch`, `SelfHosted::sync_database_with`). The smoke builds with
+  `-Wall -Wextra -Werror`.
 - `example/`: the Corrosion build of the same core.

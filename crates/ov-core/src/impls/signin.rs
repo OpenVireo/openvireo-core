@@ -121,16 +121,23 @@ impl Account {
         let login = ov_opaque::start_login(&mut rng(), &password)?;
         let req = w::LoginStartRequest { email: email.trim().to_owned(), ke1: b64u(&login.ke1) };
         let started = self.call_public(cancel, self.auth().build_login_start(&req), parse_login_start).await?;
-        let wrong = |_| OvError::new(OvErrorCode::Unauthorized, "wrong email or password").with_status(401);
-        let ke2 = from_b64u(&started.ke2).map_err(wrong)?;
+        let ke2 = from_b64u(&started.ke2).map_err(|_| opaque_refused())?;
         let fin = ov_opaque::finish_login(&mut rng(), login.state, &ke2, &self.ids(&email), &self.opaque_context())
-            .map_err(|_| OvError::new(OvErrorCode::Unauthorized, "wrong email or password").with_status(401))?;
+            .map_err(|_| opaque_refused())?;
         let req = w::LoginFinishRequest {
             session_id: started.session_id,
             auth_u: b64u(&fin.auth_u),
             device: device_info(&self.inner.client.config, device_id),
         };
-        let res = self.call_public(cancel, self.auth().build_login_finish(&req), parse_login_finish).await?;
+        let res =
+            self.call_public(cancel, self.auth().build_login_finish(&req), parse_login_finish).await.map_err(|e| {
+                // The server refused the OPAQUE proof
+                if e.is(OvErrorCode::Unauthorized) && e.details.is_none() {
+                    e.with_details(super::account::OPAQUE_REFUSED)
+                } else {
+                    e
+                }
+            })?;
         match res {
             LoginFinishResponse::Session(s) => {
                 self.finish_signin(&email, &password, &sk, &s, trust_device).await.map(LoginStep::Unlocked)
@@ -200,7 +207,15 @@ impl Account {
         s: &w::Session,
         trust: bool,
     ) -> Result<Unlocked, OvError> {
-        let auk = self.unlock_with(password, &s.kdf, &s.keyset, sk)?;
+        let auk = match self.unlock_with(password, &s.kdf, &s.keyset, sk) {
+            Ok(auk) => auk,
+            Err(e) => {
+                // The server opened a session for a password it accepted, but the keyset doesn't
+                // unwrap (wrong Secret Key): end that session rather than leave it behind
+                let _ = send(self.host(), self.auth().build_logout(&s.access_token, false), &CancelToken::new()).await;
+                return Err(e);
+            }
+        };
         self.begin(email, s, sk, trust).await?;
         self.cache_profile(&s.user.id, &CachedProfile { kdf: s.kdf.clone(), keyset: s.keyset.clone() }).await?;
         let deletion = pending_until(&s.access_token);
@@ -394,4 +409,12 @@ impl Account {
         let Some(user) = self.current_user() else { return Ok(None) };
         Ok(self.cached_profile(&user).await?.map(|p| api_kdf(&p.kdf)))
     }
+}
+
+/// `unauthorized` for a sign-in the OPAQUE exchange refused (wrong email or password), with
+/// `details` [`OPAQUE_REFUSED`](super::account::OPAQUE_REFUSED).
+fn opaque_refused() -> OvError {
+    OvError::new(OvErrorCode::Unauthorized, "wrong email or password")
+        .with_status(401)
+        .with_details(super::account::OPAQUE_REFUSED)
 }

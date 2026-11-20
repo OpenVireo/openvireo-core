@@ -74,6 +74,9 @@ macro_rules! scenario {
 scenario!(
     creates_pulls_uploads,
     retries_on_412,
+    retries_on_412_with_same_second_edits,
+    same_second_edits_of_one_field_conflict,
+    uploads_against_a_fresh_base_without_a_download,
     gives_up_after_max_attempts,
     head_check_rollback_and_loss,
     rekeys_before_upload,

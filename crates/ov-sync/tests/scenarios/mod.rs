@@ -78,6 +78,71 @@ pub fn retries_on_412<W: World>(w: &W) {
     );
 }
 
+/// A 412 retry merges against the base by content when every edit falls in the second of the last
+/// sync (the SDK's service-account race with a fixed clock): the snapshot's whole-second times say
+/// the local entry is unchanged, and without the base the other device's newer copy won whole,
+/// putting this device's change in history only.
+pub fn retries_on_412_with_same_second_edits<W: World>(w: &W) {
+    let now_s = NOW_MS / 1000;
+    let Copies { mut local, remote, .. } = three_copies(|db| {
+        add_entry(db, "A", &[("Password", "p"), ("URL", "x")], now_s, None);
+    });
+    let first = sync(w, &mut local, None);
+    edit(&mut local, "A", &[("Password", "mine")], now_s);
+    let remote = std::sync::Mutex::new(Some(remote));
+    let w2 = w.clone();
+    w.set_after_get(Some(Box::new(move || {
+        if let Some(mut r) = remote.lock().unwrap().take() {
+            // the other device's clock is a second ahead
+            edit(&mut r, "A", &[("Notes", "theirs")], now_s + 1);
+            w2.upload("db", &ov_kdbx::write(&r, &creds()).unwrap());
+        }
+    })));
+    let r = sync(w, &mut local, Some(&first.state));
+    w.set_after_get(None);
+    assert_eq!((r.outcome, r.attempts), (SyncOutcome::Uploaded, 2));
+    assert_eq!(r.conflicts, vec![]);
+    let server = ov_kdbx::read(&w.latest("db").unwrap(), &creds()).unwrap();
+    assert_eq!(
+        (get(&server, "A", "Password"), get(&server, "A", "Notes")),
+        (Some("mine".into()), Some("theirs".into()))
+    );
+}
+
+/// Both sides changed the same field in the sync's second: a conflict found by content, with the
+/// field named, though the snapshot's times miss it.
+pub fn same_second_edits_of_one_field_conflict<W: World>(w: &W) {
+    let now_s = NOW_MS / 1000;
+    let Copies { mut local, mut remote, .. } = three_copies(|db| {
+        add_entry(db, "A", &[("Password", "p")], now_s, None);
+    });
+    let first = sync(w, &mut local, None);
+    let dev2 = sync(w, &mut remote, None);
+    let mut d2 = dev2.db;
+    edit(&mut d2, "A", &[("Password", "theirs")], now_s + 1);
+    sync(w, &mut d2, Some(&dev2.state));
+    edit(&mut local, "A", &[("Password", "mine")], now_s);
+    let r = sync(w, &mut local, Some(&first.state));
+    assert_eq!(r.conflicts.len(), 1);
+    assert_eq!(r.conflicts[0].fields, vec!["Password".to_owned()]);
+}
+
+/// With `remote_is_base` the first attempt uploads against the base without downloading.
+pub fn uploads_against_a_fresh_base_without_a_download<W: World>(w: &W) {
+    let Copies { mut local, .. } = setup();
+    let first = sync(w, &mut local, None);
+    edit(&mut local, "A", &[("Password", "mine")], 200);
+    let before = w.methods();
+    let (c, k) = ([creds()], creds());
+    let opts = SyncOptions::new(&k, &c).state(Some(&first.state)).remote_is_base(true);
+    let r = run(sync_kdbx(&w.blob("db"), &mut local, &opts)).unwrap();
+    let after = w.methods();
+    assert_eq!(&after[before.len()..], ["PUT"]);
+    assert_eq!(r.outcome, SyncOutcome::Uploaded);
+    let server = ov_kdbx::read(&w.latest("db").unwrap(), &creds()).unwrap();
+    assert_eq!(get(&server, "A", "Password"), Some("mine".into()));
+}
+
 /// "gives up after maxAttempts when the server keeps changing"
 pub fn gives_up_after_max_attempts<W: World>(w: &W) {
     let Copies { mut local, remote, .. } = setup();

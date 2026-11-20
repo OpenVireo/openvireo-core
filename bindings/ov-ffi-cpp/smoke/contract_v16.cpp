@@ -31,10 +31,10 @@ rust::Vec<std::uint8_t> bytes(const std::string &s) {
     return v;
 }
 
-ov::KdbxCredentials pw(const std::string &p) { return ov::KdbxCredentials{true, bytes(p), false, {}}; }
+ov::KdbxCredentials pw(const std::string &p) { return ov::KdbxCredentials{true, bytes(p), false, {}, false, {}}; }
 
 ov::EntryInput no_change() {
-    return ov::EntryInput{{}, {}, false, {}, false, 0, ov::EntryExpiry{ov::ExpiryKind::Keep, 0}};
+    return ov::EntryInput{{}, {}, false, {}, false, 0, ov::EntryExpiry{ov::ExpiryKind::Keep, 0}, false, {}, false, {}, ov::CustomIconChange::Keep, {}, false, {}};
 }
 
 // Answers a self-hosted server's history routes: two versions, revision 1's bytes.
@@ -294,7 +294,7 @@ int contract_v16() {
     check(std::string(ov::call([&] { return v->name(); })) == "Family", "Vault::set_name renames a local file");
     ov::call([&] { v->set_meta_custom_data("KPXC_REMOTE_SYNC_SETTINGS", true, R"([{"type":"syncServer"}])"); });
     check(ov::call([&] { return v->meta_custom_data("KPXC_REMOTE_SYNC_SETTINGS"); }).has, "meta custom data is set");
-    auto copy = ov::call([&] { return v->copy_without_remotes(ov::KdbxCredentials{false, {}, false, {}}); });
+    auto copy = ov::call([&] { return v->copy_without_remotes(ov::KdbxCredentials{false, {}, false, {}, false, {}}); });
     check(!ov::call([&] { return copy->meta_custom_data("KPXC_REMOTE_SYNC_SETTINGS"); }).has,
           "Vault::copy_without_remotes drops the sync-server remote");
     ov::call([&] { copy->set_kdf(ov::KdbxKdf{ov::KdbxKdfKind::Argon2id, 1 << 20, 3, 1, 0}); });
@@ -326,6 +326,36 @@ int contract_v16() {
     auto version = ov::call([&] { return sh->open_version("home", 1, pw("pw"), *token); });
     check(ov::call([&] { return version->is_read_only(); }) && version->entries(false).size() == 1,
           "SelfHosted::open_version opens a read-only version");
+
+    // ---- contract-v1.7: the password hash, sync_database_with
+    auto hashed = ov::call([&] { return c->create_local("Hashed", pw("pw v17"), *token); });
+    auto hbytes = ov::call([&] { return hashed->save_local(*token); });
+    const std::string pwtext = "pw v17";
+    auto hash = ov::sha256(rust::Slice<const std::uint8_t>(reinterpret_cast<const std::uint8_t *>(pwtext.data()), pwtext.size()));
+    ov::KdbxCredentials by_hash{false, {}, false, {}, true, std::move(hash)};
+    auto hcopy = hbytes;
+    auto opened = ov::call([&] { return ov::vault_open_local(std::move(hcopy), std::move(by_hash), *token); });
+    check(std::string(ov::call([&] { return opened->name(); })) == "Hashed", "v1.7: vault_open_local with password_hash");
+    try {
+        auto wrong_hash = ov::sha256(rust::Slice<const std::uint8_t>(reinterpret_cast<const std::uint8_t *>("no"), 2));
+        auto copy2 = hbytes;
+        ov::call([&] {
+            return ov::vault_open_local(std::move(copy2), ov::KdbxCredentials{false, {}, false, {}, true, std::move(wrong_hash)},
+                                        *token);
+        });
+        check(false, "v1.7: a wrong hash fails");
+    } catch (const ov::Error &e) {
+        check(e.code() == "vault_key_mismatch", "v1.7: a wrong key is vault_key_mismatch");
+    }
+    try {
+        // The canned transport has no databases/home: the first upload is refused
+        ov::call([&] {
+            return sh->sync_database_with("home", std::move(hbytes), pw("pw v17"), ov::SyncOptions{false, false}, *token);
+        });
+        check(false, "v1.7: sync_database_with reaches the transport");
+    } catch (const ov::Error &e) {
+        check(e.code() == "not_found", "v1.7: SelfHosted::sync_database_with reaches the transport");
+    }
 
     // ---- the in-process test servers (feature test-server)
 #if OV_EXPECT_TEST_SERVER

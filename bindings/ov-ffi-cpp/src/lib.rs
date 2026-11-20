@@ -265,6 +265,9 @@ pub mod ffi {
         password: Vec<u8>,
         has_key_file: bool,
         key_file: Vec<u8>,
+        /// Contract-v1.7: instead of `password`, its SHA-256 (32 bytes).
+        has_password_hash: bool,
+        password_hash: Vec<u8>,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1925,6 +1928,15 @@ pub mod ffi {
             database_id: &str,
             kdbx: Vec<u8>,
             credentials: KdbxCredentials,
+            cancel: &CancelToken,
+        ) -> Result<SelfHostedSyncResult>;
+        /// Contract-v1.7: `local_changed: false` checks with a HEAD first.
+        fn sync_database_with(
+            self: &SelfHosted,
+            database_id: &str,
+            kdbx: Vec<u8>,
+            credentials: KdbxCredentials,
+            options: SyncOptions,
             cancel: &CancelToken,
         ) -> Result<SelfHostedSyncResult>;
         fn events(self: &SelfHosted, cancel: &CancelToken) -> Result<Box<EventStream>>;

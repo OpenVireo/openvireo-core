@@ -7,7 +7,7 @@ use ov_core::OvErrorCode;
 use servers_common::*;
 
 fn local_creds() -> KdbxCredentials {
-    KdbxCredentials { password: Some(b"local".to_vec()), key_file: None }
+    KdbxCredentials { password: Some(b"local".to_vec()), key_file: None, password_hash: None }
 }
 
 async fn local_db() -> Vault {

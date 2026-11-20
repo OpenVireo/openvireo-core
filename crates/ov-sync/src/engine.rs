@@ -9,10 +9,10 @@ use ov_kdbx::model::Database;
 use ov_kdbx::vault::{set_sync_generation, sync_generation};
 use ov_kdbx::CompositeKey;
 use ov_merge::{
-    conflicting_fields, find_conflicts, merge_in_place, needs_common_base, snapshot_of, ConflictKind, MergeChange,
-    SyncConflict,
+    conflicting_fields, copies_differ, edited_on_both, find_conflicts, merge_in_place, snapshot_of, ConflictKind,
+    MergeChange, SyncConflict,
 };
-use ov_protocol::sync::{GetResult, HeadResult, PutCondition};
+use ov_protocol::sync::{BlobVersion, GetResult, HeadResult, PutCondition};
 
 use crate::client::Blob;
 use crate::state::{iso_time, SyncState};
@@ -109,6 +109,11 @@ pub struct SyncOptions<'a> {
     pub local_changed: bool,
     /// Start over from what the server has (after the user confirmed a rollback or loss).
     pub accept_server_state: bool,
+    /// The state's base is the server's current copy (it was just downloaded, e.g. by
+    /// [`VaultSession::download`](crate::VaultSession::download)): the first attempt merges against
+    /// it and uploads with its ETag instead of downloading it again. If the server changed meanwhile
+    /// the PUT gets 412 and the next attempt downloads as usual. Ignored without a base.
+    pub remote_is_base: bool,
     /// Attempts on 412 (default 5, like the desktop's `MaxAttempts`).
     pub max_attempts: u32,
     /// Runs on the copy about to be uploaded; forces an upload.
@@ -128,6 +133,7 @@ impl<'a> SyncOptions<'a> {
             state: None,
             local_changed: true,
             accept_server_state: false,
+            remote_is_base: false,
             max_attempts: 5,
             before_upload: None,
             cancel: None,
@@ -150,6 +156,12 @@ impl<'a> SyncOptions<'a> {
     /// With `accept_server_state`.
     pub fn accept_server_state(mut self, accept: bool) -> Self {
         self.accept_server_state = accept;
+        self
+    }
+
+    /// With `remote_is_base`.
+    pub fn remote_is_base(mut self, yes: bool) -> Self {
+        self.remote_is_base = yes;
         self
     }
 
@@ -355,8 +367,23 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
     loop {
         attempt += 1;
         check_cancel()?;
-        progress(SyncStep::Downloading);
-        let (data, version) = match blob.get(None).await? {
+        // The base was just downloaded: it is the server copy for the first attempt
+        let known = match prev {
+            Some(p) if attempt == 1 && opts.remote_is_base && !p.etag.is_empty() => p
+                .base
+                .clone()
+                .map(|b| (b, BlobVersion { etag: p.etag.clone(), revision: Some(p.revision), last_modified: None })),
+            _ => None,
+        };
+        let from_base = known.is_some();
+        if !from_base {
+            progress(SyncStep::Downloading);
+        }
+        let got = match known {
+            Some((data, version)) => GetResult::Ok { data, version },
+            None => blob.get(None).await?,
+        };
+        let (data, version) = match got {
             GetResult::NotFound => {
                 if prev.is_some_and(|p| p.revision > 0) {
                     return Err(OvError::new(
@@ -416,18 +443,17 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
             ));
         }
 
-        // The copy both sides last synced from tells which fields each side changed; only open it when needed
+        // The copy both sides last synced from tells which fields each side changed. It is opened
+        // whenever the copies differ, not only when the snapshot says so: the snapshot compares
+        // whole-second times, so an edit made in the second of the last sync (or of a 412 retry's
+        // first merge) looks unchanged to it, and the newer copy would win whole.
         let empty = Vec::new();
         let snapshot = prev.map_or(&empty, |p| &p.snapshot);
         let mut conflicts = find_conflicts(local, &remote, snapshot);
         let base = match prev.and_then(|p| p.base.as_deref()) {
-            Some(b)
-                if conflicts.iter().any(|c| c.kind == ConflictKind::EditedOnBoth)
-                    || needs_common_base(local, &remote, snapshot) =>
-            {
-                // A base under another key is no use; merge without it
-                open_with(b, opts.credentials).ok().map(|(db, _)| db)
-            }
+            Some(_) if from_base => Some(remote.clone()),
+            // A base under another key is no use; merge without it
+            Some(b) if copies_differ(local, &remote) => open_with(b, opts.credentials).ok().map(|(db, _)| db),
             _ => None,
         };
         if let Some(base) = &base {
@@ -444,6 +470,12 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
                 // Different fields changed: both changes are kept
                 !c.fields.is_empty()
             });
+            // Edits on both sides the snapshot missed (same-second times), found by content
+            for c in edited_on_both(local, &remote, base) {
+                if !conflicts.iter().any(|k| k.uuid == c.uuid) {
+                    conflicts.push(c);
+                }
+            }
         }
 
         let now_s = clock.now_unix_ms().div_euclid(1000);

@@ -145,7 +145,7 @@ not the facade, and are out of scope here.
 | `health()` | `SelfHosted::health` | |
 | `listDatabases()` | `SelfHosted::list_databases` | |
 | `createPairingCode()` | `SelfHosted::create_pairing_code` | |
-| `syncDatabase(databaseId, p)` | `SelfHosted::sync_database` | bytes + credentials in, merged bytes + report out |
+| `syncDatabase(databaseId, p)` | `SelfHosted::sync_database` | bytes + credentials in, merged bytes + report out; with options (`localChanged`, `acceptServerState`): `SelfHosted::sync_database_with` (contract-v1.7) |
 | `events(opts)` | `SelfHosted::events` | |
 
 ## 5. TS share and TOTP functions (`share/index.ts`, `share/totp.ts`)
@@ -448,3 +448,15 @@ Details in `docs/adr/0001-contract.md` § contract-v1.6.
 | desktop `SyncEngine` account-vault sync of the open `Database` (serialized) | `Account::sync_vault_kdbx`, `Account::vault_kdbx_credentials` | W3-ID2; `VaultKdbxSyncResult` |
 | desktop "continue anyway" after a server rollback / lost database | `SyncOptions::accept_server_state` | W3-ID2 |
 | desktop code still on its own HTTP (`AuthClient`) borrowing the session | `Account::access_token` | W3-ID2 |
+
+## 11. contract-v1.7 additions (2026-11-20)
+
+From the SDK 1.0 migration (W3-IW2) and the desktop (W3-ID2). Details in
+`docs/adr/0001-contract.md` § contract-v1.7.
+
+| Client | Rust | Notes |
+|---|---|---|
+| TS `passwordHashCredentials(hash)` / kdbxweb `getHash` kept across reloads (web), with `openLocalVault` and self-hosted sync | `KdbxCredentials::password_hash` | the password's SHA-256; with or without `key_file`; `invalid_request` with `password` too |
+| TS 0.11 `syncDatabase({ localChanged: false })` / `acceptServerState` | `SelfHosted::sync_database_with(.., SyncOptions)` | HEAD first; unchanged returns the input bytes without a KDF run |
+| TS 0.11 `openKdbx` wrong key → `vault_key_mismatch` | `Vault::open_local`, `OvClient::open_local`, `Account::import_kdbx` | was `kdbx_error` |
+| desktop: wrong Secret Key vs wrong password after sign-in | `OvError::details` `{"reason":"keyset_unwrap_failed"}` / `{"reason":"opaque_refused"}` | both `unauthorized` / 401; the core logs out the session a failed unwrap leaves |

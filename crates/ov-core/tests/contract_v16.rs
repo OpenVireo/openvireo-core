@@ -12,7 +12,7 @@ use ov_kdbx::model::{Argon2Type, Kdf};
 use servers_common::*;
 
 fn creds(pw: &str) -> KdbxCredentials {
-    KdbxCredentials { password: Some(pw.as_bytes().to_vec()), key_file: None }
+    KdbxCredentials { password: Some(pw.as_bytes().to_vec()), key_file: None, password_hash: None }
 }
 
 fn text(name: &str, value: &str) -> FieldInput {
@@ -384,7 +384,7 @@ async fn local_vaults_from_the_client_use_the_host_clock() {
     v.edit_entry(id.clone(), EntryInput { fields: vec![text("Password", "n")], ..Default::default() }).unwrap();
     assert_eq!(v.entry(id).unwrap().modified_at, now_s + 3600);
     let wrong = c.open_local(v.save_local(nc()).await.unwrap(), creds("no"), nc()).await.unwrap_err();
-    assert_eq!(wrong.code, OvErrorCode::KdbxError);
+    assert_eq!(wrong.code, OvErrorCode::VaultKeyMismatch);
 }
 
 /// Light Argon2id so the test files open fast.

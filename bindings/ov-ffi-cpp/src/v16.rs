@@ -192,7 +192,7 @@ impl ServiceAccount {
     }
 }
 
-fn sync_options_in(o: ffi::SyncOptions) -> core::SyncOptions {
+pub(crate) fn sync_options_in(o: ffi::SyncOptions) -> core::SyncOptions {
     core::SyncOptions { local_changed: o.local_changed, accept_server_state: o.accept_server_state }
 }
 
@@ -202,6 +202,8 @@ fn kdbx_credentials_out(c: core::KdbxCredentials) -> ffi::KdbxCredentials {
         password: c.password.unwrap_or_default(),
         has_key_file: c.key_file.is_some(),
         key_file: c.key_file.unwrap_or_default(),
+        has_password_hash: c.password_hash.is_some(),
+        password_hash: c.password_hash.unwrap_or_default(),
     }
 }
 

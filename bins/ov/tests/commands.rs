@@ -294,9 +294,9 @@ async fn merges_and_retries_when_another_client_uploads_during_the_write() {
     let (w, cli) = setup("race").await;
     let (r, wr) = (reader(&w), writer(&w));
     let (r, wr) = (env(&r), env(&wr));
-    // The TS test lets 1 GET through (download, then the sync's GET). The core's sync GETs twice
-    // before its PUT, so the other device's upload lands after the third to force the 412.
-    let fired = w.edit_between_get_and_put("GitHub", &[("Notes", "edited on another device")], 2).await;
+    // As in the TS test, 1 GET goes through (`ov rotate` opens the vault with one GET, then the
+    // sync's GET), so the other device's upload lands before the PUT and forces the 412.
+    let fired = w.edit_between_get_and_put("GitHub", &[("Notes", "edited on another device")], 1).await;
     let before = w.puts();
     let out =
         cli.run(&["rotate", "ov://Team%20Infra/GitHub/password", "--stdin"], &wr, Some("rotated-in-race"), None).await;

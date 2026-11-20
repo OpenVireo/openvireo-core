@@ -210,7 +210,7 @@ record!(OpenedShare => OpenedShare { payload: payload ": SharePayload", opens_le
 
 // ------------------------------------------------------------------------------------ vaults
 
-record!(KdbxCredentials => KdbxCredentials { password: password "?: Uint8Array", key_file: keyFile "?: Uint8Array" });
+record!(KdbxCredentials => KdbxCredentials { password: password "?: Uint8Array", key_file: keyFile "?: Uint8Array", password_hash: passwordHash "?: Uint8Array" });
 record!(EntrySummary => EntrySummary {
     id: id ": string", group_id: groupId ": string", group_path: groupPath ": string[]", title: title ": string", username: username ": string",
     url: url ": string", tags: tags ": string[]", protected_fields: protectedFields ": string[]", icon_id: iconId ": number",

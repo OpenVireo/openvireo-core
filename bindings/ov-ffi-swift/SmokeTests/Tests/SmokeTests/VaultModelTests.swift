@@ -43,7 +43,7 @@ final class VaultModelTests: XCTestCase {
     func testKitEditingFlow() async throws {
         let bytes = vectorFile("kdbx/desktop-kdbx4-argon2d.kdbx")
         await XCTAssertThrowsErrorAsync(try await Vault.openLocal(kdbx: bytes, credentials: KdbxCredentials(password: Data("nope".utf8), keyFile: nil),
-                                                                  cancel: CancelToken())) { XCTAssertEqual(($0 as! OvError).code, .kdbxError) }
+                                                                  cancel: CancelToken())) { XCTAssertEqual(($0 as! OvError).code, .vaultKeyMismatch) }
         let vault = try await open(bytes)
         XCTAssertFalse(try vault.entries(includeRecycleBin: false).isEmpty)
         XCTAssertTrue(try vault.entries(includeRecycleBin: false).contains { $0.title == "From desktop" })

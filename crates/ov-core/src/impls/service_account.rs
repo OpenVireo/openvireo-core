@@ -224,11 +224,17 @@ impl ServiceAccount {
         let r = ov_vault::parse_reference(reference)?;
         let e = self.entry(&r.vault, cancel).await?;
         ov_vault::check_writable(&e.vk)?;
-        let v = self.open_impl(&e.info.id, false, cancel).await?;
+        // A copy downloaded for this write is the server's current one: upload against it without a
+        // second download (a 412 downloads and merges as usual)
+        let cached = lock(&self.inner.inner).opened.get(&e.info.id).cloned();
+        let (v, fresh) = match cached {
+            Some(v) => (v, false),
+            None => (self.download(&e, cancel).await?, true),
+        };
         let now = v.now();
         let result = async {
             ov_vault::write_field(&mut v.db(), &r, value, create, None, now)?;
-            super::syncing::sync_vault(&v, SyncOptions::default(), None, cancel).await
+            super::syncing::sync_vault_with(&v, SyncOptions::default(), None, fresh, cancel).await
         }
         .await;
         if result.is_err() {

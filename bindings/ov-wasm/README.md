@@ -221,6 +221,15 @@ iOS); all on the full module (F):
 | sync an account vault held as a file (desktop-style) | `account.syncVaultKdbx(vaultId, kdbx, base?, options?)` → `VaultKdbxSyncResult { kdbx, credentials, report }`; `account.vaultKdbxCredentials(vaultId)`; `SyncOptions.acceptServerState?` ("continue anyway" after `server_rolled_back` / `server_lost_database`, also for `vault.sync`) |
 | borrow the session token | `account.accessToken(forceRefresh)` (UTF-8 JWT bytes; never log it) |
 
+### Facade additions in contract-v1.7
+
+| Need | Binding |
+|---|---|
+| open or sync a file with the kept password hash | `KdbxCredentials.passwordHash?` (`core.kdbxPasswordHash(password)`, 32 bytes; not together with `password`) on `Vault.openLocal`, `client.openLocal`, `selfHosted.syncDatabase*`, `exportKdbx*`, imports |
+| self-hosted sync without a download when nothing changed | `selfHosted.syncDatabaseWith(databaseId, kdbx, credentials, { localChanged, acceptServerState })`: `localChanged: false` sends a HEAD; unchanged → `report.outcome === "unchanged"` and the same bytes back |
+| one wrong-key code | a wrong local-file key is `vault_key_mismatch` (was `kdbx_error`) |
+| wrong Secret Key vs wrong password | sign-in `unauthorized` errors have `details.reason` `"keyset_unwrap_failed"` or `"opaque_refused"` |
+
 Record fields added in v1.6 (`usageCount`, `AttachmentInfo.protected`, `SyncOptions.acceptServerState`) default when a JS record that
 lacks them comes back in (`applyAutofillEdits`, `keepAutofillEdit`).
 
@@ -229,7 +238,7 @@ lacks them comes back in (`applyAutofillEdits`, `keepAutofillEdit`).
 ```sh
 cargo xtask wasm                      # builds both modules into pkg/ (needs wasm-bindgen-cli 0.2.130 and binaryen)
 cd bindings/ov-wasm && npm ci
-npx vitest run                        # 9 files: smoke (Node, jsdom), host, low-level vectors, shared/lite parity, wipe, lite panic, esbuild bundle, contract-v1.6
+npx vitest run                        # 10 files: smoke (Node, jsdom), host, low-level vectors, shared/lite parity, wipe, lite panic, esbuild bundle, contract-v1.6, contract-v1.7
 npx tsc -p tsconfig.json              # the .d.ts describe the API (test/types.ts)
 ```
 

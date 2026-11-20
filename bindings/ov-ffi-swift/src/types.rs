@@ -770,6 +770,8 @@ pub struct TotpCode {
 pub struct KdbxCredentials {
     pub password: Option<Vec<u8>>,
     pub key_file: Option<Vec<u8>>,
+    #[uniffi(default = None)]
+    pub password_hash: Option<Vec<u8>>,
 }
 
 #[uniffi::remote(Record)]

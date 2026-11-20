@@ -17,8 +17,8 @@ use ov_kdbx::CompositeKey;
 use ov_protocol::sync::GetResult;
 
 use crate::client::Blob;
-use crate::engine::{sync_kdbx, BeforeUpload, Cancel, SyncOptions, SyncResult};
-use crate::state::{from_cached, to_cached, SyncState};
+use crate::engine::{sync_kdbx, BeforeUpload, Cancel, SyncOptions, SyncOutcome, SyncResult};
+use crate::state::{from_cached, iso_time, to_cached, SyncState};
 
 /// One vault's record in the offline cache, keyed by user (two accounts on one device can share a
 /// vault, SPEC §21).
@@ -107,6 +107,9 @@ pub struct SessionSyncOptions<'a> {
     pub accept_server_state: bool,
     /// Re-key to this vault key before uploading (rotation).
     pub rekey_to: Option<&'a [u8]>,
+    /// The last sync's base is the server's current copy (just [downloaded](VaultSession::download)):
+    /// upload against it without downloading again ([`SyncOptions::remote_is_base`]).
+    pub remote_is_base: bool,
     /// Checked between steps.
     pub cancel: Option<&'a dyn Cancel>,
 }
@@ -235,7 +238,8 @@ impl VaultSession {
         let mut o = SyncOptions::new(&local_key, &creds)
             .state(state.as_ref())
             .local_changed(opts.local_changed.unwrap_or(true))
-            .accept_server_state(opts.accept_server_state);
+            .accept_server_state(opts.accept_server_state)
+            .remote_is_base(opts.remote_is_base);
         if let Some(r) = &rekey {
             o = o.before_upload(r as &dyn BeforeUpload);
         }
@@ -269,6 +273,67 @@ impl VaultSession {
         }
         self.has_pending = false;
         Ok(result)
+    }
+
+    /// Downloads the server copy as the working copy, with a sync state whose base is that copy (TS
+    /// `ServiceAccount.download`): one GET, no merge. For a session without local edits to keep (a
+    /// service account's); the working copy, its key and the state are replaced. `not_found` when the
+    /// server has no copy.
+    pub async fn download(
+        &mut self,
+        blob: &Blob,
+        keys: &[KeyVersion],
+        cancel: Option<&dyn Cancel>,
+    ) -> Result<SyncResult, OvError> {
+        if cancel.is_some_and(|c| c.is_cancelled()) {
+            return Err(OvError::new(OvErrorCode::Aborted, "the sync was cancelled"));
+        }
+        let (sorted, _) = credentials(keys)?;
+        let got = match blob.get(None).await {
+            Ok(g) => g,
+            Err(e) => {
+                if e.is_unreachable() {
+                    self.offline = true;
+                }
+                return Err(e);
+            }
+        };
+        let GetResult::Ok { data, version } = got else {
+            return Err(
+                OvError::new(OvErrorCode::NotFound, "this vault has no data on the sync server").with_status(404)
+            );
+        };
+        let (db, kv) = open_with_key_versions(&data, &sorted)?;
+        let k = sorted.iter().find(|k| k.version == kv).expect("the version that opened it");
+        let key = vault_credentials(&k.key)?;
+        let index = sorted.iter().position(|k| k.version == kv);
+        let state = SyncState {
+            etag: version.etag.clone(),
+            revision: version.revision.unwrap_or(-1),
+            generation: ov_kdbx::vault::sync_generation(&db),
+            snapshot: ov_merge::snapshot_of(&db),
+            base: Some(data.clone()),
+            last_sync: iso_time(blob.client().clock().now_unix_ms()),
+        };
+        if let Some(cache) = &self.cache {
+            cache.save_state(&state).await?;
+        }
+        self.offline = false;
+        self.db = Some(db.clone());
+        self.key = Some(key.clone());
+        self.state = Some(Some(state.clone()));
+        Ok(SyncResult {
+            outcome: SyncOutcome::Pulled,
+            db,
+            key,
+            credentials_index: index,
+            data: Some(data),
+            state,
+            conflicts: Vec::new(),
+            changes: Vec::new(),
+            attempts: 1,
+            clock_offset_ms: blob.clock_offset_ms(),
+        })
     }
 
     /// Makes the working copy durable before anything is sent (Swift `keepEdits`): it goes to the

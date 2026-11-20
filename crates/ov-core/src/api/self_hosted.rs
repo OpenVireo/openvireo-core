@@ -7,8 +7,8 @@ use std::sync::Arc;
 use ov_error::OvError;
 
 use super::{
-    BlobMeta, CancelToken, EventStream, KdbxCredentials, OvClient, Rfc3339, SecretBytes, SyncReport, Vault,
-    VaultVersion,
+    BlobMeta, CancelToken, EventStream, KdbxCredentials, OvClient, Rfc3339, SecretBytes, SyncOptions, SyncReport,
+    Vault, VaultVersion,
 };
 use crate::state::SelfHostedState;
 
@@ -94,6 +94,8 @@ impl SelfHosted {
 
     /// Syncs a local database with `databases/<database_id>`, keeping the sync state in the
     /// [BlobCache](crate::host::BlobCache). `kdbx` and the result are encrypted with `credentials`.
+    /// The same as [`sync_database_with`](Self::sync_database_with) with the default
+    /// [`SyncOptions`] (the local copy changed: always downloads).
     pub async fn sync_database(
         &self,
         database_id: String,
@@ -101,7 +103,28 @@ impl SelfHosted {
         credentials: KdbxCredentials,
         cancel: CancelToken,
     ) -> Result<SelfHostedSyncResult, OvError> {
-        crate::impls::syncing::sync_database(self, &database_id, &kdbx, &credentials, &cancel).await
+        crate::impls::syncing::sync_database(self, &database_id, &kdbx, &credentials, SyncOptions::default(), &cancel)
+            .await
+    }
+
+    /// [`sync_database`](Self::sync_database) with [`SyncOptions`], as for account vaults:
+    /// - `local_changed: false`: nothing changed in `kdbx` since the last sync, so a HEAD with the
+    ///   last ETag first. When the server didn't change either, nothing is downloaded or decrypted:
+    ///   the result is `kdbx` itself with [`SyncOutcome::Unchanged`](crate::api::SyncOutcome) and no
+    ///   KDF runs. Without a stored sync state it syncs as if changed.
+    /// - `accept_server_state`: "continue anyway" after `server_rolled_back` or
+    ///   `server_lost_database` (forget the stored revision, generation and base).
+    ///
+    /// Contract-v1.7.
+    pub async fn sync_database_with(
+        &self,
+        database_id: String,
+        kdbx: Vec<u8>,
+        credentials: KdbxCredentials,
+        options: SyncOptions,
+        cancel: CancelToken,
+    ) -> Result<SelfHostedSyncResult, OvError> {
+        crate::impls::syncing::sync_database(self, &database_id, &kdbx, &credentials, options, &cancel).await
     }
 
     /// The versions the server keeps of `databases/<database_id>`, newest first (`GET

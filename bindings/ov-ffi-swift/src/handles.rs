@@ -1003,6 +1003,19 @@ impl SelfHosted {
         guard_async(self.0.sync_database(database_id, kdbx, credentials, tok(&cancel))).await
     }
 
+    /// [`sync_database`](Self::sync_database) with options: `local_changed: false` checks with a
+    /// HEAD first and, when the server is unchanged, returns `kdbx` as it is (contract-v1.7).
+    pub async fn sync_database_with(
+        &self,
+        database_id: String,
+        kdbx: Vec<u8>,
+        credentials: core::KdbxCredentials,
+        options: core::SyncOptions,
+        cancel: Arc<CancelToken>,
+    ) -> R<core::SelfHostedSyncResult> {
+        guard_async(self.0.sync_database_with(database_id, kdbx, credentials, options, tok(&cancel))).await
+    }
+
     /// The versions the server keeps of a database (contract-v1.6).
     pub async fn history(&self, database_id: String, cancel: Arc<CancelToken>) -> R<Vec<core::VaultVersion>> {
         guard_async(self.0.history(database_id, tok(&cancel))).await

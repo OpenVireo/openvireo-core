@@ -1,5 +1,5 @@
 // Type-checked by `npm run typecheck` (tsc --noEmit): the package's .d.ts must describe the API.
-import { loadCore, OvError, type Account, type Core, type Host, type ImportPreview, type ImportSummary, type ImportTarget, type KdbxCredentials, type KdbxKdf, type KdbxMergeReport, type Keyset, type LocalImportMode, type LoginStep, type ServerConfig, type SharePayload, type Vault, type VaultInfo, type VaultKdbxSyncResult, type VaultVersion } from "../pkg/index.js";
+import { loadCore, OvError, type Account, type Core, type Host, type ImportPreview, type ImportSummary, type ImportTarget, type KdbxCredentials, type KdbxKdf, type KdbxMergeReport, type Keyset, type LocalImportMode, type LoginStep, type ServerConfig, type SelfHostedSyncResult, type SharePayload, type Vault, type VaultInfo, type VaultKdbxSyncResult, type VaultVersion } from "../pkg/index.js";
 import { loadCoreSync } from "../pkg/sync.js";
 import { loadLite, type LiteCore, type ShareLinkParts } from "../pkg/lite.js";
 import { loadLiteSync } from "../pkg/lite-sync.js";
@@ -71,6 +71,10 @@ export async function contractV16(core: Core, client: InstanceType<Core["OvClien
   const sh = core.SelfHosted.connect(client, "https://sync.example", new Uint8Array());
   const versions: VaultVersion[] = await sh.history("db");
   const old: Vault = await sh.openVersion("db", versions[0]!.revision, { password: new Uint8Array() });
+  // contract-v1.7
+  const byHash: KdbxCredentials = { passwordHash: core.kdbxPasswordHash("pw") };
+  const fromHash: Vault = await core.Vault.openLocal(out, byHash);
+  const checked: SelfHostedSyncResult = await sh.syncDatabaseWith("db", out, byHash, { localChanged: false, acceptServerState: false });
   const sa = await core.ServiceAccount.fromToken(client, new Uint8Array());
   const issuer: string = sa.issuer();
   const config: ServerConfig = sa.serverConfig();

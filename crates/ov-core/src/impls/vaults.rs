@@ -55,8 +55,22 @@ pub(crate) fn versions(list: Vec<ov_protocol::types::BlobMeta>) -> Vec<VaultVers
         .collect()
 }
 
-/// Opens local `.kdbx` credentials.
+/// Opens local `.kdbx` credentials: a password or its SHA-256 (`password_hash`), and/or a key file.
 pub(crate) fn local_key(c: &KdbxCredentials) -> Result<ov_kdbx::CompositeKey, OvError> {
+    if let Some(hash) = &c.password_hash {
+        if c.password.is_some() {
+            return Err(OvError::new(OvErrorCode::InvalidRequest, "give the database password or its hash, not both"));
+        }
+        let hash: &[u8; 32] = hash
+            .as_slice()
+            .try_into()
+            .map_err(|_| OvError::new(OvErrorCode::InvalidRequest, "a password hash is 32 bytes"))?;
+        let mut key = ov_kdbx::CompositeKey::new().with_password_hash(hash);
+        if let Some(f) = &c.key_file {
+            key = key.with_key_file(f);
+        }
+        return Ok(key);
+    }
     let password = c
         .password
         .as_ref()

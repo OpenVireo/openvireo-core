@@ -134,6 +134,18 @@ pub(crate) async fn sync_vault(
     rekey_to: Option<&[u8; 32]>,
     cancel: &CancelToken,
 ) -> Result<SyncReport, OvError> {
+    sync_vault_with(v, options, rekey_to, false, cancel).await
+}
+
+/// [`sync_vault`], where `remote_is_base`: the vault was just downloaded, so the first attempt
+/// uploads against that copy instead of downloading it again (a 412 downloads).
+pub(crate) async fn sync_vault_with(
+    v: &Vault,
+    options: SyncOptions,
+    rekey_to: Option<&[u8; 32]>,
+    remote_is_base: bool,
+    cancel: &CancelToken,
+) -> Result<SyncReport, OvError> {
     cancel.check()?;
     let (id, keys) = vault_keys(v).await?;
     let client = match &v.inner.source {
@@ -160,6 +172,7 @@ pub(crate) async fn sync_vault(
         local_changed: Some(options.local_changed),
         accept_server_state: options.accept_server_state,
         rekey_to: rekey.as_deref().map(|k| &k[..]),
+        remote_is_base,
         cancel: Some(&cw),
     };
     let result = session.sync(&blob, &keys, opts).await;
@@ -204,8 +217,7 @@ pub(crate) async fn open_session(
     let blob = client.vault(&e.info.id);
     let cw = CancelWrap(cancel.clone());
     let mut session = v.inner.session.lock().await;
-    let opts =
-        SessionSyncOptions { local_changed: None, accept_server_state: false, rekey_to: None, cancel: Some(&cw) };
+    let opts = SessionSyncOptions { cancel: Some(&cw), ..Default::default() };
     let mut first = session.sync(&blob, e.keys(), opts).await;
     if matches!(&first, Err(err) if err.is(OvErrorCode::Forbidden)) {
         // A vault shared since the token was issued isn't in its `vlt` claim yet: refresh once.
@@ -238,7 +250,7 @@ pub(crate) async fn open_session(
     Ok(v)
 }
 
-/// Downloads a vault for a service account (no offline cache).
+/// Downloads a vault for a service account (no offline cache): one GET.
 pub(crate) async fn open_sa_session(
     sa: &ServiceAccount,
     e: &super::keyring::VaultEntry,
@@ -255,9 +267,8 @@ pub(crate) async fn open_sa_session(
     let blob = client.vault(&e.info.id);
     let cw = CancelWrap(cancel.clone());
     let mut session = v.inner.session.lock().await;
-    let opts =
-        SessionSyncOptions { local_changed: None, accept_server_state: false, rekey_to: None, cancel: Some(&cw) };
-    let r = session.sync(&blob, e.keys(), opts).await?;
+    // One GET: the downloaded copy is the working copy and the base (TS `ServiceAccount.download`)
+    let r = session.download(&blob, e.keys(), Some(&cw)).await?;
     *lock(&v.inner.etag) = Some(r.state.etag.clone());
     if let Some(db) = &session.db {
         *v.db() = db.clone();
@@ -282,6 +293,7 @@ pub(crate) async fn rekey_sync(
         local_changed: Some(true),
         accept_server_state: false,
         rekey_to: Some(new_key),
+        remote_is_base: false,
         cancel: Some(&cw),
     };
     let r = session.sync(&blob, e.keys(), opts).await;
@@ -306,18 +318,19 @@ pub(crate) async fn keep_edits(v: &Vault) -> Result<(), OvError> {
 }
 
 /// Self-hosted whole-database sync (SPEC §13), the state kept in the BlobCache under the user
-/// `selfhosted:<url>`.
+/// `selfhosted:<url>`. With `local_changed: false` and a stored state, a HEAD first: unchanged on the
+/// server means nothing is decrypted, merged or downloaded, and `kdbx` comes back as it is.
 pub(crate) async fn sync_database(
     sh: &SelfHosted,
     database_id: &str,
     kdbx: &[u8],
     credentials: &KdbxCredentials,
+    options: SyncOptions,
     cancel: &CancelToken,
 ) -> Result<SelfHostedSyncResult, OvError> {
     cancel.check()?;
     let host = &sh.inner.client.host;
     let key = super::vaults::local_key(credentials)?;
-    let mut db = ov_kdbx::read(kdbx, &key)?;
     let client = SyncClient::new(
         host.http.clone(),
         host.clock.clone(),
@@ -326,10 +339,46 @@ pub(crate) async fn sync_database(
     );
     let blob = client.database(database_id);
     let cache = VaultCache::new(host.cache.clone(), super::self_hosted::token_key(&sh.inner.server_url), database_id);
-    let state = cache.load_state().await?;
+    let state = if options.accept_server_state { None } else { cache.load_state().await? };
+    let mut head_changed = false;
+    if let (Some(prev), false) = (&state, options.local_changed) {
+        // Before the file is decrypted (a KDF run): most checks find nothing new
+        if let ov_protocol::sync::HeadResult::NotModified(v) = blob.head(Some(&prev.etag)).await? {
+            if let Some(r) = v.revision.filter(|r| *r >= 0 && *r < prev.revision) {
+                return Err(OvError::new(
+                    OvErrorCode::ServerRolledBack,
+                    format!(
+                        "the sync server returned revision {r}, older than revision {} this device already synced",
+                        prev.revision
+                    ),
+                ));
+            }
+            let mut checked = prev.clone();
+            checked.last_sync = ov_sync::state::iso_time(host.clock.now_unix_ms());
+            cache.save_state(&checked).await?;
+            let offset = blob.clock_offset_ms();
+            let report = SyncReport {
+                outcome: SyncOutcome::Unchanged,
+                conflicts: Vec::new(),
+                changes: Vec::new(),
+                attempts: 0,
+                etag: Some(prev.etag.clone()).filter(|e| !e.is_empty()),
+                clock_offset_ms: offset,
+                clock_skewed: ov_sync::is_clock_skewed(offset),
+            };
+            return Ok(SelfHostedSyncResult { kdbx: kdbx.to_vec(), report });
+        }
+        head_changed = true;
+    }
+    cancel.check()?;
+    let mut db = ov_kdbx::read(kdbx, &key)?;
     let creds = [key.clone()];
     let cw = CancelWrap(cancel.clone());
-    let mut opts = ov_sync::SyncOptions::new(&key, &creds).state(state.as_ref());
+    // After a HEAD that found a new version, don't ask again: download and merge
+    let mut opts = ov_sync::SyncOptions::new(&key, &creds)
+        .state(state.as_ref())
+        .local_changed(options.local_changed || head_changed)
+        .accept_server_state(options.accept_server_state);
     opts.cancel = Some(&cw);
     let r = ov_sync::sync_kdbx(&blob, &mut db, &opts).await?;
     cache.save_state(&r.state).await?;

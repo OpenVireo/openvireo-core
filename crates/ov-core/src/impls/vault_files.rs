@@ -15,7 +15,7 @@ use super::vaults::newest_key;
 use crate::api::{Account, CancelToken, KdbxCredentials, SyncOptions, VaultKdbxSyncResult};
 
 fn file_credentials(k: &KeyVersion) -> KdbxCredentials {
-    KdbxCredentials { password: None, key_file: Some(k.key.to_vec()) }
+    KdbxCredentials { password: None, key_file: Some(k.key.to_vec()), password_hash: None }
 }
 
 pub(crate) async fn credentials(a: &Account, vault_id: &str, cancel: &CancelToken) -> Result<KdbxCredentials, OvError> {

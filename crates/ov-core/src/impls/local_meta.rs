@@ -32,13 +32,8 @@ pub(crate) fn open_local(
 ) -> Result<Vault, OvError> {
     cancel.check()?;
     let key = local_key(&credentials)?;
-    let db = ov_kdbx::read(&kdbx, &key).map_err(|e| {
-        if e.is(OvErrorCode::VaultKeyMismatch) {
-            OvError::new(OvErrorCode::KdbxError, "the password or key file is wrong")
-        } else {
-            e
-        }
-    })?;
+    // A wrong key is `vault_key_mismatch`, as `ov_kdbx::read` (and TS 0.11) report it
+    let db = ov_kdbx::read(&kdbx, &key)?;
     Ok(new_vault(VaultSource::Local(credentials), host, db, false, None))
 }
 

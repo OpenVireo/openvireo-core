@@ -552,6 +552,43 @@ pub fn needs_common_base(local: &Database, remote: &Database, snapshot: &[(Uuid,
     })
 }
 
+/// Whether a merge of these copies can use the common base at all: there are deletions to apply, or
+/// an entry both have differs. A sync opens the base whenever this holds, because the snapshot check
+/// ([`needs_common_base`]) compares whole-second modification times: an edit made in the same second
+/// as the last sync looks unchanged to it, and the newer copy would then win whole (its other
+/// side's edit going to history) where the base keeps both, field by field.
+pub fn copies_differ(local: &Database, remote: &Database) -> bool {
+    has_pending_deletions(local, remote)
+        || entries_under(&local.root).iter().any(|l| {
+            find_entry(&remote.root, l.uuid).is_some_and(|(r, _)| !same_fields(l, local, r, remote))
+        })
+}
+
+/// The entries both sides changed against `base`, by content (not by time), with the fields they
+/// changed differently: [`ConflictKind::EditedOnBoth`] conflicts with their fields filled in. An entry
+/// whose two sides changed different fields isn't one (both changes are kept).
+pub fn edited_on_both(local: &Database, remote: &Database, base: &Database) -> Vec<SyncConflict> {
+    let mut out = Vec::new();
+    for l in entries_under(&local.root) {
+        let (Some((r, _)), Some((b, _))) = (find_entry(&remote.root, l.uuid), find_entry(&base.root, l.uuid)) else {
+            continue;
+        };
+        if same_fields(l, local, r, remote) {
+            continue;
+        }
+        let fields = conflicting_fields(Some((l, local)), Some((r, remote)), Some((b, base)));
+        if !fields.is_empty() {
+            out.push(SyncConflict {
+                uuid: l.uuid,
+                kind: ConflictKind::EditedOnBoth,
+                title: l.title().to_owned(),
+                fields,
+            });
+        }
+    }
+    out
+}
+
 /// The kind of a [`SyncConflict`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ConflictKind {

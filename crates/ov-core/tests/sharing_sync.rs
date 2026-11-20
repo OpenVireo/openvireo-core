@@ -299,7 +299,7 @@ async fn pairs_and_syncs_a_password_database_through_databases() {
     let first = SelfHosted::connect(c.clone(), url.clone(), b"dev-1".to_vec()).unwrap();
     let code = first.create_pairing_code(nc()).await.unwrap();
     let sh = SelfHosted::pair(c.clone(), url.clone(), code.code, "Web".into(), nc()).await.unwrap();
-    let creds = KdbxCredentials { password: Some(b"pw".to_vec()), key_file: None };
+    let creds = KdbxCredentials { password: Some(b"pw".to_vec()), key_file: None, password_hash: None };
     let local = Vault::create_local("Home".into(), creds.clone(), nc()).await.unwrap();
     add_entry(&local, "Wifi", "hunter2");
     let bytes = local.save_local(nc()).await.unwrap();

@@ -32,7 +32,7 @@ use ov_kdbx::model::{Database, Timestamp, Uuid};
 
 pub use import::{import_as_copies, import_into, import_preview, import_targets, ImportSummary};
 pub use merger::{
-    conflicting_fields, find_conflicts, has_pending_deletions, merge_in_place, needs_common_base, snapshot_of,
+    conflicting_fields, copies_differ, edited_on_both, find_conflicts, has_pending_deletions, merge_in_place, needs_common_base, snapshot_of,
     sync_generation, ConflictKind, Snapshot, SyncConflict, SYNC_GENERATION_KEY,
 };
 pub use pool::compact_binaries;

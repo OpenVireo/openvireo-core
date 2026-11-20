@@ -299,7 +299,9 @@ impl VaultSession {
             }
         };
         let GetResult::Ok { data, version } = got else {
-            return Err(OvError::new(OvErrorCode::NotFound, "this vault has no data on the sync server").with_status(404));
+            return Err(
+                OvError::new(OvErrorCode::NotFound, "this vault has no data on the sync server").with_status(404)
+            );
         };
         let (db, kv) = open_with_key_versions(&data, &sorted)?;
         let k = sorted.iter().find(|k| k.version == kv).expect("the version that opened it");

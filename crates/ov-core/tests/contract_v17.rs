@@ -61,12 +61,16 @@ async fn a_local_file_opens_and_saves_with_the_password_hash() {
     );
 
     // Both a password and its hash, or a hash of the wrong length: invalid_request
-    let mixed = KdbxCredentials { password: Some("correct horse ü".as_bytes().to_vec()), ..hash_creds("correct horse ü") };
+    let mixed =
+        KdbxCredentials { password: Some("correct horse ü".as_bytes().to_vec()), ..hash_creds("correct horse ü") };
     assert_eq!(Vault::open_local(bytes.clone(), mixed, nc()).await.unwrap_err().code, OvErrorCode::InvalidRequest);
     let short = KdbxCredentials { password_hash: Some(vec![0; 31]), ..Default::default() };
     assert_eq!(Vault::open_local(bytes.clone(), short, nc()).await.unwrap_err().code, OvErrorCode::InvalidRequest);
     // A wrong hash is a wrong key
-    assert_eq!(Vault::open_local(bytes, hash_creds("nope"), nc()).await.unwrap_err().code, OvErrorCode::VaultKeyMismatch);
+    assert_eq!(
+        Vault::open_local(bytes, hash_creds("nope"), nc()).await.unwrap_err().code,
+        OvErrorCode::VaultKeyMismatch
+    );
 }
 
 /// `Vault::open_local` and `ov_kdbx::read` agree: a wrong key is `vault_key_mismatch` (TS 0.11), a
@@ -104,10 +108,7 @@ async fn self_hosted_sync_checks_with_a_head_when_nothing_changed_locally() {
     // Unchanged on both sides: a HEAD, no download, the same bytes back (with the hash, no KDF needed)
     let opts = SyncOptions { local_changed: false, accept_server_state: false };
     let (gets, heads) = (db_requests(&s, Method::Get), db_requests(&s, Method::Head));
-    let r = sh
-        .sync_database_with("home".into(), first.kdbx.clone(), hash_creds("pw"), opts, nc())
-        .await
-        .unwrap();
+    let r = sh.sync_database_with("home".into(), first.kdbx.clone(), hash_creds("pw"), opts, nc()).await.unwrap();
     assert_eq!((r.report.outcome, r.report.attempts), (SyncOutcome::Unchanged, 0));
     assert_eq!(r.kdbx, first.kdbx);
     assert_eq!(r.report.etag, first.report.etag);
@@ -118,10 +119,7 @@ async fn self_hosted_sync_checks_with_a_head_when_nothing_changed_locally() {
     add_entry(&other, "Bank", "b");
     s.put_database_blob("home", &other.save_local(nc()).await.unwrap());
     let gets = db_requests(&s, Method::Get);
-    let r = sh
-        .sync_database_with("home".into(), first.kdbx.clone(), hash_creds("pw"), opts, nc())
-        .await
-        .unwrap();
+    let r = sh.sync_database_with("home".into(), first.kdbx.clone(), hash_creds("pw"), opts, nc()).await.unwrap();
     assert_eq!(r.report.outcome, SyncOutcome::Pulled);
     assert_eq!(db_requests(&s, Method::Get) - gets, 1);
     let merged = Vault::open_local(r.kdbx, creds("pw"), nc()).await.unwrap();
@@ -172,7 +170,8 @@ async fn sign_in_failures_say_which_secret_was_wrong() {
 
     let other = connect(&device(&s, false), &s).await;
     s.clear_requests();
-    let e = other.login(login_input("alice@example.com", "pw alice", Some(&bob_kit.secret_key)), nc()).await.unwrap_err();
+    let e =
+        other.login(login_input("alice@example.com", "pw alice", Some(&bob_kit.secret_key)), nc()).await.unwrap_err();
     assert_eq!((e.code, e.status), (OvErrorCode::Unauthorized, Some(401)));
     assert_eq!(e.details.as_deref(), Some(r#"{"reason":"keyset_unwrap_failed"}"#));
     let paths: Vec<(Method, String, Option<u16>)> =

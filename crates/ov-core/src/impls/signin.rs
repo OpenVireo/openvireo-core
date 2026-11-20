@@ -129,16 +129,15 @@ impl Account {
             auth_u: b64u(&fin.auth_u),
             device: device_info(&self.inner.client.config, device_id),
         };
-        let res = self.call_public(cancel, self.auth().build_login_finish(&req), parse_login_finish).await.map_err(
-            |e| {
+        let res =
+            self.call_public(cancel, self.auth().build_login_finish(&req), parse_login_finish).await.map_err(|e| {
                 // The server refused the OPAQUE proof
                 if e.is(OvErrorCode::Unauthorized) && e.details.is_none() {
                     e.with_details(super::account::OPAQUE_REFUSED)
                 } else {
                     e
                 }
-            },
-        )?;
+            })?;
         match res {
             LoginFinishResponse::Session(s) => {
                 self.finish_signin(&email, &password, &sk, &s, trust_device).await.map(LoginStep::Unlocked)

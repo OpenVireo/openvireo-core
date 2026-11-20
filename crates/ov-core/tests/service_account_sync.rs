@@ -60,7 +60,13 @@ async fn world() -> World {
 /// Another device edits `title` right after the next `skip + 1`-th GET of the vault (TS
 /// `editBetweenGetAndPut`) on a clock `advance_ms` ahead of the SA's (one second: its copy of the
 /// entry is newer, so a merge without the base keeps it whole). Returns whether it fired.
-async fn edit_between_get_and_put(w: &World, title: &'static str, fields: &'static [(&'static str, &'static str)], skip: usize, advance_ms: i64) -> Arc<Mutex<bool>> {
+async fn edit_between_get_and_put(
+    w: &World,
+    title: &'static str,
+    fields: &'static [(&'static str, &'static str)],
+    skip: usize,
+    advance_ms: i64,
+) -> Arc<Mutex<bool>> {
     let creds = w.alice.vault_kdbx_credentials(w.vault_id.clone(), nc()).await.unwrap();
     let fired = Arc::new(Mutex::new(false));
     let skip = Arc::new(Mutex::new(skip));

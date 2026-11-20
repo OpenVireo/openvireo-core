@@ -559,9 +559,9 @@ pub fn needs_common_base(local: &Database, remote: &Database, snapshot: &[(Uuid,
 /// side's edit going to history) where the base keeps both, field by field.
 pub fn copies_differ(local: &Database, remote: &Database) -> bool {
     has_pending_deletions(local, remote)
-        || entries_under(&local.root).iter().any(|l| {
-            find_entry(&remote.root, l.uuid).is_some_and(|(r, _)| !same_fields(l, local, r, remote))
-        })
+        || entries_under(&local.root)
+            .iter()
+            .any(|l| find_entry(&remote.root, l.uuid).is_some_and(|(r, _)| !same_fields(l, local, r, remote)))
 }
 
 /// The entries both sides changed against `base`, by content (not by time), with the fields they

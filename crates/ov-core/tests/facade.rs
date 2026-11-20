@@ -329,7 +329,10 @@ async fn edits_a_local_database_and_saves_it() {
     assert_eq!(back.entry(e.clone()).unwrap().fields, v.entry(e.clone()).unwrap().fields);
     assert_eq!(back.root_group_id(), root);
     let wrong = KdbxCredentials { password: Some(b"nope".to_vec()), key_file: None, password_hash: None };
-    assert_eq!(Vault::open_local(bytes, wrong, CancelToken::new()).await.unwrap_err().code, OvErrorCode::VaultKeyMismatch);
+    assert_eq!(
+        Vault::open_local(bytes, wrong, CancelToken::new()).await.unwrap_err().code,
+        OvErrorCode::VaultKeyMismatch
+    );
 
     let exported = v.export_kdbx(creds(), None, CancelToken::new()).await.unwrap();
     let ex = Vault::open_local(exported, creds(), CancelToken::new()).await.unwrap();

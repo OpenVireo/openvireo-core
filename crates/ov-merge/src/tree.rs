@@ -302,23 +302,30 @@ pub(crate) fn merge_history_into(
 ) -> bool {
     let kept_at = kept.times.last_modification;
     let other_at = other.times.last_modification;
-    let mut by_time: BTreeMap<Timestamp, Entry> = BTreeMap::new();
+    // Items keyed by modification time, as KeePassXC's `Merger::mergeHistory` does. KDBX keeps whole
+    // seconds, so one entry can hold several items of the same second (edits within a second): each
+    // time keeps all its items, in order, rather than the last one only, which would drop items and
+    // make merging an entry with itself look like a change.
+    let mut by_time: BTreeMap<Timestamp, Vec<Entry>> = BTreeMap::new();
     for h in &kept.history {
-        by_time.insert(h.times.last_modification, copy_entry(h, None, kept_db, false));
+        by_time.entry(h.times.last_modification).or_default().push(copy_entry(h, None, kept_db, false));
     }
+    let mut theirs: BTreeMap<Timestamp, Vec<Entry>> = BTreeMap::new();
     for h in &other.history {
-        let at = h.times.last_modification;
+        theirs.entry(h.times.last_modification).or_default().push(copy_entry(h, other_db, kept_db, false));
+    }
+    for (at, items) in theirs {
         if !by_time.contains_key(&at) || other_at > kept_at {
-            by_time.insert(at, copy_entry(h, other_db, kept_db, false));
+            by_time.insert(at, items);
         }
     }
     if kept_at < other_at && !by_time.contains_key(&kept_at) {
-        by_time.insert(kept_at, copy_entry(kept, None, kept_db, false));
+        by_time.insert(kept_at, vec![copy_entry(kept, None, kept_db, false)]);
     }
     if kept_at > other_at && !by_time.contains_key(&other_at) {
-        by_time.insert(other_at, copy_entry(other, other_db, kept_db, false));
+        by_time.insert(other_at, vec![copy_entry(other, other_db, kept_db, false)]);
     }
-    let next: Vec<Entry> = by_time.into_values().collect();
+    let next: Vec<Entry> = by_time.into_values().flatten().collect();
 
     let window = kept_db.meta.history_max_items.saturating_sub(1);
     let old = &kept.history;

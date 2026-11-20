@@ -52,10 +52,18 @@ pub(crate) fn parse_sk(text: &str) -> Result<Zeroizing<[u8; SECRET_KEY_BYTES]>, 
     parse_secret_key(text)
 }
 
-/// `decryption_failed` while unwrapping a keyset means a wrong password or Secret Key.
+/// `details` of an `unauthorized` sign-in or unlock whose keyset didn't unwrap: the password was
+/// accepted (OPAQUE succeeded, or offline nothing checked it), so the Secret Key (or, offline, the
+/// password) is wrong.
+pub(crate) const KEYSET_UNWRAP_FAILED: &str = r#"{"reason":"keyset_unwrap_failed"}"#;
+/// `details` of an `unauthorized` sign-in the OPAQUE exchange refused: wrong email or password.
+pub(crate) const OPAQUE_REFUSED: &str = r#"{"reason":"opaque_refused"}"#;
+
+/// `decryption_failed` while unwrapping a keyset means a wrong password or Secret Key
+/// ([`KEYSET_UNWRAP_FAILED`]).
 pub(crate) fn unauthorized_on_decrypt(e: OvError, msg: &str) -> OvError {
     if e.is(OvErrorCode::DecryptionFailed) {
-        OvError::new(OvErrorCode::Unauthorized, msg).with_status(401)
+        OvError::new(OvErrorCode::Unauthorized, msg).with_status(401).with_details(KEYSET_UNWRAP_FAILED)
     } else {
         e
     }

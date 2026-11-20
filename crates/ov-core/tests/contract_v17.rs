@@ -158,3 +158,34 @@ async fn self_hosted_sync_accepts_the_server_state_after_a_rollback() {
     let after = sh.sync_database("home".into(), r.kdbx, creds("pw"), nc()).await.unwrap();
     assert_ne!(after.report.outcome, SyncOutcome::Uploaded);
 }
+
+/// A wrong Secret Key (the password is accepted, the keyset doesn't unwrap) and a wrong password
+/// (OPAQUE refuses) are both `unauthorized` / 401, told apart by `details`; the session the server
+/// opened for the accepted password is logged out.
+#[tokio::test]
+async fn sign_in_failures_say_which_secret_was_wrong() {
+    let s = servers();
+    let alice = connect(&device(&s, false), &s).await;
+    register(&alice, "alice@example.com", "pw alice").await;
+    let bob = connect(&device(&s, false), &s).await;
+    let bob_kit = register(&bob, "bob@example.com", "pw bob").await;
+
+    let other = connect(&device(&s, false), &s).await;
+    s.clear_requests();
+    let e = other.login(login_input("alice@example.com", "pw alice", Some(&bob_kit.secret_key)), nc()).await.unwrap_err();
+    assert_eq!((e.code, e.status), (OvErrorCode::Unauthorized, Some(401)));
+    assert_eq!(e.details.as_deref(), Some(r#"{"reason":"keyset_unwrap_failed"}"#));
+    let paths: Vec<(Method, String, Option<u16>)> =
+        s.requests().into_iter().map(|r| (r.method, r.path, r.status)).collect();
+    assert!(
+        paths.iter().any(|(m, p, st)| *m == Method::Post && p.ends_with("/auth/logout") && st.is_some_and(|c| c < 300)),
+        "{paths:?}"
+    );
+    assert!(!other.is_signed_in());
+
+    let e = other.login(login_input("alice@example.com", "wrong", Some(&bob_kit.secret_key)), nc()).await.unwrap_err();
+    assert_eq!((e.code, e.status), (OvErrorCode::Unauthorized, Some(401)));
+    assert_eq!(e.details.as_deref(), Some(r#"{"reason":"opaque_refused"}"#));
+    let e = other.login(login_input("nobody@example.com", "x", Some(&bob_kit.secret_key)), nc()).await.unwrap_err();
+    assert_eq!(e.details.as_deref(), Some(r#"{"reason":"opaque_refused"}"#));
+}

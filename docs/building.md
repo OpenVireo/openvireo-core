@@ -74,11 +74,18 @@ cargo xtask kotlin                      # host cdylib, uniffi-bindgen kotlin, ho
 cargo xtask kotlin --smoke              # also the smoke test against the testkit relay (implies --test-server)
 cargo xtask kotlin --generate-only      # stop before Gradle (what Gradle's :generateBindings runs)
 cargo xtask kotlin -- build             # any Gradle tasks instead of `test`
+cargo xtask kotlin --android            # also the Android AAR: cargo-ndk for arm64-v8a, armeabi-v7a, x86_64
 ```
 
 Needs JDK 17+ (Gradle 9 runs on it); the jar itself targets Java 11. The generated Kotlin and the natives are
 built into `bindings/kotlin/build/` (git-ignored), never committed; `-Pov.nativesDir=<dir>` points the
 jar at a full set of natives in JNA's layout. Details: [bindings/kotlin/README.md](../bindings/kotlin/README.md).
+
+`--android` needs an Android SDK + NDK r27+, `cargo install cargo-ndk --locked` and `rustup target add
+aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` (not in `rust-toolchain.toml`, so
+other builds don't download them); it prints these commands if one is missing. Gradle only includes
+`:core-android` when an Android SDK is found (`ANDROID_HOME` / `local.properties`) or with
+`-Pov.android=true`. Details: [bindings/kotlin/README.md#android](../bindings/kotlin/README.md#android).
 
 ## C++: `libovcore` + `<ovcore.h>`
 

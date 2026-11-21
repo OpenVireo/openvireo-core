@@ -13,8 +13,9 @@
 //!    done).
 //!
 //! Flags:
-//! - `--smoke`: also builds `ov-testkit-serve` (the in-memory test servers on a loopback socket)
-//!   and runs the smoke test against it: register, log in, vault, entry, sync, events stream,
+//! - `--smoke`: also builds the testkit relay (`cargo build -p ov-testkit --example http_relay`,
+//!   the in-memory auth + sync servers on a loopback socket, shared with `xtask python`) and runs
+//!   the smoke test against it: register, log in, vault, entry, sync, events stream,
 //!   share link, error codes. Implies `--test-server`, as `xcframework --smoke` does.
 //! - `--test-server`: builds with the crate's `test-server` feature (the `opaque_server_*` steps).
 //! - `--generate-only`: stops after step 3 (Gradle's `:generateBindings` runs this).
@@ -80,7 +81,10 @@ pub fn run(args: &[String]) -> Result {
     let build = project.join("build");
 
     // 1. Host debug cdylib.
-    step("kotlin: host debug build of ov-ffi", cargo().args(["build", "--locked", "--lib", "-p", PACKAGE]).args(features))?;
+    step(
+        "kotlin: host debug build of ov-ffi",
+        cargo().args(["build", "--locked", "--lib", "-p", PACKAGE]).args(features),
+    )?;
     let (prefix, lib) = host_slice()?;
     let dylib = target_root().join("debug").join(lib);
 
@@ -121,21 +125,22 @@ pub fn run(args: &[String]) -> Result {
     gradle.args(["-Pov.generate=false", "--console=plain"]);
     if smoke {
         step(
-            "kotlin: build ov-testkit-serve",
-            cargo().args(["build", "--locked", "-p", "ov-testkit", "--bin", "ov-testkit-serve"]),
+            "kotlin: build the testkit relay",
+            cargo().args(["build", "--locked", "-p", "ov-testkit", "--example", "http_relay"]),
         )?;
-        let exe = target_root().join("debug").join(format!("ov-testkit-serve{}", std::env::consts::EXE_SUFFIX));
-        gradle.arg(format!("-Pov.testkitServe={}", exe.display())).arg("-Pov.requireSmoke=true");
+        let relay =
+            target_root().join("debug").join("examples").join(format!("http_relay{}", std::env::consts::EXE_SUFFIX));
+        if !relay.exists() {
+            return Err(format!("kotlin: the relay isn't at {}", relay.display()));
+        }
+        gradle.arg(format!("-Pov.testkitRelay={}", relay.display())).arg("-Pov.requireSmoke=true");
     }
     step("kotlin: gradle", &mut gradle)
 }
 
 fn gradlew(project: &Path) -> Command {
-    let mut c = if cfg!(windows) {
-        Command::new(project.join("gradlew.bat"))
-    } else {
-        Command::new(project.join("gradlew"))
-    };
+    let mut c =
+        if cfg!(windows) { Command::new(project.join("gradlew.bat")) } else { Command::new(project.join("gradlew")) };
     c.current_dir(project);
     c
 }

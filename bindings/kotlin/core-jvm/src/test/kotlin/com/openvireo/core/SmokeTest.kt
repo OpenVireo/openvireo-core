@@ -33,28 +33,29 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The binding end to end against ov-testkit's in-memory auth and sync servers, served on a loopback
- * socket by `ov-testkit-serve` (`cargo xtask kotlin --smoke` builds it and passes its path as
- * `-Pov.testkitServe`). Every request goes through a real default transport and the generated
+ * socket by the testkit relay (`crates/ov-testkit/examples/http_relay.rs`; `cargo xtask kotlin
+ * --smoke` builds it and passes its path as `-Pov.testkitRelay`). Every request goes through a real default transport and the generated
  * async foreign traits: register, log in on a second device, create a vault, add an entry, sync,
  * receive a server event over the streaming transport, share link, and error codes.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SmokeTest {
     private var server: Process? = null
-    private var port = 0
+    private var relay = ""
 
     @BeforeAll
     fun startServer() {
-        val exe = System.getProperty("ov.testkitServe")
+        val exe = System.getProperty("ov.testkitRelay")
         if (System.getProperty("ov.requireSmoke") == "true") {
-            check(!exe.isNullOrEmpty()) { "ov.requireSmoke is set but ov.testkitServe isn't" }
+            check(!exe.isNullOrEmpty()) { "ov.requireSmoke is set but ov.testkitRelay isn't" }
         }
-        assumeTrue(!exe.isNullOrEmpty(), "set -Pov.testkitServe=<path to ov-testkit-serve> (cargo xtask kotlin --smoke)")
-        val p = ProcessBuilder(exe!!, "--port", "0").redirectError(ProcessBuilder.Redirect.INHERIT).start()
+        assumeTrue(!exe.isNullOrEmpty(), "set -Pov.testkitRelay=<path to the http_relay example> (cargo xtask kotlin --smoke)")
+        val p = ProcessBuilder(exe!!).redirectError(ProcessBuilder.Redirect.INHERIT).start()
         server = p
-        val line = BufferedReader(InputStreamReader(p.inputStream)).readLine() ?: error("ov-testkit-serve printed nothing")
-        port = Regex("""listening on http://127\.0\.0\.1:(\d+)""").find(line)?.groupValues?.get(1)?.toInt()
-            ?: error("unexpected first line from ov-testkit-serve: $line")
+        // One JSON line: {"relay": "http://127.0.0.1:<port>", "issuer": "https://auth.test", ...}
+        val line = BufferedReader(InputStreamReader(p.inputStream)).readLine() ?: error("the relay printed nothing")
+        relay = Regex(""""relay"\s*:\s*"(http://127\.0\.0\.1:\d+)"""").find(line)?.groupValues?.get(1)
+            ?: error("unexpected first line from the relay: $line")
     }
 
     @AfterAll
@@ -65,7 +66,10 @@ class SmokeTest {
         }
     }
 
-    /** Sends `https://<host>/<path>` to `http://127.0.0.1:<port>/<host>/<path>` and counts stream traffic. */
+    /**
+     * Sends each request to the relay: the path to `http://127.0.0.1:<port>`, the real URL
+     * (`https://auth.test/…`) in `x-ov-relay-url`. Counts the stream traffic.
+     */
     private inner class ToTestkit(private val inner: HttpTransport) : HttpTransport {
         val requests = AtomicInteger()
         val streamsOpened = AtomicInteger()
@@ -73,8 +77,9 @@ class SmokeTest {
 
         private fun rewrite(req: HttpRequest): HttpRequest {
             requests.incrementAndGet()
-            check(req.url.startsWith("https://")) { "unexpected URL ${req.url}" }
-            return req.copy(url = "http://127.0.0.1:$port/" + req.url.removePrefix("https://"))
+            val real = java.net.URI(req.url)
+            val path = real.rawPath + (real.rawQuery?.let { "?$it" } ?: "")
+            return req.copy(url = relay + path, headers = req.headers + HttpHeader("x-ov-relay-url", req.url))
         }
 
         override suspend fun send(req: HttpRequest): HttpResponse = inner.send(rewrite(req))

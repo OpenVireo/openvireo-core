@@ -105,9 +105,9 @@ tasks.named<Jar>("sourcesJar") {
 
 tasks.test {
     useJUnitPlatform()
-    // The smoke test starts this binary (ov-testkit's `ov-testkit-serve`); `cargo xtask kotlin --smoke`
+    // The smoke test starts this binary (ov-testkit's `http_relay` example); `cargo xtask kotlin --smoke`
     // passes it. Without it the smoke test is skipped.
-    providers.gradleProperty("ov.testkitServe").orNull?.let { systemProperty("ov.testkitServe", it) }
+    providers.gradleProperty("ov.testkitRelay").orNull?.let { systemProperty("ov.testkitRelay", it) }
     providers.gradleProperty("ov.requireSmoke").orNull?.let { systemProperty("ov.requireSmoke", it) }
     testLogging {
         events("passed", "skipped", "failed")

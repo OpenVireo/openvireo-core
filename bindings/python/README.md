@@ -7,16 +7,18 @@ adds ready-made platform parts (HTTP, secret store, offline cache, clock, loggin
 
 - Python 3.10 or later. One wheel per platform (`py3-none-<platform>`) covers every Python version,
   because the library is loaded through ctypes rather than the CPython ABI.
-- Every network or storage call is a coroutine (asyncio).
+- Every network or storage call is a coroutine (asyncio), with an optional `cancel=` token as its
+  last argument (see [Cancelling](#cancelling)).
 
 ## Install
 
 Until the package is on PyPI, wheels are attached to the core's GitHub releases:
 
 ```sh
-pip install openvireo --find-links https://github.com/openvireo/openvireo-core/releases/expanded_assets/<tag>
-pip install "openvireo[httpx]"     # optional: async HTTP on httpx (otherwise urllib in a thread)
-pip install "openvireo[keyring]"   # optional: keep sessions in the OS keychain
+# Not on PyPI yet: always pin the version and pass --find-links (the release's asset list).
+pip install "openvireo==X.Y.Z" --find-links https://github.com/openvireo/openvireo-core/releases/expanded_assets/vX.Y.Z
+# Optional extras, same flags: "openvireo[httpx]==X.Y.Z" (async HTTP on httpx, otherwise urllib in
+# a thread), "openvireo[keyring]==X.Y.Z" (keep sessions in the OS keychain).
 ```
 
 ## Quickstart
@@ -30,20 +32,19 @@ from openvireo.hosts import KeyringStore, default_host
 async def main() -> None:
     client = ov.OvClient(
         ov.ClientConfig(device=ov.DeviceInfo(id=None, name="my script", platform=ov.Platform.CLI),
-                        offline=False, server=None),
+                        offline=True, server=None),  # offline=True keeps the cache
         default_host(store=KeyringStore(), cache_dir="~/.cache/openvireo"),
     )
-    account = await client.connect("https://accounts.openvireo.com", ov.CancelToken())
+    account = await client.connect("https://accounts.openvireo.com")
     step = await account.login(
         ov.LoginInput(email="me@example.com", password=b"master password",
                       secret_key=b"A3-...", totp=None, trust_device=True),
-        ov.CancelToken(),
     )
     if isinstance(step, ov.LoginStep.NEEDS_TOTP):
-        step = await account.submit_totp(step.challenge, input("Code: "), ov.CancelToken())
+        step = await account.submit_totp(step.challenge, input("Code: "))
 
-    for info in await account.vaults(ov.CancelToken()):
-        vault = await account.open_vault(info.id, ov.CancelToken())
+    for info in await account.vaults():
+        vault = await account.open_vault(info.id)
         for entry in vault.entries(False):
             print(info.name, "/", entry.title, entry.username)
 
@@ -61,6 +62,29 @@ except ov.OvError as e:
     if e.code == ov.OvErrorCode.UNAUTHORIZED:
         print("wrong password")
 ```
+
+## Cancelling
+
+Every async call takes `cancel: ov.CancelToken | None = None` as its last argument. Leave it out
+and the call gets a token of its own. Pass one to stop the call from elsewhere: `token.cancel()`
+ends it with `ov.OvErrorCode.ABORTED`. Cancelling the asyncio task (`task.cancel()`,
+`asyncio.wait_for` timing out) drops the call too, with `asyncio.CancelledError`.
+
+```python
+token = ov.CancelToken()
+task = asyncio.create_task(vault.sync(ov.SyncOptions(local_changed=True), cancel=token))
+token.cancel()  # from a UI button, a signal handler, another task ...
+try:
+    await task
+except ov.OvError as e:
+    assert e.code == ov.OvErrorCode.ABORTED
+```
+
+The generated module (`openvireo._core`) has the token as a required argument, because UniFFI
+can't default an object argument; `openvireo` rewraps every such method at import time
+(`openvireo/_compat.py`) and `tests/test_optional_cancel.py` checks none is missed. Passing the
+token positionally still works. Type checkers read the generated signatures, so under mypy a call
+without `cancel` is reported as missing an argument until the package ships stubs.
 
 ## Hosts
 

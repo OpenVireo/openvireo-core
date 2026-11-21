@@ -10,6 +10,8 @@ three-way merge. Every client calls it:
 | iOS app and its AutoFill extension | openvireo-ios | `bindings/ov-ffi` (UniFFI) | `scripts/build-vendor.sh` runs `cargo xtask xcframework` at a pinned commit and links the static libraries |
 | Desktop (Qt) | openvireo | `bindings/ov-ffi-cpp` (cxx) | Corrosion builds a wrapper crate that pins `ov-ffi-cpp` to a git commit |
 | `ov` CLI | this repo | none (native Rust) | `bins/ov` |
+| Python programs | any | `bindings/ov-ffi` (UniFFI) + `bindings/python` | wheels on the GitHub release ([guide](bindings/python.md)) |
+| JVM and Android programs | any | `bindings/ov-ffi` (UniFFI) + `bindings/kotlin` | GitHub Packages Maven ([guide](bindings/kotlin-java.md)) |
 
 All three apps pin the same commit today: `966606d` (tag `contract-v1.8`).
 
@@ -136,7 +138,8 @@ The rules every binding follows (from `api/mod.rs`):
   `internal`.
 - Calls that may touch the network or run a KDF are `async` and take a `CancelToken`. A cancelled call
   returns `aborted`. Each binding maps `async` its own way: Promises on wasm, Swift `async` on iOS,
-  **blocking** calls on C++ (the desktop calls the core from a worker thread, never the GUI thread).
+  **blocking** calls on C++ (the desktop calls the core from a worker thread, never the GUI thread),
+  asyncio coroutines in Python, `suspend` functions in Kotlin and `CompletableFuture`s in Java.
 
 [`api-coverage.md`](api-coverage.md) maps every public method of the TS SDK's `Account`, `AccountVault`,
 `ServiceAccount`, `SelfHostedSync` and the iOS `Account` to the facade method that replaced it.
@@ -150,6 +153,8 @@ the TS SDK's `err.code` keeps working:
 - wasm: `OvError` class (`code`, `status`, `retryAfter`, `details`, `serverCode`); the SDK turns it into
   `OpenVireoError` with the same code.
 - Swift: a one-variant UniFFI error with field accessors.
+- Python: `OvError` (`code`, `wire_code`, ...); Kotlin: `OvException` with extension properties, and
+  `JErrors` for Java futures.
 - C++: `rust::Error` with `"<code>: <message>"`; `ov::call(...)` gives an `ov::Error` with every field.
 
 `details` is a JSON object string with camelCase keys. Since `contract-v1.7`, sign-in `unauthorized`
@@ -180,6 +185,7 @@ errors carry `details.reason` = `"opaque_refused"` (wrong email or password) or
 
 - [contract.md](contract.md): what is frozen and how it changes
 - [building.md](building.md): building each binding and the CLI
+- [bindings/](bindings/README.md): the language bindings compared, and the Python and Kotlin/Java guides
 - [testing.md](testing.md): `cargo xtask ci`, vectors, the corpus, binding tests, cross-client e2e
 - [open-items.md](open-items.md): known bugs and follow-ups
 - [ADR 0001](adr/0001-contract.md) (the contract), [ADR 0002](adr/0002-kdbx.md) (own KDBX crate)

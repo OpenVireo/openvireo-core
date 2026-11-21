@@ -172,6 +172,8 @@ fn build(target: &str, include: &Path, opts: &Options) -> Result<(PathBuf, Vec<S
     let release = opts.release;
     let mut cmd = cargo();
     cmd.args(["rustc", "--locked", "-p", PACKAGE, "--lib", "--crate-type", "staticlib", "--target", target]);
+    // The native-static-libs line is parsed below: no colour codes in it (CI sets CARGO_TERM_COLOR=always)
+    cmd.args(["--color", "never"]);
     if release {
         cmd.arg("--release");
     }

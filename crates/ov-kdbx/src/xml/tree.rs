@@ -11,7 +11,9 @@ use std::borrow::Cow;
 
 use base64::Engine as _;
 use ov_error::OvError;
-use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
+#[cfg(any(test, fuzzing))]
+use quick_xml::events::{BytesEnd, BytesText};
+use quick_xml::events::{BytesStart, Event};
 use zeroize::Zeroizing;
 
 use crate::bytes::err;
@@ -437,77 +439,161 @@ pub(crate) fn xml10_char(c: char) -> bool {
 }
 
 /// Escapes text content. `\r` becomes `&#13;` so line endings survive XML's normalisation.
+#[cfg(any(test, fuzzing))]
 fn escape(s: &str, attribute: bool) -> Cow<'_, str> {
-    let needs = s.chars().any(|c| {
-        matches!(c, '&' | '<' | '>' | '\r') || !xml10_char(c) || (attribute && matches!(c, '"' | '\t' | '\n'))
-    });
-    if !needs {
+    if !needs_escape(s, attribute) {
         return Cow::Borrowed(s);
     }
     let mut out = String::with_capacity(s.len() + 8);
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '\r' => out.push_str("&#13;"),
-            '"' if attribute => out.push_str("&quot;"),
-            '\t' if attribute => out.push_str("&#9;"),
-            '\n' if attribute => out.push_str("&#10;"),
-            c if !xml10_char(c) => {}
-            c => out.push(c),
-        }
-    }
+    escape_slow(s, attribute, |p| out.push_str(p));
     Cow::Owned(out)
 }
 
-/// A byte buffer that is wiped on drop.
-struct ZBuf(Zeroizing<Vec<u8>>);
+/// Whether `s` has anything [`escape_slow`] changes: markup characters, `\r`, in attributes also
+/// `" \t \n`, and characters XML 1.0 doesn't allow (control characters, U+FFFE, U+FFFF; a `str`
+/// has no surrogates). Byte by byte: those are ASCII but U+FFFE/U+FFFF (`EF BF BE`/`EF BF BF`).
+fn needs_escape(s: &str, attribute: bool) -> bool {
+    let b = s.as_bytes();
+    b.iter().enumerate().any(|(i, &c)| match c {
+        b'&' | b'<' | b'>' | b'\r' => true,
+        b'"' | b'\t' | b'\n' => attribute,
+        0..=0x1f => true,
+        0xef => b.get(i + 1) == Some(&0xbf) && matches!(b.get(i + 2), Some(0xbe | 0xbf)),
+        _ => false,
+    })
+}
 
-impl std::io::Write for ZBuf {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+/// The escaped text of `s`, in pieces.
+fn escape_slow(s: &str, attribute: bool, mut put: impl FnMut(&str)) {
+    let mut buf = [0u8; 4];
+    for c in s.chars() {
+        match c {
+            '&' => put("&amp;"),
+            '<' => put("&lt;"),
+            '>' => put("&gt;"),
+            '\r' => put("&#13;"),
+            '"' if attribute => put("&quot;"),
+            '\t' if attribute => put("&#9;"),
+            '\n' if attribute => put("&#10;"),
+            c if !xml10_char(c) => {}
+            c => put(c.encode_utf8(&mut buf)),
+        }
     }
 }
 
 /// An indenting XML writer that protects values through the inner stream in document order.
+///
+/// It writes what `quick-xml`'s indenting `Writer` wrote before (tab indents; a line break before
+/// every tag except right after text), straight into one buffer that is wiped on drop and grown by
+/// copying into a fresh wiped one, so no copy of the plaintext is left behind. Under `cfg(test)` it
+/// (and `cfg(fuzzing)`) drives that `quick-xml` writer alongside and [`finish`](Self::finish)
+/// asserts the same bytes.
 pub(crate) struct XmlOut {
-    w: quick_xml::Writer<ZBuf>,
+    buf: Zeroizing<Vec<u8>>,
+    /// Where the XML starts in `buf` (after what the caller put there).
+    #[cfg(any(test, fuzzing))]
+    start: usize,
+    depth: usize,
+    /// The next tag starts on a new line (not right after text).
+    line_break: bool,
     stream: InnerStream,
-}
-
-fn io(e: std::io::Error) -> OvError {
-    err(format!("writing the XML failed: {e}"))
+    #[cfg(any(test, fuzzing))]
+    reference: reference::RefOut,
 }
 
 impl XmlOut {
+    #[cfg(test)]
     pub(crate) fn new(stream: InnerStream) -> Result<Self, OvError> {
-        let mut w = quick_xml::Writer::new_with_indent(ZBuf(Zeroizing::new(Vec::new())), b'\t', 1);
-        w.write_event(Event::Decl(quick_xml::events::BytesDecl::new("1.0", Some("utf-8"), Some("yes")))).map_err(io)?;
-        Ok(XmlOut { w, stream })
+        Self::with_buffer(stream, Zeroizing::new(Vec::new()))
     }
 
-    pub(crate) fn finish(self) -> Zeroizing<Vec<u8>> {
-        let mut out = self.w.into_inner().0;
-        out.push(b'\n');
-        out
+    /// A writer that appends to `buf`.
+    pub(crate) fn with_buffer(stream: InnerStream, buf: Zeroizing<Vec<u8>>) -> Result<Self, OvError> {
+        let mut o = XmlOut {
+            #[cfg(any(test, fuzzing))]
+            start: buf.len(),
+            buf,
+            depth: 0,
+            line_break: false,
+            stream,
+            #[cfg(any(test, fuzzing))]
+            reference: reference::RefOut::new()?,
+        };
+        o.put(b"<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>");
+        o.line_break = true;
+        Ok(o)
     }
 
-    fn start_tag<'a>(name: &'a str, attrs: &[(&str, &str)]) -> BytesStart<'a> {
-        let mut s = String::from(name);
-        for (k, v) in attrs {
-            s.push(' ');
-            s.push_str(k);
-            s.push_str("=\"");
-            s.push_str(&escape(v, true));
-            s.push('"');
+    pub(crate) fn finish(mut self) -> Zeroizing<Vec<u8>> {
+        self.put(b"\n");
+        #[cfg(any(test, fuzzing))]
+        assert!(self.buf[self.start..] == self.reference.finish()[..], "the XML differs from quick-xml's writer");
+        self.buf
+    }
+
+    /// Room for `n` more bytes: a bigger buffer gets a copy and the old one is wiped.
+    fn reserve(&mut self, n: usize) {
+        if self.buf.capacity() - self.buf.len() < n {
+            let cap = (self.buf.capacity() * 2).max(self.buf.len() + n).max(1 << 16);
+            let mut grown = Zeroizing::new(Vec::with_capacity(cap));
+            grown.extend_from_slice(&self.buf);
+            self.buf = grown;
         }
-        BytesStart::from_content(s, name.len())
+    }
+
+    fn put(&mut self, b: &[u8]) {
+        self.reserve(b.len());
+        self.buf.extend_from_slice(b);
+    }
+
+    fn put_escaped(&mut self, s: &str, attribute: bool) {
+        if needs_escape(s, attribute) {
+            let mut out = Zeroizing::new(String::with_capacity(s.len() + 8));
+            escape_slow(s, attribute, |p| out.push_str(p));
+            self.put(out.as_bytes());
+        } else {
+            self.put(s.as_bytes());
+        }
+    }
+
+    fn indent(&mut self) {
+        self.reserve(1 + self.depth);
+        self.buf.push(b'\n');
+        let depth = self.depth;
+        self.buf.extend(std::iter::repeat_n(b'\t', depth));
+    }
+
+    fn tag(&mut self, name: &str, attrs: &[(&str, &str)], empty: bool) {
+        if self.line_break {
+            self.indent();
+        }
+        self.put(b"<");
+        self.put(name.as_bytes());
+        for (k, v) in attrs {
+            self.put(b" ");
+            self.put(k.as_bytes());
+            self.put(b"=\"");
+            self.put_escaped(v, true);
+            self.put(b"\"");
+        }
+        self.put(if empty { b"/>" } else { b">" });
+        self.line_break = true;
+    }
+
+    fn start(&mut self, name: &str, attrs: &[(&str, &str)]) {
+        self.tag(name, attrs, false);
+        self.depth += 1;
+    }
+
+    fn end(&mut self, name: &str) {
+        self.depth = self.depth.saturating_sub(1);
+        if self.line_break {
+            self.indent();
+        }
+        self.put(b"</");
+        self.put(name.as_bytes());
+        self.put(b">");
+        self.line_break = true;
     }
 
     pub(crate) fn open(&mut self, name: &str) -> Result<(), OvError> {
@@ -515,11 +601,17 @@ impl XmlOut {
     }
 
     pub(crate) fn open_with(&mut self, name: &str, attrs: &[(&str, &str)]) -> Result<(), OvError> {
-        self.w.write_event(Event::Start(Self::start_tag(name, attrs))).map_err(io)
+        #[cfg(any(test, fuzzing))]
+        self.reference.open_with(name, attrs)?;
+        self.start(name, attrs);
+        Ok(())
     }
 
     pub(crate) fn close(&mut self, name: &str) -> Result<(), OvError> {
-        self.w.write_event(Event::End(BytesEnd::new(name))).map_err(io)
+        #[cfg(any(test, fuzzing))]
+        self.reference.close(name)?;
+        self.end(name);
+        Ok(())
     }
 
     /// `<name attrs>text</name>`, or `<name attrs/>` when `text` is empty and not protected.
@@ -530,18 +622,26 @@ impl XmlOut {
             let mut raw = Zeroizing::new(text.as_bytes().to_vec());
             self.stream.apply(&mut raw);
             let b64 = B64.encode(&raw);
-            return self.text_element(name, attrs, &b64);
+            #[cfg(any(test, fuzzing))]
+            self.reference.text_element(name, attrs, &b64)?;
+            self.text_element(name, attrs, &b64);
+            return Ok(());
         }
+        #[cfg(any(test, fuzzing))]
+        self.reference.leaf_with(name, attrs, text)?;
         if text.is_empty() {
-            return self.w.write_event(Event::Empty(Self::start_tag(name, attrs))).map_err(io);
+            self.tag(name, attrs, true);
+        } else {
+            self.text_element(name, attrs, text);
         }
-        self.text_element(name, attrs, text)
+        Ok(())
     }
 
-    fn text_element(&mut self, name: &str, attrs: &[(&str, &str)], text: &str) -> Result<(), OvError> {
-        self.w.write_event(Event::Start(Self::start_tag(name, attrs))).map_err(io)?;
-        self.w.write_event(Event::Text(BytesText::from_escaped(escape(text, false)))).map_err(io)?;
-        self.w.write_event(Event::End(BytesEnd::new(name))).map_err(io)
+    fn text_element(&mut self, name: &str, attrs: &[(&str, &str)], text: &str) {
+        self.start(name, attrs);
+        self.put_escaped(text, false);
+        self.line_break = false;
+        self.end(name);
     }
 
     pub(crate) fn leaf(&mut self, name: &str, text: &str) -> Result<(), OvError> {
@@ -556,13 +656,98 @@ impl XmlOut {
         }
         self.open_with(&e.name, &attrs)?;
         if !e.text.is_empty() {
-            self.w.write_event(Event::Text(BytesText::from_escaped(escape(&e.text, false)))).map_err(io)?;
-            self.w.write_indent().map_err(io)?;
+            #[cfg(any(test, fuzzing))]
+            self.reference.mixed_text(&e.text)?;
+            // Text before the children, then a line break: they still start on their own line
+            self.put_escaped(&e.text, false);
+            self.line_break = false;
+            self.indent();
         }
         for c in &e.children {
             self.element(c)?;
         }
         self.close(&e.name)
+    }
+}
+
+/// The `quick-xml` writer the XML used to come from, for the byte-for-byte check.
+#[cfg(any(test, fuzzing))]
+mod reference {
+    use super::*;
+
+    /// A byte buffer that is wiped on drop.
+    struct ZBuf(Zeroizing<Vec<u8>>);
+
+    impl std::io::Write for ZBuf {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn io(e: std::io::Error) -> OvError {
+        err(format!("writing the XML failed: {e}"))
+    }
+
+    pub(super) struct RefOut {
+        w: quick_xml::Writer<ZBuf>,
+    }
+
+    impl RefOut {
+        pub(super) fn new() -> Result<Self, OvError> {
+            let mut w = quick_xml::Writer::new_with_indent(ZBuf(Zeroizing::new(Vec::new())), b'\t', 1);
+            w.write_event(Event::Decl(quick_xml::events::BytesDecl::new("1.0", Some("utf-8"), Some("yes"))))
+                .map_err(io)?;
+            Ok(RefOut { w })
+        }
+
+        pub(super) fn finish(self) -> Zeroizing<Vec<u8>> {
+            let mut out = self.w.into_inner().0;
+            out.push(b'\n');
+            out
+        }
+
+        fn start_tag<'a>(name: &'a str, attrs: &[(&str, &str)]) -> BytesStart<'a> {
+            let mut s = String::from(name);
+            for (k, v) in attrs {
+                s.push(' ');
+                s.push_str(k);
+                s.push_str("=\"");
+                s.push_str(&escape(v, true));
+                s.push('"');
+            }
+            BytesStart::from_content(s, name.len())
+        }
+
+        pub(super) fn open_with(&mut self, name: &str, attrs: &[(&str, &str)]) -> Result<(), OvError> {
+            self.w.write_event(Event::Start(Self::start_tag(name, attrs))).map_err(io)
+        }
+
+        pub(super) fn close(&mut self, name: &str) -> Result<(), OvError> {
+            self.w.write_event(Event::End(BytesEnd::new(name))).map_err(io)
+        }
+
+        pub(super) fn leaf_with(&mut self, name: &str, attrs: &[(&str, &str)], text: &str) -> Result<(), OvError> {
+            if text.is_empty() {
+                return self.w.write_event(Event::Empty(Self::start_tag(name, attrs))).map_err(io);
+            }
+            self.text_element(name, attrs, text)
+        }
+
+        pub(super) fn text_element(&mut self, name: &str, attrs: &[(&str, &str)], text: &str) -> Result<(), OvError> {
+            self.w.write_event(Event::Start(Self::start_tag(name, attrs))).map_err(io)?;
+            self.w.write_event(Event::Text(BytesText::from_escaped(escape(text, false)))).map_err(io)?;
+            self.w.write_event(Event::End(BytesEnd::new(name))).map_err(io)
+        }
+
+        pub(super) fn mixed_text(&mut self, text: &str) -> Result<(), OvError> {
+            self.w.write_event(Event::Text(BytesText::from_escaped(escape(text, false)))).map_err(io)?;
+            self.w.write_indent().map_err(io)
+        }
     }
 }
 

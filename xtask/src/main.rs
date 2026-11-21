@@ -30,7 +30,7 @@ Commands:
   wasm          build the @openvireo/core-wasm package          (W1-BW)
   xcframework   build OpenVireoCore.xcframework                  (W1-BS)
   cpp           build the C++ static libs + headers              (W1-BC)
-  kotlin        build + test the Kotlin/JVM binding [--smoke]    (B2)
+  kotlin        build + test the Kotlin/JVM binding [--smoke]    (B2; `--android`: the AAR, B4)
   openapi       round-trip every OpenAPI example through ov-protocol (W1-P)
   python        build the openvireo Python package + pytest      (B1; `--smoke`, `--wheel`)
   release       build every release artifact the host can build + SHA256SUMS (W4-R; `release --help`)

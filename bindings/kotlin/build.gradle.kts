@@ -14,6 +14,21 @@
 // - The version is the core version (root Cargo.toml `[workspace.package] version`);
 //   `-Pov.version=<v>` overrides it.
 
+// The Android Gradle Plugin goes on the root classpath, next to the Kotlin plugin (AGP 9 compiles
+// Kotlin through it, so both need one classloader), but only when settings.gradle.kts included
+// :core-android: a JVM-only build never resolves AGP.
+buildscript {
+    if (findProject(":core-android") != null) {
+        repositories {
+            google()
+            mavenCentral()
+        }
+        dependencies {
+            classpath(libs.android.gradle.plugin)
+        }
+    }
+}
+
 plugins {
     alias(libs.plugins.kotlin.jvm) apply false
 }

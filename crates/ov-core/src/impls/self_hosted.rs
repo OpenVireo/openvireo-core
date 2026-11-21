@@ -14,6 +14,14 @@ use super::util::lock;
 use crate::api::{BlobMeta, CancelToken, KdbxCredentials, OvClient, PairingCode, SelfHosted, Vault, VaultVersion};
 use crate::state::{SelfHostedState, VaultSource};
 
+/// `invalid_request` with `server_code` `not_sync_server` and the page's status.
+fn not_sync_server(status: u16) -> OvError {
+    let mut e = OvError::new(ov_error::OvErrorCode::InvalidRequest, "that address isn't an OpenVireo sync server")
+        .with_status(status);
+    e.server_code = Some("not_sync_server".to_owned());
+    e
+}
+
 /// The SecureStore key of a paired server (TS `SelfHostedSync.tokenKey`).
 pub(crate) fn token_key(url: &str) -> String {
     format!("selfhosted:{}", url.trim().trim_end_matches('/'))
@@ -55,8 +63,38 @@ impl SelfHosted {
         }
     }
 
+    /// `GET health`; an answer that isn't a sync server's is `not_sync_server` (contract-v1.8).
     pub(crate) async fn health_impl(&self, cancel: &CancelToken) -> Result<String, OvError> {
-        Ok(parse_health(&send(&self.inner.client.host, self.inner.sync.build_health(), cancel).await?)?.to_string())
+        let res = send(&self.inner.client.host, self.inner.sync.build_health(), cancel).await?;
+        ov_protocol::error::check_redirect(&res)?;
+        let body = serde_json::from_slice::<serde_json::Value>(&res.body).ok();
+        if (200..300).contains(&res.status) {
+            return match body {
+                Some(v) if v.get("status").is_some_and(serde_json::Value::is_string) => Ok(v.to_string()),
+                _ => Err(not_sync_server(res.status)),
+            };
+        }
+        let err = parse_health(&res).expect_err("an error status");
+        // A gateway that can't reach it, or the sync server's own `{error, code}`: as it is
+        if err.is_unreachable() || body.as_ref().and_then(|b| b.get("code")).is_some_and(serde_json::Value::is_string) {
+            return Err(err);
+        }
+        Err(not_sync_server(res.status))
+    }
+
+    pub(crate) async fn download_impl(
+        &self,
+        database_id: &str,
+        cancel: &CancelToken,
+    ) -> Result<Option<Vec<u8>>, OvError> {
+        cancel.check()?;
+        match self.sync_client().database(database_id).get(None).await? {
+            ov_protocol::sync::GetResult::Ok { data, .. } => Ok(Some(data)),
+            ov_protocol::sync::GetResult::NotFound => Ok(None),
+            ov_protocol::sync::GetResult::NotModified(_) => {
+                Err(OvError::new(ov_error::OvErrorCode::ServerError, "unexpected status 304").with_status(304))
+            }
+        }
     }
 
     pub(crate) async fn list_impl(&self, cancel: &CancelToken) -> Result<Vec<BlobMeta>, OvError> {

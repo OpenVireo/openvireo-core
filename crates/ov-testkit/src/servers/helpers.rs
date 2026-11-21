@@ -177,6 +177,13 @@ impl TestServers {
         self.world().auth.revoke_principal(principal);
     }
 
+    /// Starts a rotation to `version` on a vault that no one gets the key of (another manager's,
+    /// interrupted); it is abandoned when someone rotates more than 24 hours later. False for an
+    /// unknown vault.
+    pub fn start_pending_rotation(&self, vault_id: &str, version: i64) -> bool {
+        self.world().start_pending_rotation(vault_id, version)
+    }
+
     /// Every `access` event the auth server sent, as `{"subjects": [...], "data": {...}}`.
     pub fn access_events(&self) -> Vec<Value> {
         self.world().auth.access_events.clone()

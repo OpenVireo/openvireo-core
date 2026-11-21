@@ -182,7 +182,7 @@ impl Account {
             Ok(t) => Ok(t),
             Err(e) => {
                 if e.is(OvErrorCode::SignedOut) && e.status.is_some() {
-                    self.session_ended().await;
+                    self.session_ended(&e).await;
                 }
                 Err(e)
             }
@@ -224,13 +224,54 @@ impl Account {
         parse(&res)
     }
 
-    /// The server ended the session: lock and drop the user's offline data (SPEC §20).
-    pub(crate) async fn session_ended(&self) {
+    /// The server ended the session (`cause` is the `signed_out` error): lock and drop the user's
+    /// offline data, keeping unsynced and AutoFill edits when it ended by accident (SPEC §20).
+    pub(crate) async fn session_ended(&self, cause: &OvError) {
         let user = lock(&self.inner.inner).cache_user.take();
         self.lock_keys();
         if let Some(u) = user {
-            let _ = self.clear_offline_data(&u).await;
+            let _ = self.drop_offline_data(&u, cause).await;
         }
+    }
+
+    /// After a session ended with `cause`: everything goes, except each vault's unsynced and
+    /// AutoFill edits when it ended by accident (`token_reused`, `session_expired`; contract-v1.8).
+    pub(crate) async fn drop_offline_data(&self, user_id: &str, cause: &OvError) -> Result<(), OvError> {
+        if ended_by_accident(cause) {
+            self.keep_unsynced_edits(user_id).await
+        } else {
+            self.clear_offline_data(user_id).await
+        }
+    }
+
+    /// Clears the user's cache but keeps each vault's `pending` and `autofill` parts (still
+    /// encrypted with the vault key), without its sync state and server copy (SPEC §20 "Wiping").
+    async fn keep_unsynced_edits(&self, user_id: &str) -> Result<(), OvError> {
+        if !self.keeps_offline_data() {
+            return Ok(());
+        }
+        let cache = &self.host().cache;
+        let mut kept = Vec::new();
+        for id in cache.list(user_id).await? {
+            if let Some(rec) = cache.load(user_id, &id).await? {
+                if rec.pending.is_some() || rec.autofill.is_some() {
+                    kept.push((
+                        id,
+                        crate::host::CachedVault {
+                            state: Vec::new(),
+                            base: None,
+                            pending: rec.pending,
+                            autofill: rec.autofill,
+                        },
+                    ));
+                }
+            }
+        }
+        cache.clear_user(user_id).await?;
+        for (id, rec) in kept {
+            cache.save(user_id, &id, &rec).await?;
+        }
+        Ok(())
     }
 
     /// Wipes the keyset and vault keys.
@@ -505,4 +546,15 @@ impl Account {
         })?;
         self.ingest(&v)
     }
+}
+
+/// Whether a `signed_out` error says the session ended by accident: the refresh was refused as
+/// `token_reused` or `session_expired` (its `details.reason`), SPEC §20.
+pub(crate) fn ended_by_accident(e: &OvError) -> bool {
+    let reason = e
+        .details
+        .as_deref()
+        .and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok())
+        .and_then(|v| v.get("reason").and_then(|r| r.as_str()).map(str::to_owned));
+    matches!(reason.as_deref(), Some("token_reused" | "session_expired"))
 }

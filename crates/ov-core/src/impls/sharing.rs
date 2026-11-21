@@ -63,8 +63,44 @@ impl Account {
         role: VaultRole,
         cancel: &CancelToken,
     ) -> Result<GrantResult, OvError> {
+        self.share_vault_checked(vault_id, who, role, None, cancel).await
+    }
+
+    /// [`share_vault_impl`](Self::share_vault_impl) to the keys the user confirmed: refused with
+    /// `invalid_public_keys` before anything is sealed when the grantee's keys are no longer those
+    /// (contract-v1.8).
+    pub(crate) async fn share_vault_confirmed_impl(
+        &self,
+        vault_id: &str,
+        who: Grantee,
+        role: VaultRole,
+        keys: crate::api::PublicKeys,
+        cancel: &CancelToken,
+    ) -> Result<GrantResult, OvError> {
+        self.share_vault_checked(vault_id, who, role, Some(keys), cancel).await
+    }
+
+    async fn share_vault_checked(
+        &self,
+        vault_id: &str,
+        who: Grantee,
+        role: VaultRole,
+        confirmed: Option<crate::api::PublicKeys>,
+        cancel: &CancelToken,
+    ) -> Result<GrantResult, OvError> {
         let e = self.entry(vault_id, cancel).await?;
         let pp = self.public_principal(&who, cancel).await?;
+        if let Some(keys) = confirmed {
+            let now = recipient(&pp)?.public_keys;
+            if (now.enc_pk.as_slice(), now.sign_pk.as_slice(), now.sig.as_slice())
+                != (keys.enc_pk.as_slice(), keys.sign_pk.as_slice(), keys.sig.as_slice())
+            {
+                return Err(OvError::new(
+                    OvErrorCode::InvalidPublicKeys,
+                    "the recipient's keys changed since they were shown; check their fingerprint again",
+                ));
+            }
+        }
         let sealed = ov_vault::grant(&e.vk, &pp, wire_vault_role(role))?;
         self.call(cancel, |a, t| a.build_grant_access(t, vault_id, std::slice::from_ref(&sealed.grant)), parse_empty)
             .await?;
@@ -79,7 +115,18 @@ impl Account {
         remove: Vec<Principal>,
         cancel: &CancelToken,
     ) -> Result<SyncReport, OvError> {
-        let e = self.entry(vault_id, cancel).await?;
+        // The server's current view: a rotation may be pending (SPEC §7, contract-v1.8)
+        let listed = self.call(cancel, |a, t| a.build_get_vault(t, vault_id), api::parse_vault).await?;
+        self.cache_vault(&listed).await?;
+        let mut e = self.ingest(&listed)?;
+        if let Some(pending) = e.info.pending_key_version {
+            if let Some(key) = e.vk.key(pending).map(|k| k.key.clone()) {
+                // This account holds its key (a device stopped before activating): finish it first
+                self.finish_rotation(&e, pending, &key, cancel).await?;
+                e = self.entry(vault_id, cancel).await?;
+            }
+        }
+        let foreign_pending = e.info.pending_key_version.is_some();
         let me = self.principal_str()?;
         let access = self.call(cancel, |a, t| a.build_list_access(t, vault_id), api::parse_access).await?.access;
         let plan = ov_vault::plan_rotation(&e.vk, &me, &access, &remove)?;
@@ -89,7 +136,19 @@ impl Account {
         }
         let my_public = self.with_keyset(|ks| ks.public)?;
         let req = plan.start_request(&my_public, &others)?;
-        self.call(cancel, |a, t| a.build_start_rotation(t, vault_id, &req), parse_empty).await?;
+        match self.call(cancel, |a, t| a.build_start_rotation(t, vault_id, &req), parse_empty).await {
+            Err(err) if foreign_pending && err.is(OvErrorCode::Conflict) => {
+                // Another member's rotation, less than 24 hours old (an older one the server replaces)
+                let mut out = OvError::new(
+                    OvErrorCode::Conflict,
+                    "another member is rotating this vault's key; try again once they're done, or after 24 hours",
+                )
+                .with_status(409);
+                out.server_code = Some("rotation_pending".to_owned());
+                return Err(out);
+            }
+            r => r?,
+        }
         if let Some(vk) = lock(&self.inner.inner).vaults.get_mut(vault_id) {
             vk.add_key(plan.new_key());
         }
@@ -111,6 +170,32 @@ impl Account {
             }
         }
         Ok(report)
+    }
+
+    /// Finishes a rotation left pending at `version` whose key this account holds: one sync re-keyed
+    /// to it, activate, and the name under the new key (SPEC §7 steps 2 and 3).
+    async fn finish_rotation(
+        &self,
+        e: &super::keyring::VaultEntry,
+        version: u32,
+        key: &[u8],
+        cancel: &CancelToken,
+    ) -> Result<(), OvError> {
+        super::syncing::rekey_sync(self, e, key, cancel).await?;
+        let v = i64::from(version);
+        self.call(cancel, |a, t| a.build_activate_key(t, &e.info.id, v), parse_empty).await?;
+        if let Some(vk) = lock(&self.inner.inner).vaults.get_mut(&e.info.id) {
+            vk.activate(version);
+        }
+        let mut k = zeroize::Zeroizing::new([0u8; 32]);
+        if key.len() == 32 {
+            k.copy_from_slice(key);
+        }
+        let enc = ov_crypto::vault_name::encrypt_vault_name(&k, &e.info.id, &e.info.name)?;
+        let listed = self.call(cancel, |a, t| a.build_rename_vault(t, &e.info.id, &enc), api::parse_vault).await?;
+        self.cache_vault(&listed).await?;
+        self.ingest(&listed)?;
+        Ok(())
     }
 
     /// Rotates every flagged org vault this account manages; failures are reported.

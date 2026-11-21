@@ -192,8 +192,14 @@ pub(crate) fn org_membership(o: &w::MeOrg) -> a::OrgMembership {
     }
 }
 
-pub(crate) fn profile(m: &w::Me) -> a::Profile {
-    a::Profile {
+/// `GET /me` as the facade's profile; `invalid_public_keys` when the keyset's keys don't verify.
+pub(crate) fn profile(m: &w::Me) -> Result<a::Profile, OvError> {
+    let keys = ov_crypto::keyset::trusted_public_keys(&ov_crypto::keyset::PublicKeysJson {
+        enc_pk: m.keyset.enc_pk.clone(),
+        sign_pk: m.keyset.sign_pk.clone(),
+        sig: m.keyset.sig.clone(),
+    })?;
+    Ok(a::Profile {
         id: m.id.clone(),
         email: m.email.clone(),
         name: m.name.clone(),
@@ -201,7 +207,9 @@ pub(crate) fn profile(m: &w::Me) -> a::Profile {
         plan: m.plan.as_ref().map(plan),
         orgs: m.orgs.iter().flatten().map(org_membership).collect(),
         deletion_scheduled_for: m.deletion_scheduled_for.clone(),
-    }
+        kdf: api_kdf(&m.kdf),
+        public_keys: api_public_keys(&keys),
+    })
 }
 
 pub(crate) fn device(d: &w::Device) -> a::Device {

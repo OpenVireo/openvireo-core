@@ -1624,6 +1624,7 @@ dependencies = [
  "ov-kdbx",
  "ov-protocol",
  "ov-testkit",
+ "serde_json",
  "zeroize",
 ]
 

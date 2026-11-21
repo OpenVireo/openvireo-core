@@ -222,6 +222,10 @@ fn org_vaults_are_sealed_to_every_confirmed_owner_and_admin() {
     members[1].public.as_mut().unwrap().enc_pk = members[3].public.as_ref().unwrap().enc_pk.clone();
     let e = new_vault("X", &alice.principal(), &alice.keyset, Some(("acme", &members))).unwrap_err();
     assert!(e.is(OvErrorCode::InvalidPublicKeys));
+    // ... and names the member (contract-v1.8)
+    let details: serde_json::Value = serde_json::from_str(e.details.as_deref().expect("details")).unwrap();
+    assert_eq!(details["principal"], admin.principal());
+    assert_eq!(details["email"], members[1].email);
 }
 
 #[test]

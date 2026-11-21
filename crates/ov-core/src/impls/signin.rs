@@ -387,7 +387,7 @@ impl Account {
             Ok(_) => Ok(ParkedCheck::Valid),
             Err(e) if e.is(OvErrorCode::Aborted) => Err(e),
             Err(e) if e.is(OvErrorCode::SignedOut) && e.status.is_some() => {
-                self.clear_offline_data(user_id).await?;
+                self.drop_offline_data(user_id, &e).await?;
                 Ok(ParkedCheck::Ended)
             }
             Err(_) => Ok(ParkedCheck::NoAnswer),

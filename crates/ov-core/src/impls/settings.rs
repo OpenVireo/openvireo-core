@@ -29,7 +29,7 @@ impl Account {
         self.follow_email(&me.email).await?;
         lock(&self.inner.inner).deletion = me.deletion_scheduled_for.clone();
         self.cache_profile(&me.id, &CachedProfile { kdf: me.kdf.clone(), keyset: me.keyset.clone() }).await?;
-        Ok(profile(&me))
+        profile(&me)
     }
 
     pub(crate) async fn change_password_impl(

@@ -77,6 +77,9 @@ fn error_details(code: &str, body: Option<&Value>) -> Option<String> {
         }
         "quota_exceeded" => json!({ "max": field("max").filter(|v| v.is_number())? }),
         "invalid_passcode" => json!({ "attemptsLeft": field("attempts_left").filter(|v| v.is_number())? }),
+        // SPEC §23 (contract-v1.8): when the account will be erased, and the orgs to hand over first
+        "account_pending_deletion" => json!({ "scheduledFor": field("scheduled_for").filter(|v| v.is_string())? }),
+        "deletion_blocked" => json!({ "orgs": field("orgs").filter(|v| v.is_array())? }),
         _ => return None,
     };
     Some(details.to_string())
@@ -185,7 +188,16 @@ mod tests {
         // A body code wins over the status, known or not.
         assert_eq!(err(400, r#"{"error":"x","code":"session_expired"}"#).code, OvErrorCode::SessionExpired);
         let e = err(409, r#"{"error":"hand over","code":"deletion_blocked","orgs":[{"id":"o","name":"n"}]}"#);
-        assert_eq!((e.code, e.wire_code(), e.details.as_deref()), (OvErrorCode::Conflict, "deletion_blocked", None));
+        assert_eq!(
+            (e.code, e.wire_code(), e.details.as_deref()),
+            (OvErrorCode::Conflict, "deletion_blocked", Some(r#"{"orgs":[{"id":"o","name":"n"}]}"#))
+        );
+        let e =
+            err(403, r#"{"error":"pending","code":"account_pending_deletion","scheduled_for":"2026-12-01T00:00:00Z"}"#);
+        assert_eq!(
+            (e.code, e.wire_code(), e.details.as_deref()),
+            (OvErrorCode::Forbidden, "account_pending_deletion", Some(r#"{"scheduledFor":"2026-12-01T00:00:00Z"}"#))
+        );
         let e = err(400, r#"{"error":"bad","code":"invalid_code"}"#);
         assert_eq!((e.code, e.wire_code()), (OvErrorCode::InvalidRequest, "invalid_code"));
     }

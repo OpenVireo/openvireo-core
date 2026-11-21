@@ -13,6 +13,7 @@ ov-error = { path = "../ov-error" }
 ov-crypto = { path = "../ov-crypto" }
 ov-kdbx = { path = "../ov-kdbx" }
 ov-protocol = { path = "../ov-protocol" }
+serde_json.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]

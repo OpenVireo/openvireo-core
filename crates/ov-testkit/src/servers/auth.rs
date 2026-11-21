@@ -117,6 +117,8 @@ pub(crate) struct VaultRec {
     encrypted_name: String,
     current: i64,
     pending: Option<i64>,
+    /// When the pending version was started (ms), for the 24-hour rule (SPEC §7).
+    pending_since: i64,
     pub access: Table<AccessRec>,
     rotation_required: bool,
     pub archived: bool,
@@ -1965,6 +1967,7 @@ fn create_vault(w: &mut World, req: &Req, _p: &Params) -> Res {
         encrypted_name: b.encrypted_name,
         current: 1,
         pending: None,
+        pending_since: 0,
         access,
         rotation_required: false,
         archived: false,
@@ -2102,9 +2105,20 @@ fn start_rotation(w: &mut World, req: &Req, p: &Params) -> Res {
     let vault = p.get("vault");
     require_manage(w, vault, &c.principal)?;
     let b: StartRotationRequest = req.json()?;
+    let now = w.now_ms();
     let v = w.auth.vaults.get_mut(vault).expect("checked");
-    if v.pending.is_some() || b.key_version != v.current + 1 {
-        return Err(error(409, "conflict", "rotation pending"));
+    if let Some(p) = v.pending {
+        // A pending rotation older than 24 hours is abandoned (SPEC §7), as the auth server does
+        if now - v.pending_since <= 24 * 3_600_000 {
+            return Err(error(409, "conflict", "Another rotation is pending"));
+        }
+        for a in v.access.values_mut() {
+            a.keys.remove(&p);
+        }
+        v.pending = None;
+    }
+    if b.key_version != v.current + 1 {
+        return Err(error(409, "conflict", "key_version must be current_key_version + 1"));
     }
     let removed = b.remove.unwrap_or_default();
     for r in &removed {
@@ -2116,6 +2130,7 @@ fn start_rotation(w: &mut World, req: &Req, p: &Params) -> Res {
         }
     }
     v.pending = Some(b.key_version);
+    v.pending_since = now;
     let remaining: Vec<String> = v.access.keys().map(str::to_string).collect();
     if !removed.is_empty() {
         notify(w, removed, json!({ "vault": vault, "change": "revoked" }));
@@ -2517,5 +2532,21 @@ pub(crate) fn totp_now(w: &World, email: &str) -> Option<String> {
     match u.totp_secret.as_deref().or(u.pending_totp.as_deref()) {
         Some(s) => totp_at(s, w.now_ms()),
         None => u.fixed_totp.clone(),
+    }
+}
+
+impl World {
+    /// Marks `version` pending on a vault without sealing it to anyone (another manager's rotation
+    /// whose key nobody else holds). Test helper.
+    pub(crate) fn start_pending_rotation(&mut self, vault: &str, version: i64) -> bool {
+        let now = self.now_ms();
+        match self.auth.vaults.get_mut(vault) {
+            Some(v) => {
+                v.pending = Some(version);
+                v.pending_since = now;
+                true
+            }
+            None => false,
+        }
     }
 }

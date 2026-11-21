@@ -1,15 +1,10 @@
 # Open items
 
-Known bugs, gaps and follow-ups on `develop` at `9ac31d4` (2026-11-21, after every client moved onto
+Known bugs, gaps and follow-ups on `develop` at `f9af5be` (2026-11-21, after every client moved onto
 `contract-v1.8`). Remove an item when its fix lands.
 
 ## Bugs
 
-- **Stale keys after another device rotates a vault key** (e2e scenario 6b, a known failure in
-  `e2e/cross-client.mjs`). `Account` keeps each vault's keys from the last `vaults()` call
-  (`impls/account.rs`, `Account::entry` returns the cached entry). On a device that was signed in before
-  another device rotated the key, `open_vault` and `Vault::sync` fail with `vault_key_mismatch` until the
-  app lists the vaults again. Fix: refetch the vault's keys once on a mismatch and retry.
 - **Edits kept after an accidental session end lose their base.** Since contract-v1.8, `clear_user` keeps
   unsynced edits after `token_reused` / `session_expired`, but on the next sign-in they merge two-way, by
   modification time, instead of three-way against their base.

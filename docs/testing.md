@@ -119,5 +119,6 @@ e2e/run.sh
 
 The scenarios (register and sign in across clients, concurrent edits, Recycle Bin, vault sharing, share
 links, key rotation, account deletion and restore), which client takes part in each, and the known
-failures are in [e2e/README.md](../e2e/README.md). On 2026-11-21 every cell passed except the known
-failure 6b (see [open-items.md](open-items.md)).
+failures are in [e2e/README.md](../e2e/README.md). On 2026-11-21 (task W3-X) every cell passed except 6b,
+which `f9af5be` fixed the same day: when a vault's server copy doesn't open with the keys the core holds
+(`vault_key_mismatch`), it fetches that vault's keys once more and retries. `KNOWN` is empty since.

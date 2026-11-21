@@ -18,6 +18,7 @@ plugins {
 
 val generatedDir = rootProject.extra["ovGeneratedDir"] as File
 val sharedDir = rootProject.extra["ovSharedDir"] as File
+val facadeDir = rootProject.extra["ovFacadeDir"] as File
 
 /** The ABIs the AAR carries. Keep in step with `ANDROID_ABIS` in xtask/src/kotlin.rs. */
 val androidAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -26,11 +27,10 @@ val jniLibsDir: File = providers.gradleProperty("ov.jniLibsDir").orNull?.let { f
     ?: rootProject.layout.buildDirectory.dir("jniLibs").get().asFile
 
 /**
- * Every Kotlin source directory of the AAR. The Java facade (`com.openvireo.core.java`, B3) is
- * added here once it lands, next to its dependency on kotlinx-coroutines (future/jdk8 helpers are
- * in coroutines-core).
+ * Every Kotlin source directory of the AAR: the generated binding, the generated Java facade
+ * (`com.openvireo.core.java`; its future helpers are in kotlinx-coroutines-core) and shared/.
  */
-val kotlinSrcDirs: List<File> = listOf(generatedDir, sharedDir)
+val kotlinSrcDirs: List<File> = listOf(generatedDir, facadeDir, sharedDir)
 
 android {
     namespace = "com.openvireo.core"

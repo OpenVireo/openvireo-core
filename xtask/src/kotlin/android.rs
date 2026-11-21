@@ -30,11 +30,15 @@ pub const ANDROID_ABIS: [(&str, &str); 3] = [
 /// The AAR's minSdk, passed to cargo-ndk as the platform (API level) to link against.
 const MIN_SDK: &str = "26";
 
-/// Classes `classes.jar` must contain: the generated binding, a shared host and an Android host.
-const REQUIRED_CLASSES: [&str; 3] = [
+/// Classes `classes.jar` must contain: the generated binding, a shared host, an Android host, and
+/// the Java facade (generated, hand-written shared, Android).
+const REQUIRED_CLASSES: [&str; 6] = [
     "com/openvireo/core/OvClient.class",
     "com/openvireo/core/hosts/UrlConnectionTransport.class",
     "com/openvireo/core/hosts/AndroidLogSink.class",
+    "com/openvireo/core/java/JOvClient.class",
+    "com/openvireo/core/java/JHosts.class",
+    "com/openvireo/core/java/JDefaultHosts.class",
 ];
 
 /// Fails with the install commands when `cargo ndk` or a Rust Android target is missing.

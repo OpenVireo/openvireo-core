@@ -1040,7 +1040,8 @@ impl<'a> Gen<'a> {
                 .collect();
             let args = self.args(&r.fields)?;
             writeln!(s, "    /** A [com.openvireo.core.{path}]. */").unwrap();
-            writeln!(s, "    @JvmStatic @JvmOverloads").unwrap();
+            let overloads = if decl.iter().any(|d| d.contains(" = ")) { " @JvmOverloads" } else { "" };
+            writeln!(s, "    @JvmStatic{overloads}").unwrap();
             writeln!(s, "    public fun new{fname}({}): {path} = {path}({args})\n", decl.join(", ")).unwrap();
             for f in r.fields.iter().filter(|f| f.ty.any(&|t| unsigned(&t.name).is_some())) {
                 let get = self.to_facade(&f.ty, &format!("record.{}", q(&f.name)), "JScope.defaultScope()")?;

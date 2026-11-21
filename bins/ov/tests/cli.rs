@@ -31,8 +31,11 @@ fn stored(rel: &str) -> Vec<u8> {
     bytes
 }
 
+/// The TS CLI's help with this release's version in its first line (the TS `ov` printed 0.11.0).
 fn golden_help() -> Vec<u8> {
-    stored("tests/golden/help.txt")
+    let help = String::from_utf8(stored("tests/golden/help.txt")).unwrap();
+    let help = help.replacen("ov 0.11.0:", &format!("ov {}:", env!("CARGO_PKG_VERSION")), 1);
+    help.into_bytes()
 }
 
 #[test]
@@ -45,7 +48,7 @@ fn help_is_byte_identical_to_the_ts_cli() {
         assert!(out.stderr.is_empty());
     }
     let out = ov(&["--version"], &home);
-    assert_eq!(String::from_utf8(out.stdout).unwrap(), "ov 0.11.0\n");
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), format!("ov {}\n", env!("CARGO_PKG_VERSION")));
 }
 
 #[test]

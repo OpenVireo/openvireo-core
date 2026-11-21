@@ -112,9 +112,10 @@ async fn injects_bare_and_braced_references_from_stdin_or_a_file() {
 // --------------------------------------------------------------------------------- ov run
 
 /// The TS test's Node script, as a shell script: writes the secret whole and split across two
-/// writes 20 ms apart, then stderr, then whether the token reached the child. Both halves are cut
-/// before the first write, so the gap between the writes is only the sleep: forking `cut` in
-/// between took longer than the masker's 100 ms hold on slow CI runners and leaked the halves.
+/// writes 20 ms apart, then stderr, then whether the token reached the child. The test raises the
+/// mask hold (`OPENVIREO_TEST_MASK_HOLD_MS`, debug builds only): starting `sleep` between the two
+/// writes took longer than the 100 ms hold on GitHub's macOS runners and leaked the halves. The
+/// release-after-hold timing has its own unit test in `src/run.rs`.
 #[cfg(unix)]
 const RUN_SCRIPT: &str = r#"p="$DB_PASSWORD"
 a="$(printf %s "$p" | cut -c1-4)"
@@ -140,7 +141,11 @@ async fn run_resolves_references_from_env_files_and_the_environment_and_masks_th
     let r = cli
         .ov(
             &["run", "--env-file", env_file.to_str().unwrap(), "--", "/bin/sh", "-c", RUN_SCRIPT],
-            &[("OPENVIREO_SERVICE_ACCOUNT_TOKEN", &w.read_token), ("GH", "ov://Team%20Infra/GitHub/password")],
+            &[
+                ("OPENVIREO_SERVICE_ACCOUNT_TOKEN", &w.read_token),
+                ("GH", "ov://Team%20Infra/GitHub/password"),
+                ("OPENVIREO_TEST_MASK_HOLD_MS", "2000"),
+            ],
         )
         .await;
     assert_eq!(r.code, 3);

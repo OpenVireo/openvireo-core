@@ -1,0 +1,2 @@
+”­Retry-After: 30
+{"error":"slow down","code":"rate_limited","details":{"limit":"x"}}

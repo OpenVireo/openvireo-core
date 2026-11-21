@@ -1,0 +1,1 @@
+{"v":1,"kind":"entry","title":"GitHub","sharedBy":"me","fields":[{"k":"username","label":"Username","value":"me"},{"k":"password","label":"Password","value":"pw","protected":true},{"k":"totp","label":"otp","value":"otpauth://totp/x?secret=JBSWY3DPEHPK3PXP"}]}

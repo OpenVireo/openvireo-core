@@ -1,0 +1,103 @@
+# cargo-fuzz targets for the parsers that read untrusted data (rust-core.md §7, W4-F).
+#
+# Its own workspace (the root Cargo.toml excludes fuzz/), so `cargo xtask ci` never builds it and
+# it needs nightly only here:
+#
+#   cargo +nightly fuzz list
+#   cargo +nightly fuzz run <target> fuzz/corpus/<target> fuzz/seeds/<target> -- -dict=fuzz/dicts/<dict>
+#
+# Seeds (small, committed) are in seeds/<target>/, dictionaries in dicts/, and minimised
+# reproducers of anything a target found in regressions/<target>/. corpus/ and artifacts/ are
+# local only. `cargo +nightly test --manifest-path fuzz/Cargo.toml` checks the KDBX envelope
+# builders against ov-kdbx and replays seeds/ and regressions/ through every target.
+
+[package]
+name = "ov-fuzz"
+version = "0.0.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+ov-crypto = { path = "../crates/ov-crypto" }
+ov-kdbx = { path = "../crates/ov-kdbx" }
+ov-merge = { path = "../crates/ov-merge" }
+ov-protocol = { path = "../crates/ov-protocol" }
+ov-share = { path = "../crates/ov-share" }
+ov-sync = { path = "../crates/ov-sync" }
+# The KDBX envelope builders (src/lib.rs): the same pinned versions as the workspace.
+aes = { version = "=0.8.4", default-features = false }
+cbc = { version = "=0.1.2", default-features = false, features = ["alloc", "block-padding"] }
+chacha20 = { version = "=0.9.1", default-features = false }
+flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
+hmac = { version = "=0.12.1", default-features = false }
+serde = "=1.0.229"
+serde_json = "=1.0.154"
+sha2 = { version = "=0.10.9", default-features = false }
+
+# Symbols for the stack traces libFuzzer prints.
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "kdbx_header"
+path = "fuzz_targets/kdbx_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kdbx_open"
+path = "fuzz_targets/kdbx_open.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kdbx_inner"
+path = "fuzz_targets/kdbx_inner.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kdbx_xml"
+path = "fuzz_targets/kdbx_xml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kdbx_keyfile"
+path = "fuzz_targets/kdbx_keyfile.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "share_link"
+path = "fuzz_targets/share_link.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sse"
+path = "fuzz_targets/sse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "protocol_json"
+path = "fuzz_targets/protocol_json.rs"
+test = false
+doc = false
+bench = false

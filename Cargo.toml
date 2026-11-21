@@ -1,7 +1,9 @@
 [workspace]
 resolver = "2"
 # Every crate under crates/, bindings/ and bins/ is a member, so adding a crate never edits this file.
-members = ["crates/*", "bindings/*", "bins/*", "xtask"]
+members = ["crates/*", "bindings/*", "bins/*", "xtask", "benches"]
+# fuzz/ is its own workspace (cargo-fuzz, nightly only), so CI never builds it.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.0.0"

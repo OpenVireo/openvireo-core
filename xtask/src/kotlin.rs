@@ -34,7 +34,7 @@ use std::process::Command;
 
 use crate::{cargo, root, run as step, target_root, Result};
 
-mod android;
+pub(crate) mod android;
 
 const PACKAGE: &str = "ov-ffi";
 
@@ -184,7 +184,7 @@ pub fn run(args: &[String]) -> Result {
     Ok(())
 }
 
-fn gradlew(project: &Path) -> Command {
+pub(crate) fn gradlew(project: &Path) -> Command {
     let mut c =
         if cfg!(windows) { Command::new(project.join("gradlew.bat")) } else { Command::new(project.join("gradlew")) };
     c.current_dir(project);

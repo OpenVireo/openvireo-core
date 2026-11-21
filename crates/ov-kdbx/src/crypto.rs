@@ -479,8 +479,12 @@ pub(crate) fn gunzip(data: &[u8]) -> Result<Zeroizing<Vec<u8>>, OvError> {
     Ok(out)
 }
 
+/// Level 5, not zlib's default 6: for a 5k-entry vault 17 ms instead of 24 ms, for a file 3.7%
+/// larger (owner's choice, 2026-11-21). Any level reads anywhere.
+pub(crate) const GZIP_LEVEL: u32 = 5;
+
 pub(crate) fn gzip(data: &[u8]) -> Result<Vec<u8>, OvError> {
-    let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::new(GZIP_LEVEL));
     e.write_all(data).map_err(|e| err(format!("compression failed: {e}")))?;
     e.finish().map_err(|e| err(format!("compression failed: {e}")))
 }

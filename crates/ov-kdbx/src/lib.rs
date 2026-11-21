@@ -132,9 +132,11 @@ pub fn write(db: &Database, key: &CompositeKey) -> Result<Vec<u8>, OvError> {
 
     let stream_key = primitives::random_bytes(64)?;
     let stream = InnerStream::new(header::STREAM_CHACHA20, &stream_key)?.expect("ChaCha20 is a stream");
-    let mut plain = zeroize::Zeroizing::new(Vec::new());
+    // Sized once: growing would leave a copy of the plaintext to wipe each time
+    let binaries: usize = db.binaries.iter().map(|b| b.data.len() + 8).sum();
+    let mut plain = zeroize::Zeroizing::new(Vec::with_capacity(128 + binaries + xml::write::estimated_len(db)));
     header::write_inner(&mut plain, &stream_key, &db.binaries);
-    plain.extend_from_slice(&xml::write::document(db, stream)?);
+    let mut plain = xml::write::document_into(db, stream, plain)?;
     if h.compression == Compression::Gzip {
         plain = zeroize::Zeroizing::new(crypto::gzip(&plain)?);
     }

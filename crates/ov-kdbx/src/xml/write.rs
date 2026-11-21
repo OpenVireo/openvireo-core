@@ -18,8 +18,37 @@ use crate::model::*;
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 
 /// The XML of `db` with protected values encrypted by `stream`, in document order.
+#[cfg(test)]
 pub(crate) fn document(db: &Database, stream: InnerStream) -> Result<Zeroizing<Vec<u8>>, OvError> {
-    let mut w = Writer { out: XmlOut::new(stream)? };
+    document_into(db, stream, Zeroizing::new(Vec::new()))
+}
+
+/// About how long the XML of `db` is, a little over for most vaults, to size the buffer once
+/// (each time it grows, the old copy has to be wiped).
+pub(crate) fn estimated_len(db: &Database) -> usize {
+    fn entry(e: &Entry) -> usize {
+        let strings: usize = e.strings.iter().map(|s| s.key.len() + s.value.len() * 4 / 3).sum();
+        let tags: usize = e.tags.iter().map(|t| t.len() + 1).sum();
+        1200 + strings + tags + e.history.iter().map(entry).sum::<usize>()
+    }
+    fn group(g: &Group) -> usize {
+        800 + g.name.len()
+            + g.notes.len()
+            + g.entries.iter().map(entry).sum::<usize>()
+            + g.groups.iter().map(group).sum::<usize>()
+    }
+    4096 + group(&db.root)
+        + db.deleted_objects.len() * 160
+        + db.meta.custom_icons.iter().map(|i| i.data.len() * 4 / 3 + 200).sum::<usize>()
+}
+
+/// [`document`], appended to `out` (the inner header is already there).
+pub(crate) fn document_into(
+    db: &Database,
+    stream: InnerStream,
+    out: Zeroizing<Vec<u8>>,
+) -> Result<Zeroizing<Vec<u8>>, OvError> {
+    let mut w = Writer { out: XmlOut::with_buffer(stream, out)? };
     w.out.open("KeePassFile")?;
     w.meta(&db.meta)?;
     w.out.open("Root")?;
@@ -39,8 +68,10 @@ pub(crate) fn document(db: &Database, stream: InnerStream) -> Result<Zeroizing<V
     Ok(w.out.finish())
 }
 
-pub(crate) fn format_time(t: Timestamp) -> String {
-    B64.encode(t.saturating_add(EPOCH_OFFSET).to_le_bytes())
+/// `bytes` as base64 in `buf`, without allocating (times and UUIDs: most of the values).
+fn b64_in<'b>(bytes: &[u8], buf: &'b mut [u8; 32]) -> &'b str {
+    let n = B64.encode_slice(bytes, buf).expect("32 bytes hold the base64 of 16");
+    std::str::from_utf8(&buf[..n]).expect("base64 is ASCII")
 }
 
 struct Writer {
@@ -64,12 +95,22 @@ impl Writer {
         self.out.leaf(name, bool_text(b))
     }
 
-    fn num(&mut self, name: &str, n: impl ToString) -> Result<(), OvError> {
-        self.out.leaf(name, &n.to_string())
+    fn num(&mut self, name: &str, n: impl std::fmt::Display) -> Result<(), OvError> {
+        use std::io::Write as _;
+        let mut buf = [0u8; 40];
+        let mut c = std::io::Cursor::new(&mut buf[..]);
+        match write!(c, "{n}") {
+            Ok(()) => {
+                let len = c.position() as usize;
+                self.out.leaf(name, std::str::from_utf8(&buf[..len]).expect("a number is ASCII"))
+            }
+            Err(_) => self.out.leaf(name, &n.to_string()),
+        }
     }
 
     fn time(&mut self, name: &str, t: Timestamp) -> Result<(), OvError> {
-        self.out.leaf(name, &format_time(t))
+        let mut buf = [0u8; 32];
+        self.out.leaf(name, b64_in(&t.saturating_add(EPOCH_OFFSET).to_le_bytes(), &mut buf))
     }
 
     fn opt_time(&mut self, name: &str, t: Option<Timestamp>) -> Result<(), OvError> {
@@ -80,7 +121,8 @@ impl Writer {
     }
 
     fn uuid(&mut self, name: &str, u: Uuid) -> Result<(), OvError> {
-        self.out.leaf(name, &B64.encode(u.as_bytes()))
+        let mut buf = [0u8; 32];
+        self.out.leaf(name, b64_in(u.as_bytes(), &mut buf))
     }
 
     /// An optional reference written as the all-zero UUID when absent (as KeePassXC does).
@@ -272,6 +314,84 @@ mod tests {
 
     fn last_child_name<'a>(n: &Node<'a>) -> &'a str {
         n.children.last().map_or("", |c| c.name)
+    }
+
+    /// `XmlOut::finish` asserts the same bytes as quick-xml's writer under `cfg(test)`.
+    #[test]
+    fn corpus_files_write_like_quick_xml() {
+        for f in super::super::corpus::files() {
+            let db = crate::read(&f.bytes, &f.key).unwrap_or_else(|e| panic!("{}: {e}", f.name));
+            document(&db, InnerStream::new(3, &[9; 64]).unwrap().unwrap()).unwrap();
+        }
+    }
+
+    #[test]
+    fn odd_text_writes_like_quick_xml() {
+        let odd = [
+            "",
+            "plain",
+            "<&>\"'",
+            "a\r\nb\rc\nd\te",
+            "ctl \u{0}\u{1}\u{8}\u{b}\u{c}\u{1f}\u{7f} end",
+            "\u{fffe}\u{ffff}\u{fffd}\u{e000}\u{d7ff}\u{10000}\u{10ffff}",
+            "é ✓ 𝄞 \u{ef}\u{bf}",
+            "  lead and trail  ",
+        ];
+        let mut w = XmlOut::new(InnerStream::new(3, &[9; 64]).unwrap().unwrap()).unwrap();
+        w.open("Root").unwrap();
+        for t in odd {
+            w.leaf("Leaf", t).unwrap();
+            w.leaf_with("Attr", &[("a", t), ("b", "x")], t).unwrap();
+            w.leaf_with("P", &[("Protected", "True")], t).unwrap();
+            w.element(&XmlElement {
+                name: "Mixed".into(),
+                attributes: vec![("k".into(), t.into())],
+                text: t.into(),
+                children: vec![
+                    XmlElement { name: "In".into(), text: t.into(), ..XmlElement::default() },
+                    XmlElement {
+                        name: "Deep".into(),
+                        children: vec![XmlElement { name: "E".into(), ..XmlElement::default() }],
+                        ..XmlElement::default()
+                    },
+                ],
+            })
+            .unwrap();
+        }
+        w.close("Root").unwrap();
+        w.finish();
+    }
+
+    #[test]
+    fn a_big_vault_writes_like_quick_xml() {
+        let (mut db, _) = crate::vault::create_vault_kdbx("Big", &[3; 32], 1_700_000_000).unwrap();
+        for g in 0..20u128 {
+            let mut group = Group::new(Uuid::from_u128(1000 + g), format!("G{g}"), 1_700_000_000);
+            for e in 0..100u128 {
+                let mut entry = Entry::new(Uuid::from_u128(g * 1000 + e + 1), 1_700_000_000);
+                entry.strings = vec![
+                    StringField::new("Title", format!("E {e} <&>"), false),
+                    StringField::new("Password", format!("pw{e}\r\n"), true),
+                ];
+                entry.tags = vec!["t".into()];
+                entry.history.push(entry.clone());
+                group.entries.push(entry);
+            }
+            db.root.groups.push(group);
+        }
+        document(&db, InnerStream::new(3, &[9; 64]).unwrap().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn the_estimate_is_close() {
+        let mut ratios = Vec::new();
+        for f in super::super::corpus::files() {
+            let db = crate::read(&f.bytes, &f.key).unwrap();
+            let xml = document(&db, InnerStream::new(3, &[9; 64]).unwrap().unwrap()).unwrap();
+            ratios.push((f.name, estimated_len(&db) as f64 / xml.len() as f64));
+        }
+        // A little over is the aim; small files are mostly the fixed 4 KB
+        assert!(ratios.iter().all(|(_, r)| (0.8..2.5).contains(r)), "{ratios:?}");
     }
 
     #[test]

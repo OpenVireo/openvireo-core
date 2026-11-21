@@ -250,40 +250,13 @@ mod tests {
 
     #[test]
     fn corpus_files_read_the_same_on_both_paths() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/kdbx");
-        let manifest = std::fs::read_to_string(dir.join("manifest.tsv")).unwrap();
-        let ext = std::env::var("OV_KEEPASSXC_SRC").map(std::path::PathBuf::from).unwrap_or_else(|_| {
-            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("kpnx/openvireo")
-        });
-        let (mut read, mut required) = (0, 0);
-        for line in manifest.lines().filter(|l| !l.starts_with('#') && !l.trim().is_empty()) {
-            let cols: Vec<&str> = line.split('\t').collect();
-            let path = match cols[0].strip_prefix("ext:") {
-                Some(p) => ext.join(p),
-                None => dir.join(cols[0]),
-            };
-            required += u32::from(cols[4] == "required");
-            let Ok(bytes) = std::fs::read(&path) else {
-                assert_ne!(cols[4], "required", "{} is missing", cols[0]);
-                continue;
-            };
-            let mut key = crate::CompositeKey::new();
-            match cols[2] {
-                "-" => {}
-                "<empty>" => key = key.with_password(""),
-                pw => key = key.with_password(pw),
-            }
-            if cols[3] != "-" {
-                key = key.with_key_file(&std::fs::read(dir.join(cols[3])).unwrap());
-            }
+        let files = super::super::corpus::files();
+        for f in &files {
             let before = fast_reads();
-            crate::read(&bytes, &key).unwrap_or_else(|e| panic!("{}: {e}", cols[0]));
+            crate::read(&f.bytes, &f.key).unwrap_or_else(|e| panic!("{}: {e}", f.name));
             // KeePass apps' XML is what the fast path is for: none may fall back
-            assert_eq!(fast_reads(), before + 1, "{} fell back to quick-xml", cols[0]);
-            read += 1;
+            assert_eq!(fast_reads(), before + 1, "{} fell back to quick-xml", f.name);
         }
-        // Required files must exist (above); optional and external ones count when present
-        assert!(required >= 12 && read >= required, "{read} files read, {required} required");
     }
 
     #[test]

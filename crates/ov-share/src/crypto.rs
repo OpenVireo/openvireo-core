@@ -204,6 +204,10 @@ mod tests {
         kdf.m = 1024;
         assert_eq!(check_kdf_params(&kdf, KDF_MIN).unwrap_err().code, OvErrorCode::WeakKdf);
         assert_eq!(share_passcode_key("pw", &kdf, false).unwrap_err().code, OvErrorCode::WeakKdf);
+        // A link's creator picks the kdf: over the SPEC §3 maximum it is refused before it runs
+        let huge = KdfParams { m: u32::MAX, t: 2, ..kdf.clone() };
+        assert_eq!(share_passcode_key("pw", &huge, false).unwrap_err().code, OvErrorCode::TooLarge);
+        assert_eq!(share_passcode_key("pw", &huge, true).unwrap_err().code, OvErrorCode::TooLarge);
         kdf.m = 19456;
         kdf.alg = "scrypt".into();
         assert_eq!(check_kdf_params(&kdf, KDF_MIN).unwrap_err().code, OvErrorCode::WeakKdf);

@@ -51,6 +51,40 @@ pub const KDF_DEFAULTS: (u32, u32, u32) = (65536, 3, 1);
 /// Clients refuse `m < 19456` or `t < 2` (SPEC §3).
 pub const KDF_MIN: KdfMin = KdfMin { m: 19456, t: 2 };
 
+/// The most a `kdf` may ask for, account or share link (SPEC §3): `m` at most 1 GiB, `t` and `p`
+/// at most 64, and `m × t` at most 16 GiB of work. The parameters come from the server (or the
+/// link's creator); a huge Argon2 would abort the app or hang it. The server refuses the same.
+pub const KDF_MAX: KdfMax = KdfMax { m: 1 << 20, t: 64, p: 64, work: 16 << 20 };
+
+/// A maximum KDF cost ([`KDF_MAX`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KdfMax {
+    /// Maximum memory in KiB.
+    pub m: u32,
+    /// Maximum iterations.
+    pub t: u32,
+    /// Maximum parallelism.
+    pub p: u32,
+    /// Maximum `m × t`, in KiB.
+    pub work: u64,
+}
+
+/// Refuses KDF parameters over [`KDF_MAX`] with [`OvErrorCode::TooLarge`], before any Argon2 runs.
+/// Unlike the minimum it always applies: it protects this device, whatever the parameters are for.
+pub fn check_kdf_max(kdf: &KdfParams) -> Result<(), OvError> {
+    let work = u64::from(kdf.m) * u64::from(kdf.t);
+    if kdf.m > KDF_MAX.m || kdf.t > KDF_MAX.t || kdf.p > KDF_MAX.p || work > KDF_MAX.work {
+        return Err(OvError::new(
+            OvErrorCode::TooLarge,
+            format!(
+                "KDF parameters over the maximum (m <= {}, t <= {}, p <= {}, m × t <= {})",
+                KDF_MAX.m, KDF_MAX.t, KDF_MAX.p, KDF_MAX.work
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// KDF parameters for a new account: [`KDF_DEFAULTS`] and a random 16-byte salt.
 pub fn new_kdf_params() -> Result<KdfParams, OvError> {
     let (m, t, p) = KDF_DEFAULTS;
@@ -64,8 +98,9 @@ pub fn new_kdf_params_with(m: u32, t: u32, p: u32) -> Result<KdfParams, OvError>
 }
 
 /// Refuses KDF parameters below `min` (pass [`KDF_MIN`] unless the server sent a stricter
-/// `kdf_min`), with `p = 0`, or of an algorithm other than Argon2id. Fails with
-/// [`OvErrorCode::WeakKdf`]. Run it on every server-provided `kdf` before deriving.
+/// `kdf_min`), with `p = 0`, or of an algorithm other than Argon2id, with
+/// [`OvErrorCode::WeakKdf`]; and over [`KDF_MAX`] with [`OvErrorCode::TooLarge`]. Run it on every
+/// server-provided `kdf` before deriving.
 pub fn check_kdf_params(kdf: &KdfParams, min: KdfMin) -> Result<(), OvError> {
     if kdf.alg != KDF_ALG {
         return Err(OvError::new(OvErrorCode::WeakKdf, format!("unsupported KDF {}", kdf.alg)));
@@ -76,7 +111,7 @@ pub fn check_kdf_params(kdf: &KdfParams, min: KdfMin) -> Result<(), OvError> {
             format!("KDF parameters below the minimum (m >= {}, t >= {})", min.m, min.t),
         ));
     }
-    Ok(())
+    check_kdf_max(kdf)
 }
 
 /// Options for [`derive_auk`] and [`stretch_password`].
@@ -126,6 +161,7 @@ pub fn stretch_password_bytes(
     if !opts.allow_weak {
         check_kdf_params(kdf, opts.kdf_min)?;
     }
+    check_kdf_max(kdf)?;
     if kdf.alg != KDF_ALG {
         return Err(OvError::new(OvErrorCode::WeakKdf, format!("unsupported KDF {}", kdf.alg)));
     }
@@ -178,6 +214,20 @@ mod tests {
     fn weak_kdf_floor() {
         assert!(check_kdf_params(&kdf(19456, 1), KDF_MIN).unwrap_err().is(OvErrorCode::WeakKdf));
         assert!(check_kdf_params(&kdf(19455, 2), KDF_MIN).unwrap_err().is(OvErrorCode::WeakKdf));
+        // The maximum (SPEC §3): at it, and one over each bound
+        assert!(check_kdf_params(&kdf(1 << 20, 16), KDF_MIN).is_ok());
+        assert!(check_kdf_params(&kdf(65536, 64), KDF_MIN).is_ok());
+        assert!(check_kdf_params(&kdf((1 << 20) + 1, 2), KDF_MIN).unwrap_err().is(OvErrorCode::TooLarge));
+        assert!(check_kdf_params(&kdf(65536, 65), KDF_MIN).unwrap_err().is(OvErrorCode::TooLarge));
+        assert!(check_kdf_params(&kdf(1 << 20, 17), KDF_MIN).unwrap_err().is(OvErrorCode::TooLarge));
+        assert!(check_kdf_params(&kdf(u32::MAX, u32::MAX), KDF_MIN).unwrap_err().is(OvErrorCode::TooLarge));
+        let mut lanes = kdf(65536, 3);
+        lanes.p = 65;
+        assert!(check_kdf_params(&lanes, KDF_MIN).unwrap_err().is(OvErrorCode::TooLarge));
+        // Applies even when the minimum is skipped, before anything runs
+        let huge = kdf(u32::MAX, 2);
+        let opts = DeriveAukOptions { allow_weak: true, kdf_min: KDF_MIN };
+        assert!(stretch_password_bytes(b"pw", &huge, opts).unwrap_err().is(OvErrorCode::TooLarge));
         assert!(check_kdf_params(&kdf(19456, 2), KDF_MIN).is_ok());
         let mut p0 = kdf(19456, 2);
         p0.p = 0;

@@ -208,6 +208,10 @@ impl Account {
     /// Completes the next time the server ends this session (signed out elsewhere, password changed,
     /// refresh token reused or expired, account deleted), after the account has locked and dropped
     /// that user's offline data (SPEC §20). Not for this device's own sign-out. Await it in a loop.
+    /// What is dropped depends on the [`SignedOutReason`]: after an accident
+    /// ([`TokenReused`](SignedOutReason::TokenReused),
+    /// [`SessionExpired`](SignedOutReason::SessionExpired)) the vaults' unsynced and AutoFill edits
+    /// stay for the same user's next sign-in (contract-v1.8).
     pub async fn signed_out(&self, cancel: CancelToken) -> Result<SignedOutReason, OvError> {
         let signal = self.inner.signal.clone();
         let seen = signal.count();
@@ -296,7 +300,11 @@ impl Account {
     }
 
     /// Signs this device out: revokes the session on the server (best effort), deletes the offline
-    /// cache, and with `forget_device` also the kept Secret Key and device id (SPEC §21).
+    /// cache (the [BlobCache](crate::host::BlobCache)'s `clear_user`), unsynced and AutoFill edits
+    /// included, and with `forget_device` also the kept Secret Key and device id (SPEC §21). The
+    /// same for [`sign_out_parked`](Self::sign_out_parked),
+    /// [`delete_account`](Self::delete_account) and a session the server revoked; only an accidental
+    /// end keeps the edits ([`SignedOutReason`], contract-v1.8).
     pub async fn sign_out(&self, forget_device: bool, cancel: CancelToken) -> Result<(), OvError> {
         self.sign_out_impl(forget_device, &cancel).await
     }
@@ -350,7 +358,8 @@ impl Account {
     }
 
     /// Asks the server about a parked session (a refresh), keeping it within its 30 days. A refusal
-    /// ends it like any other (SPEC §9, §20).
+    /// ends it like any other (SPEC §9, §20), keeping unsynced edits only after an accident
+    /// ([`SignedOutReason`]).
     pub async fn check_parked_session(&self, user_id: String, cancel: CancelToken) -> Result<ParkedCheck, OvError> {
         self.check_parked_impl(&user_id, &cancel).await
     }
@@ -376,7 +385,8 @@ impl Account {
 
     /// Downloads and opens a vault (newest key first), merging edits this device kept from an
     /// earlier session. Offline, opens this device's copy ([`Vault::is_offline`]); a vault never
-    /// synced here is `not_available_offline`.
+    /// synced here is `not_available_offline`. With nothing kept on this device it is one `GET`
+    /// (contract-v1.8; before, the download was followed by a sync that downloaded again).
     pub async fn open_vault(&self, vault_id: String, cancel: CancelToken) -> Result<Vault, OvError> {
         self.open_vault_impl(&vault_id, &cancel).await
     }
@@ -394,7 +404,9 @@ impl Account {
 
     /// Creates a vault: a new vault key sealed to this account (and in an org to every confirmed
     /// owner and admin, after checking their keys), then an empty KDBX uploaded with
-    /// `If-None-Match: *` (SPEC §7, §13).
+    /// `If-None-Match: *` (SPEC §7, §13). An owner or admin whose keys don't verify is
+    /// `invalid_public_keys` with `details` `{"principal": "user:<id>", "email": "<email>"}` naming
+    /// them, before anything is created (contract-v1.8).
     pub async fn create_vault(
         &self,
         name: String,
@@ -408,6 +420,11 @@ impl Account {
     /// account", re-keyed to a fresh vault key, the original untouched), merged into a vault, or as
     /// copies. If the vault was created but the upload failed, [`ImportOutcome::uploaded`] is false.
     /// A wrong password or key file is `vault_key_mismatch` (TS 0.11; contract-v1.7, was `kdbx_error`).
+    /// An org owner or admin with keys that don't verify is `invalid_public_keys` naming them, as for
+    /// [`create_vault`](Self::create_vault). The database custom data (`Meta/CustomData`, where
+    /// KeePassXC keeps its remote settings) comes along: whole into a new vault, minus the
+    /// sync-server and account-vault remotes; on a merge, the items the vault doesn't have yet
+    /// (never its remote settings or sync generation). Contract-v1.8; before, a merge left it out.
     pub async fn import_kdbx(
         &self,
         kdbx: Vec<u8>,

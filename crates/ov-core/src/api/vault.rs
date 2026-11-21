@@ -268,12 +268,17 @@ pub enum VersionDifference {
     Deleted,
 }
 
-/// Unencrypted export formats (the web app's ExportDialog).
+/// Unencrypted export formats, byte for byte as the web app's ExportDialog writes them
+/// (contract-v1.8; before, the CSV header was quoted, the CSV ended with a newline, the JSON keys
+/// were sorted and `folder` was the group path).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ExportFormat {
-    /// `Folder,Title,Username,Password,URL,Notes`, every value quoted.
+    /// The header `Folder,Title,Username,Password,URL,Notes` unquoted, then one line per entry with
+    /// every value in double quotes (`"` doubled), lines joined by `\n` with no newline at the end.
+    /// Values may hold newlines of their own.
     Csv,
-    /// Pretty-printed objects with `folder`, `title`, `username`, `passwordValue`, `url`, `notes`.
+    /// `JSON.stringify(rows, null, 2)`: an array of objects with the keys `folder`, `title`,
+    /// `username`, `passwordValue`, `url`, `notes` in that order (`[]` when there are none).
     Json,
 }
 
@@ -376,6 +381,9 @@ impl Vault {
 
     /// A new empty local database named `name` (KDBX 4, ChaCha20, Argon2id). TS `createNewKdbx`.
     /// [`OvClient::create_local`](crate::api::OvClient::create_local) does the same on the Host clock.
+    /// It is saved as KDBX 4.0 until it holds something only KDBX 4.1 stores (an item's previous
+    /// group after a move or delete, tags on a group, ...), then as 4.1, as KeePassXC 2.7 does
+    /// (contract-v1.8).
     pub async fn create_local(
         name: String,
         credentials: KdbxCredentials,
@@ -385,7 +393,9 @@ impl Vault {
     }
 
     /// Saves a local database with its credentials. `invalid_request` for an account vault (use
-    /// [`sync`](Self::sync)).
+    /// [`sync`](Self::sync)). A KDBX 4.0 database that now holds something only KDBX 4.1 stores is
+    /// written as 4.1 (contract-v1.8; KeePassXC 2.7 and later, and KeePass 2.48 and later, read every
+    /// 4.1 element; older KDBX 4 readers open the file and drop them).
     pub async fn save_local(&self, cancel: CancelToken) -> Result<Vec<u8>, OvError> {
         cancel.check()?;
         let crate::state::VaultSource::Local(creds) = &self.inner.source else {
@@ -617,7 +627,8 @@ impl Vault {
         self.edit(|db, now| crate::impls::kdbx_ops::edit_entry(db, &entry_id, input, now))
     }
 
-    /// Moves an entry to another group (updates `LocationChanged`).
+    /// Moves an entry to another group (updates `LocationChanged`, and records the group it left as
+    /// `PreviousParentGroup`, whatever the file's KDBX version; contract-v1.8).
     pub fn move_entry(&self, entry_id: String, group_id: String) -> Result<(), OvError> {
         self.edit(|db, now| {
             let id =
@@ -626,8 +637,9 @@ impl Vault {
         })
     }
 
-    /// Deletes an entry: into the Recycle Bin when it is enabled, else (or when already there) for
-    /// good, with a `DeletedObject` so the deletion syncs.
+    /// Deletes an entry: into the Recycle Bin when it is enabled (remembering the group it was in, for
+    /// [`restore_from_recycle_bin`](Self::restore_from_recycle_bin); contract-v1.8), else (or when
+    /// already there) for good, with a `DeletedObject` so the deletion syncs.
     pub fn delete_entry(&self, entry_id: String) -> Result<(), OvError> {
         self.edit(|db, now| {
             let id =
@@ -636,7 +648,9 @@ impl Vault {
         })
     }
 
-    /// Moves an entry or group out of the Recycle Bin, to its previous parent when that still exists.
+    /// Moves an entry or group out of the Recycle Bin, to its previous parent when that still exists
+    /// outside the bin, else to the root. Since contract-v1.8 the previous parent is recorded on every
+    /// move and delete (before, only in KDBX 4.1 files, so items from new vaults came back in the root).
     pub fn restore_from_recycle_bin(&self, id: String) -> Result<(), OvError> {
         self.edit(|db, now| crate::impls::kdbx_ops::restore_from_recycle_bin(db, &id, now))
     }
@@ -703,7 +717,8 @@ impl Vault {
         })
     }
 
-    /// Moves a group under another; `invalid_request` for a move into itself or its subtree.
+    /// Moves a group under another; `invalid_request` for a move into itself or its subtree. Records
+    /// the group it left as `PreviousParentGroup` (contract-v1.8).
     pub fn move_group(&self, group_id: String, parent_id: String) -> Result<(), OvError> {
         self.edit(|db, now| {
             crate::impls::kdbx_ops::move_group_to(
@@ -729,8 +744,13 @@ impl Vault {
     }
 
     /// Brings entry `entry_id` back from an old `version`: its content becomes the current version
-    /// (the current one goes to history), or it is re-added at `group_path` if it was deleted
-    /// (Swift `Database.restoreEntry`). Sync afterwards.
+    /// (the current one goes to history), or it is re-added at `group_path` if it was deleted for
+    /// good (Swift `Database.restoreEntry`). Sync afterwards.
+    ///
+    /// An entry in the Recycle Bin is edited the same way, keeping its history, and moved out of the
+    /// bin: to its previous group when that still exists outside the bin, else to `group_path`
+    /// (created when missing). Contract-v1.8; before, the binned copy was replaced by the version's,
+    /// dropping its history.
     pub fn restore_entry(&self, version: Vault, entry_id: String, group_path: String) -> Result<(), OvError> {
         let old = version.db().clone();
         self.edit(|db, now| crate::impls::kdbx_ops::restore_entry(db, &old, &entry_id, &group_path, now))
@@ -776,6 +796,21 @@ impl Vault {
     /// Downloads, merges local edits and uploads them (conditional PUT; merge and retry on 412),
     /// SPEC §11, §13, §20. Offline, the working copy is kept on the device (encrypted) and uploads
     /// on a later sync; the error is `network_error`.
+    ///
+    /// Edits made to this handle (or a clone) while the sync runs are kept (contract-v1.8; before,
+    /// the sync's result replaced them): the result is merged with them three ways, the copy the sync
+    /// started from being the base, and they are uploaded in up to two more rounds of the same call
+    /// (the first against the copy just uploaded, without downloading it again). Edits still landing
+    /// after that, or when a later round can't reach the server, stay in the working copy as
+    /// unsynced edits (kept on the device like [`keep_edits`](Self::keep_edits);
+    /// [`has_pending_edits`](Self::has_pending_edits)) for the next sync, and the call still returns
+    /// what the rounds that succeeded did: the report's outcome is the most a round did (`Created`,
+    /// then `Uploaded`, then `Pulled`), its conflicts, changes and attempts those of every round.
+    /// Service-account vaults ([`write_field`](Self::write_field)) work the same way.
+    ///
+    /// The database custom data (`Meta/CustomData`) merges three ways too (contract-v1.8): an item
+    /// added, changed or removed on one side since the last sync is taken, one changed on both
+    /// keeps the newer copy's value; before, an item another device added could be dropped.
     pub async fn sync(&self, options: SyncOptions, cancel: CancelToken) -> Result<SyncReport, OvError> {
         self.writable()?;
         match &self.inner.source {
@@ -836,8 +871,10 @@ impl Vault {
         ov_kdbx::write(&out, &key)
     }
 
-    /// The entries directly in `group_ids` (every group when `None`), unencrypted, as CSV or JSON.
-    /// The Recycle Bin is never exported (Swift `Export`).
+    /// The entries directly in `group_ids` (every group when `None`), unencrypted, as CSV or JSON in
+    /// the web app's exact format ([`ExportFormat`]), in tree order. `folder` is the name of the
+    /// entry's own group (`Root` for an unnamed root) and an empty title is `(Untitled Entry)`, as
+    /// the web app lists them (contract-v1.8). The Recycle Bin is never exported (Swift `Export`).
     pub fn export_plain(&self, format: ExportFormat, group_ids: Option<Vec<String>>) -> Result<SecretBytes, OvError> {
         crate::impls::kdbx_ops::export_plain(&self.db(), format, group_ids)
     }

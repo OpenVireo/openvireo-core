@@ -10,8 +10,10 @@ use super::{
 impl Account {
     // ------------------------------------------------------------------------ profile (§16)
 
-    /// `GET /me`: the signed-in user, plan and orgs. Also refreshes the copy kept for offline unlock
-    /// and follows an email change made on another device (Swift `me` and `refreshProfile`).
+    /// `GET /me`: the signed-in user, plan and orgs, and (contract-v1.8) the KDF parameters and the
+    /// keyset's public keys. Also refreshes the copy kept for offline unlock and follows an email
+    /// change made on another device (Swift `me` and `refreshProfile`). Keys that don't verify are
+    /// `invalid_public_keys`.
     pub async fn me(&self, cancel: CancelToken) -> Result<Profile, OvError> {
         self.me_impl(&cancel).await
     }
@@ -145,7 +147,11 @@ impl Account {
     /// Schedules this account's deletion (SPEC §23): checks the master password, then the server
     /// locks the account and erases it on the returned date. `confirm` is the email as the user
     /// typed it. This device is signed out and its offline cache deleted; the Secret Key stays so the
-    /// user can still restore. A 409 `deletion_blocked` lists the orgs to hand over first.
+    /// user can still restore. A 409 `deletion_blocked` lists the orgs to hand over first, in
+    /// `details` as `{"orgs": [{"id", "name"}, ...]}` (contract-v1.8). While an account is pending
+    /// deletion, any other call the server refuses is 403 `account_pending_deletion` with `details`
+    /// `{"scheduledFor": "<RFC 3339>"}` (contract-v1.8); restore it with
+    /// [`restore_account`](Self::restore_account).
     pub async fn delete_account(
         &self,
         password: SecretBytes,

@@ -77,9 +77,20 @@ impl SelfHosted {
         self.inner.server_url.clone()
     }
 
-    /// `GET /health`, as JSON text.
+    /// `GET /health`, as JSON text. An address that answers but isn't an OpenVireo sync server (a
+    /// web page, a 404, JSON without `status`) is `invalid_request` with
+    /// [`wire_code`](OvError::wire_code) `not_sync_server` (in `server_code`) and the page's status
+    /// (contract-v1.8; before, the page's own status code); an unreachable one stays
+    /// `network_error`, and an error the sync server itself sent (`{error, code}`) is returned as is.
     pub async fn health(&self, cancel: CancelToken) -> Result<String, OvError> {
         self.health_impl(&cancel).await
+    }
+
+    /// Downloads `databases/<database_id>` as the server has it (`GET`, no key needed), to save a
+    /// first copy on this device; `None` when the server has no database with that id. The bytes are
+    /// the `.kdbx` as uploaded (encrypted with the database's own credentials). Contract-v1.8.
+    pub async fn download(&self, database_id: String, cancel: CancelToken) -> Result<Option<Vec<u8>>, OvError> {
+        self.download_impl(&database_id, &cancel).await
     }
 
     /// The databases on the server.

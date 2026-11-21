@@ -23,6 +23,7 @@
 
 mod fields;
 mod import;
+mod index;
 mod merger;
 mod pool;
 mod time;

@@ -7,6 +7,7 @@
 use ov_kdbx::model::{CustomDataItem, Database, DeletedObject, Entry, Group, Timestamp, Uuid};
 
 use crate::fields::{fields_of, resolve_fields, same_fields, same_value, union_keys, FieldKey, Fields};
+use crate::index::Finder;
 use crate::tree::{self, entries_under, find_entry, find_group, groups_under, MergeIntoOptions, MergeMode};
 use crate::{pool, ChangeSubject, ChangeType, EntryConflict, MergeChange, MergeReport};
 
@@ -22,28 +23,29 @@ pub fn sync_generation(db: &Database) -> u64 {
 /// time, so the structure merge sees one version. Each keeps its previous state in its history.
 /// Returns the display names of the fields both sides changed differently.
 fn combine_entries(
-    local: &mut Database,
-    remote: &mut Database,
-    base: &Database,
+    (local, fl): (&mut Database, &Finder),
+    (remote, fr): (&mut Database, &Finder),
+    (base, fb): (&Database, &Finder),
     id: Uuid,
     now: Timestamp,
 ) -> Vec<String> {
     let (Some((l, _)), Some((r, _)), Some((b, _))) =
-        (find_entry(&local.root, id), find_entry(&remote.root, id), find_entry(&base.root, id))
+        (fl.entry(&local.root, id), fr.entry(&remote.root, id), fb.entry(&base.root, id))
     else {
         return Vec::new();
     };
     let local_is_newer = l.times.last_modification >= r.times.last_modification;
     let (merged, conflicts) = resolve_fields((l, local), (r, remote), (b, base), local_is_newer);
     let when = now.max(l.times.last_modification).max(r.times.last_modification);
-    let (older_db, newer_db) = if local_is_newer { (remote, local) } else { (local, remote) };
-    let newer = find_entry(&newer_db.root, id).map(|(e, _)| e.clone()).unwrap_or_else(|| unreachable_entry(id));
-    let older = find_entry(&older_db.root, id).map(|(e, _)| e.clone()).unwrap_or_else(|| unreachable_entry(id));
+    let ((older_db, fo), (newer_db, fnew)) =
+        if local_is_newer { ((remote, fr), (local, fl)) } else { ((local, fl), (remote, fr)) };
+    let newer = fnew.entry(&newer_db.root, id).map(|(e, _)| e.clone()).unwrap_or_else(|| unreachable_entry(id));
+    let older = fo.entry(&older_db.root, id).map(|(e, _)| e.clone()).unwrap_or_else(|| unreachable_entry(id));
 
     let older = update_side(older, older_db, Some((&newer, &*newer_db)), &merged, when);
-    put_back(older_db, older);
+    put_back(older_db, fo, older);
     let newer = update_side(newer, newer_db, None, &merged, when);
-    put_back(newer_db, newer);
+    put_back(newer_db, fnew, newer);
     conflicts
 }
 
@@ -51,8 +53,8 @@ fn unreachable_entry(id: Uuid) -> Entry {
     Entry::new(id, 0)
 }
 
-fn put_back(db: &mut Database, entry: Entry) {
-    if let Some(slot) = tree::find_entry_mut(&mut db.root, entry.uuid) {
+fn put_back(db: &mut Database, find: &Finder, entry: Entry) {
+    if let Some(slot) = find.entry_mut(&mut db.root, entry.uuid) {
         *slot = entry;
     }
 }
@@ -145,9 +147,11 @@ pub fn merge_in_place(
         base.map(|b| merge_custom_data(&local.meta.custom_data, &remote.meta.custom_data, &b.meta.custom_data));
     if let Some(base) = base {
         let ids: Vec<Uuid> = entries_under(&local.root).iter().map(|e| e.uuid).collect();
+        // Entries are only edited in place below, so the indexes stay right until the structure merge
+        let (fl, fr, fb) = (Finder::new(&local.root), Finder::new(&remote.root), Finder::new(&base.root));
         for id in ids {
             let (Some((l, _)), Some((r, _)), Some((b, _))) =
-                (find_entry(&local.root, id), find_entry(&remote.root, id), find_entry(&base.root, id))
+                (fl.entry(&local.root, id), fr.entry(&remote.root, id), fb.entry(&base.root, id))
             else {
                 continue;
             };
@@ -168,12 +172,12 @@ pub fn merge_in_place(
                 // history on the unchanged side, so a pull with nothing changed here would upload. A
                 // changed side whose clock is behind (strictly older) is still combined, as the
                 // desktop's SyncEngine does (merge fixture 03).
-                let (from, into, taken) = if remote_changed {
-                    (&*remote, &mut *local, &mut taken_local)
+                let (from, f_from, into, f_into, taken) = if remote_changed {
+                    (&*remote, &fr, &mut *local, &fl, &mut taken_local)
                 } else {
-                    (&*local, &mut *remote, &mut taken_remote)
+                    (&*local, &fl, &mut *remote, &fr, &mut taken_remote)
                 };
-                let (src, parent) = find_entry(&from.root, id).expect("the entry is on both sides");
+                let (src, parent) = f_from.entry(&from.root, id).expect("the entry is on both sides");
                 changes.push(tree::entry_record(
                     ChangeType::Modified,
                     src,
@@ -181,13 +185,13 @@ pub fn merge_in_place(
                     "Took the version changed on the other device",
                 ));
                 let copy = tree::copy_entry(src, Some(from), into, true);
-                put_back(into, copy);
+                put_back(into, f_into, copy);
                 taken.push(id);
                 continue;
             }
             if needed {
-                let c = combine_entries(local, remote, base, id, now);
-                let (entry, parent) = find_entry(&local.root, id).expect("combined entry is in local");
+                let c = combine_entries((local, &fl), (remote, &fr), (base, &fb), id, now);
+                let (entry, parent) = fl.entry(&local.root, id).expect("combined entry is in local");
                 if !c.is_empty() {
                     conflicts.push(EntryConflict { uuid: id, title: entry.title().to_owned(), fields: c });
                 }
@@ -354,11 +358,12 @@ struct Location {
 }
 
 fn locations_of(local: &Database, remote: &Database) -> Vec<Location> {
+    let (fl, fr) = (Finder::new(&local.root), Finder::new(&remote.root));
     entries_under(&local.root)
         .into_iter()
         .filter_map(|l| {
-            let (l, lp) = find_entry(&local.root, l.uuid)?;
-            let (r, rp) = find_entry(&remote.root, l.uuid)?;
+            let (l, lp) = fl.entry(&local.root, l.uuid)?;
+            let (r, rp) = fr.entry(&remote.root, l.uuid)?;
             let (winner, parent, db) =
                 if l.times.location_changed >= r.times.location_changed { (l, lp, local) } else { (r, rp, remote) };
             Some(Location {
@@ -388,12 +393,13 @@ struct Placed {
 /// without touching any modification times.
 fn apply_locations(local: &mut Database, remote: &mut Database, locations: &[Location]) -> Placed {
     let mut placed = Placed { changes: Vec::new(), local: false, remote: false, moved_here: Vec::new() };
+    let (mut fl, mut fr) = (Finder::new(&local.root), Finder::new(&remote.root));
     for loc in locations {
         let mut moved = false;
-        for (is_local, db) in [(true, &mut *local), (false, &mut *remote)] {
+        for (is_local, db, find) in [(true, &mut *local, &mut fl), (false, &mut *remote, &mut fr)] {
             let group = loc.group.unwrap_or(db.root.uuid);
-            let Some((entry, parent)) = find_entry(&db.root, loc.entry) else { continue };
-            if find_group(&db.root, group).is_none() {
+            let Some((entry, parent)) = find.entry(&db.root, loc.entry) else { continue };
+            if find.group(&db.root, group).is_none() {
                 continue;
             }
             let previous = parent.uuid;
@@ -404,13 +410,13 @@ fn apply_locations(local: &mut Database, remote: &mut Database, locations: &[Loc
                 continue;
             }
             if previous != group {
-                tree::append_entry(&mut db.root, loc.entry, group);
+                find.append_entry(&mut db.root, loc.entry, group);
                 moved = true;
                 if is_local {
                     placed.moved_here.push(loc.entry);
                 }
             }
-            if let Some(e) = tree::find_entry_mut(&mut db.root, loc.entry) {
+            if let Some(e) = find.entry_mut(&mut db.root, loc.entry) {
                 e.times.location_changed = loc.changed;
                 e.previous_parent_group = loc.previous;
             }
@@ -421,7 +427,7 @@ fn apply_locations(local: &mut Database, remote: &mut Database, locations: &[Loc
             }
         }
         if moved {
-            if let Some((e, p)) = find_entry(&local.root, loc.entry) {
+            if let Some((e, p)) = fl.entry(&local.root, loc.entry) {
                 placed.changes.push(tree::entry_record(
                     ChangeType::Moved,
                     e,
@@ -645,8 +651,9 @@ pub fn needs_common_base(local: &Database, remote: &Database, snapshot: &[(Uuid,
     if has_pending_deletions(local, remote) {
         return true;
     }
+    let (fl, fr) = (Finder::new(&local.root), Finder::new(&remote.root));
     snapshot.iter().any(|&(id, ms)| {
-        let (Some((l, _)), Some((r, _))) = (find_entry(&local.root, id), find_entry(&remote.root, id)) else {
+        let (Some((l, _)), Some((r, _))) = (fl.entry(&local.root, id), fr.entry(&remote.root, id)) else {
             return false;
         };
         if same_fields(l, local, r, remote) {
@@ -677,11 +684,13 @@ pub fn copies_differ(local: &Database, remote: &Database) -> bool {
         v.sort_unstable();
         v
     }
-    custom(local) != custom(remote)
-        || has_pending_deletions(local, remote)
-        || entries_under(&local.root)
-            .iter()
-            .any(|l| find_entry(&remote.root, l.uuid).is_some_and(|(r, _)| !same_fields(l, local, r, remote)))
+    if custom(local) != custom(remote) || has_pending_deletions(local, remote) {
+        return true;
+    }
+    let fr = Finder::new(&remote.root);
+    entries_under(&local.root)
+        .iter()
+        .any(|l| fr.entry(&remote.root, l.uuid).is_some_and(|(r, _)| !same_fields(l, local, r, remote)))
 }
 
 /// The entries both sides changed against `base`, by content (not by time), with the fields they
@@ -689,8 +698,9 @@ pub fn copies_differ(local: &Database, remote: &Database) -> bool {
 /// whose two sides changed different fields isn't one (both changes are kept).
 pub fn edited_on_both(local: &Database, remote: &Database, base: &Database) -> Vec<SyncConflict> {
     let mut out = Vec::new();
+    let (fr, fb) = (Finder::new(&remote.root), Finder::new(&base.root));
     for l in entries_under(&local.root) {
-        let (Some((r, _)), Some((b, _))) = (find_entry(&remote.root, l.uuid), find_entry(&base.root, l.uuid)) else {
+        let (Some((r, _)), Some((b, _))) = (fr.entry(&remote.root, l.uuid), fb.entry(&base.root, l.uuid)) else {
             continue;
         };
         if same_fields(l, local, r, remote) {
@@ -739,9 +749,10 @@ pub fn find_conflicts(local: &Database, remote: &Database, snapshot: &[(Uuid, i6
     let deleted_in = |db: &Database, id: Uuid| db.deleted_objects.iter().any(|o| o.uuid == id);
     let changed_since = |e: &Entry, ms: i64| e.times.last_modification != ms.div_euclid(1000);
     let mut out = Vec::new();
+    let (fl, fr) = (Finder::new(&local.root), Finder::new(&remote.root));
     for &(id, ms) in snapshot {
-        let l = find_entry(&local.root, id).map(|(e, _)| e);
-        let r = find_entry(&remote.root, id).map(|(e, _)| e);
+        let l = fl.entry(&local.root, id).map(|(e, _)| e);
+        let r = fr.entry(&remote.root, id).map(|(e, _)| e);
         let (kind, e) = match (l, r) {
             (Some(l), Some(r)) => {
                 let c = changes_since(l, local, r, remote, ms);

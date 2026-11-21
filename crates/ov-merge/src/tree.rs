@@ -2,6 +2,7 @@
 //! section numbers below refer to it): brings one database's entries, groups, history, deletions and
 //! metadata into another. Also the tree helpers the rest of the crate uses.
 
+use crate::index::Finder;
 use std::collections::BTreeMap;
 
 use ov_kdbx::model::{CustomDataItem, Database, DeletedObject, Entry, Group, Timestamp, Uuid};
@@ -132,16 +133,6 @@ pub(crate) fn push_group(root: &mut Group, group: Uuid, child: Group) -> bool {
             true
         }
         None => false,
-    }
-}
-
-/// Makes entry `id` the last entry of group `to` (TS `appendEntry`). Nothing else changes.
-pub(crate) fn append_entry(root: &mut Group, id: Uuid, to: Uuid) {
-    if find_group(root, to).is_none() {
-        return;
-    }
-    if let Some(e) = take_entry(root, id) {
-        let _ = push_entry(root, to, e);
     }
 }
 
@@ -374,6 +365,8 @@ pub struct MergeIntoOptions {
 struct Pass<'a> {
     from: &'a Database,
     into: &'a mut Database,
+    /// Lookups in `into`, kept right through the pass's own structural edits.
+    find: Finder,
     opts: &'a MergeIntoOptions,
     changes: Vec<MergeChange>,
 }
@@ -395,16 +388,16 @@ impl Pass<'_> {
     /// §1.1
     fn entry(&mut self, src: &Entry, src_group: &Group, dst: Uuid) {
         let id = src.uuid;
-        let Some((existing, parent)) = find_entry(&self.into.root, id) else {
+        let Some((existing, parent)) = self.find.entry(&self.into.root, id) else {
             self.changes.push(entry_record(ChangeType::Added, src, Some(&src_group.name), ""));
             let copy = copy_entry(src, Some(self.from), self.into, true);
-            let _ = push_entry(&mut self.into.root, dst, copy);
+            let _ = self.find.push_entry(&mut self.into.root, dst, copy);
             return;
         };
         let mut existing = existing.clone();
         let (mut home, mut home_name) = (parent.uuid, parent.name.clone());
         if existing.times.location_changed < src.times.location_changed && home != dst {
-            if let Some(g) = find_group(&self.into.root, dst) {
+            if let Some(g) = self.find.group(&self.into.root, dst) {
                 let name = g.name.clone();
                 self.changes.push(entry_record(
                     ChangeType::Moved,
@@ -412,7 +405,7 @@ impl Pass<'_> {
                     Some(&src_group.name),
                     format!("Previous location: {home_name}"),
                 ));
-                append_entry(&mut self.into.root, id, dst);
+                self.find.append_entry(&mut self.into.root, id, dst);
                 (home, home_name) = (dst, name);
             }
         }
@@ -425,8 +418,8 @@ impl Pass<'_> {
                 Some(&home_name),
                 "Add local modifications to new entry",
             ));
-            take_entry(&mut self.into.root, id);
-            let _ = push_entry(&mut self.into.root, home, replacement);
+            self.find.take_entry(&mut self.into.root, id);
+            let _ = self.find.push_entry(&mut self.into.root, home, replacement);
         } else if merge_history_into(&mut existing, self.into, src, Some(self.from)) {
             self.changes.push(entry_record(
                 ChangeType::Modified,
@@ -434,7 +427,7 @@ impl Pass<'_> {
                 Some(&home_name),
                 "Add new modifications to existing entry",
             ));
-            if let Some(slot) = find_entry_mut(&mut self.into.root, id) {
+            if let Some(slot) = self.find.entry_mut(&mut self.into.root, id) {
                 *slot = existing;
             }
         }
@@ -443,22 +436,25 @@ impl Pass<'_> {
     /// §1.2: returns the target group to walk `src`'s contents into.
     fn group(&mut self, src: &Group, dst: Uuid) -> Uuid {
         let id = src.uuid;
-        let Some(existing) = find_group(&self.into.root, id) else {
+        let Some(existing) = self.find.group(&self.into.root, id) else {
             self.changes.push(group_record(
                 ChangeType::Added,
                 src,
                 format!("Number of entries in group: {}", src.entries.len()),
             ));
-            let _ = push_group(&mut self.into.root, dst, shallow_group(src));
+            let _ = self.find.push_group(&mut self.into.root, dst, shallow_group(src));
             pool::bring_icon(src.custom_icon, self.from, self.into);
             return id;
         };
         let (location, name, modified) =
             (existing.times.location_changed, existing.name.clone(), existing.times.last_modification);
-        let parent = group_parent(&self.into.root, id).map(|p| p.uuid);
-        if location < src.times.location_changed && parent != Some(dst) && append_group(&mut self.into.root, id, dst) {
+        let parent = self.find.group_parent(&self.into.root, id).map(|p| p.uuid);
+        if location < src.times.location_changed
+            && parent != Some(dst)
+            && self.find.append_group(&mut self.into.root, id, dst)
+        {
             self.changes.push(group_record(ChangeType::Moved, src, format!("Previous location: {name}")));
-            if let Some(g) = find_group_mut(&mut self.into.root, id) {
+            if let Some(g) = self.find.group_mut(&mut self.into.root, id) {
                 g.times.location_changed = src.times.location_changed;
                 // Where it was before the move goes with it, so the Recycle Bin restores it there
                 g.previous_parent_group = src.previous_parent_group;
@@ -471,7 +467,7 @@ impl Pass<'_> {
     }
 
     fn update_group(&mut self, src: &Group) {
-        let Some(dst) = find_group_mut(&mut self.into.root, src.uuid) else { return };
+        let Some(dst) = self.find.group_mut(&mut self.into.root, src.uuid) else { return };
         let mut what: Vec<&str> = Vec::new();
         if dst.name != src.name {
             what.push("Group name");
@@ -627,7 +623,8 @@ pub(crate) fn merge_into_raw(
     mode: MergeMode,
     opts: &MergeIntoOptions,
 ) -> Vec<MergeChange> {
-    let mut pass = Pass { from, into, opts, changes: Vec::new() };
+    let find = Finder::new(&into.root);
+    let mut pass = Pass { from, into, find, opts, changes: Vec::new() };
     let root = pass.into.root.uuid;
     pass.walk(&from.root, root);
     if mode == MergeMode::Synchronize {

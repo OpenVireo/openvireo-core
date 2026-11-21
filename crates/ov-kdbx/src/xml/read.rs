@@ -31,7 +31,7 @@ pub(crate) struct XmlDocument {
 
 /// Maps the tree. `binaries` is the pool: the KDBX 4 inner header's, to which KDBX 3.1
 /// `<Meta><Binaries>` and inline entry attachments are added.
-pub(crate) fn document(root: Node, binaries: &mut Vec<Binary>) -> Result<XmlDocument, OvError> {
+pub(crate) fn document(root: Node<'_>, binaries: &mut Vec<Binary>) -> Result<XmlDocument, OvError> {
     if root.name != "KeePassFile" {
         return Err(err("the XML is not a KeePass document"));
     }
@@ -46,7 +46,7 @@ pub(crate) fn document(root: Node, binaries: &mut Vec<Binary>) -> Result<XmlDocu
     let mut have_meta = false;
     let mut have_root = false;
     // Meta first: KDBX 3.1 attachments live in Meta/Binaries and entries refer to them by ID.
-    let (metas, rest): (Vec<Node>, Vec<Node>) = root.children.into_iter().partition(|c| c.name == "Meta");
+    let (metas, rest): (Vec<Node<'_>>, Vec<Node<'_>>) = root.children.into_iter().partition(|c| c.name == "Meta");
     let mut metas = metas.into_iter();
     if let Some(m) = metas.next() {
         have_meta = true;
@@ -56,7 +56,7 @@ pub(crate) fn document(root: Node, binaries: &mut Vec<Binary>) -> Result<XmlDocu
         doc.unknown_file.push(c.into_element());
     }
     for c in rest {
-        match c.name.as_str() {
+        match c.name {
             "Root" if !have_root => {
                 have_root = true;
                 read_root(c, &mut doc, binaries)?;
@@ -73,7 +73,7 @@ pub(crate) fn document(root: Node, binaries: &mut Vec<Binary>) -> Result<XmlDocu
 // ---------------------------------------------------------------------------------------------
 // Values
 
-fn text(n: &Node) -> &str {
+fn text<'n>(n: &'n Node<'_>) -> &'n str {
     n.text.as_str()
 }
 
@@ -90,16 +90,23 @@ fn parse_tristate(s: &str) -> Option<bool> {
     }
 }
 
-fn parse_num<T: std::str::FromStr>(n: &Node, default: T) -> T {
+fn parse_num<T: std::str::FromStr>(n: &Node<'_>, default: T) -> T {
     text(n).trim().parse().unwrap_or(default)
 }
 
-pub(crate) fn parse_uuid(s: &str) -> Option<Uuid> {
-    let b = B64.decode(s.trim()).ok()?;
-    Uuid::from_slice(&b).ok()
+/// `s` as base64 of exactly `N` bytes, decoded without allocating (UUIDs and times: most values).
+fn b64_exact<const N: usize>(s: &str) -> Option<[u8; N]> {
+    // Room for any input that could decode to N bytes; a longer one fails as too small
+    let mut buf = [0u8; 64];
+    let n = B64.decode_slice(s, &mut buf).ok()?;
+    buf[..n].try_into().ok()
 }
 
-fn parse_opt_uuid(n: &Node) -> Option<Uuid> {
+pub(crate) fn parse_uuid(s: &str) -> Option<Uuid> {
+    b64_exact::<16>(s.trim()).map(Uuid::from_bytes)
+}
+
+fn parse_opt_uuid(n: &Node<'_>) -> Option<Uuid> {
     parse_uuid(text(n)).filter(|u| !u.is_nil())
 }
 
@@ -112,8 +119,7 @@ pub(crate) fn parse_time(s: &str) -> Option<Timestamp> {
     if s.contains('-') || s.contains(':') {
         return parse_iso8601(s);
     }
-    let b = B64.decode(s).ok()?;
-    let secs = i64::from_le_bytes(b.try_into().ok()?);
+    let secs = i64::from_le_bytes(b64_exact::<8>(s)?);
     Some(secs - EPOCH_OFFSET)
 }
 
@@ -141,16 +147,23 @@ fn parse_iso8601(s: &str) -> Option<Timestamp> {
     if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
-    Some(days_from_civil(year, month, day) * 86_400 + h * 3600 + m * 60 + sec - offset)
+    // In i128: any i64 fields fit, and a time that doesn't fit an i64 is no time (fuzzing found the
+    // overflow)
+    let t = days_from_civil(i128::from(year), month, day) * 86_400
+        + i128::from(h) * 3600
+        + i128::from(m) * 60
+        + i128::from(sec)
+        - i128::from(offset);
+    i64::try_from(t).ok()
 }
 
 /// Days since 1970-01-01 (Howard Hinnant's algorithm).
-fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+fn days_from_civil(y: i128, m: u32, d: u32) -> i128 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
-    let mp = (i64::from(m) + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + i64::from(d) - 1;
+    let mp = (i128::from(m) + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + i128::from(d) - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     era * 146_097 + doe - 719_468
 }
@@ -159,14 +172,14 @@ pub(crate) fn split_tags(s: &str) -> Vec<String> {
     s.split([';', ',']).map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned).collect()
 }
 
-fn decode_b64(n: &Node) -> Result<Vec<u8>, OvError> {
+fn decode_b64(n: &Node<'_>) -> Result<Vec<u8>, OvError> {
     let cleaned: String = text(n).chars().filter(|c| !c.is_whitespace()).collect();
     B64.decode(cleaned).map_err(|_| err(format!("<{}> is not base64", n.name)))
 }
 
 /// The bytes of a binary element: its decrypted bytes if protected, else base64; gunzipped when
 /// `Compressed="True"`.
-fn binary_bytes(n: &Node) -> Result<Zeroizing<Vec<u8>>, OvError> {
+fn binary_bytes(n: &Node<'_>) -> Result<Zeroizing<Vec<u8>>, OvError> {
     let raw = match &n.raw {
         Some(r) => r.clone(),
         None => Zeroizing::new(decode_b64(n)?),
@@ -181,10 +194,10 @@ fn binary_bytes(n: &Node) -> Result<Zeroizing<Vec<u8>>, OvError> {
 // ---------------------------------------------------------------------------------------------
 // Meta
 
-fn read_meta(meta: Node, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> Result<(), OvError> {
+fn read_meta(meta: Node<'_>, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> Result<(), OvError> {
     let m = &mut doc.meta;
     for c in meta.children {
-        match c.name.as_str() {
+        match c.name {
             "Generator" => m.generator = text(&c).to_owned(),
             "HeaderHash" => doc.header_hash = Some(decode_b64(&c)?),
             "DatabaseName" => m.database_name = text(&c).to_owned(),
@@ -201,7 +214,7 @@ fn read_meta(meta: Node, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> R
             "MemoryProtection" => {
                 for p in &c.children {
                     let v = parse_bool(text(p));
-                    match p.name.as_str() {
+                    match p.name {
                         "ProtectTitle" => m.memory_protection.title = v,
                         "ProtectUserName" => m.memory_protection.user_name = v,
                         "ProtectPassword" => m.memory_protection.password = v,
@@ -216,7 +229,7 @@ fn read_meta(meta: Node, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> R
                     let mut ci =
                         CustomIcon { uuid: Uuid::nil(), data: Vec::new(), name: None, last_modification: None };
                     for f in &icon.children {
-                        match f.name.as_str() {
+                        match f.name {
                             "UUID" => ci.uuid = parse_uuid(text(f)).unwrap_or_default(),
                             "Data" => ci.data = decode_b64(f)?,
                             "Name" => ci.name = Some(text(f).to_owned()),
@@ -246,7 +259,7 @@ fn read_meta(meta: Node, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> R
 }
 
 /// KDBX 3.1 `<Meta><Binaries>`: the pool, by ID.
-fn read_meta_binaries(node: &Node, binaries: &mut Vec<Binary>) -> Result<(), OvError> {
+fn read_meta_binaries(node: &Node<'_>, binaries: &mut Vec<Binary>) -> Result<(), OvError> {
     for b in node.children.iter().filter(|b| b.name == "Binary") {
         let id: usize = b.attr("ID").and_then(|v| v.trim().parse().ok()).ok_or_else(|| err("a binary has no ID"))?;
         if id > 1_000_000 {
@@ -261,14 +274,14 @@ fn read_meta_binaries(node: &Node, binaries: &mut Vec<Binary>) -> Result<(), OvE
     Ok(())
 }
 
-fn read_custom_data(node: &Node) -> Vec<CustomDataItem> {
+fn read_custom_data(node: &Node<'_>) -> Vec<CustomDataItem> {
     node.children
         .iter()
         .filter(|i| i.name == "Item")
         .map(|i| {
             let mut item = CustomDataItem { key: String::new(), value: String::new(), last_modification: None };
             for f in &i.children {
-                match f.name.as_str() {
+                match f.name {
                     "Key" => item.key = text(f).to_owned(),
                     "Value" => item.value = text(f).to_owned(),
                     "LastModificationTime" => item.last_modification = parse_time(text(f)),
@@ -283,10 +296,10 @@ fn read_custom_data(node: &Node) -> Vec<CustomDataItem> {
 // ---------------------------------------------------------------------------------------------
 // Root, groups, entries
 
-fn read_root(node: Node, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> Result<(), OvError> {
+fn read_root(node: Node<'_>, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> Result<(), OvError> {
     let mut have_group = false;
     for c in node.children {
-        match c.name.as_str() {
+        match c.name {
             "Group" if !have_group => {
                 have_group = true;
                 doc.root = read_group(c, binaries)?;
@@ -295,7 +308,7 @@ fn read_root(node: Node, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> R
                 for d in c.children.iter().filter(|d| d.name == "DeletedObject") {
                     let mut o = DeletedObject { uuid: Uuid::nil(), deletion_time: 0 };
                     for f in &d.children {
-                        match f.name.as_str() {
+                        match f.name {
                             "UUID" => o.uuid = parse_uuid(text(f)).unwrap_or_default(),
                             "DeletionTime" => o.deletion_time = parse_time(text(f)).unwrap_or(0),
                             _ => {}
@@ -313,10 +326,10 @@ fn read_root(node: Node, doc: &mut XmlDocument, binaries: &mut Vec<Binary>) -> R
     Ok(())
 }
 
-fn read_times(node: &Node) -> Times {
+fn read_times(node: &Node<'_>) -> Times {
     let mut t = Times::at(0);
     for f in &node.children {
-        match f.name.as_str() {
+        match f.name {
             "CreationTime" => t.creation = parse_time(text(f)).unwrap_or(0),
             "LastModificationTime" => t.last_modification = parse_time(text(f)).unwrap_or(0),
             "LastAccessTime" => t.last_access = parse_time(text(f)).unwrap_or(0),
@@ -330,10 +343,10 @@ fn read_times(node: &Node) -> Times {
     t
 }
 
-fn read_group(node: Node, binaries: &mut Vec<Binary>) -> Result<Group, OvError> {
+fn read_group(node: Node<'_>, binaries: &mut Vec<Binary>) -> Result<Group, OvError> {
     let mut g = Group::new(Uuid::nil(), "", 0);
     for c in node.children {
-        match c.name.as_str() {
+        match c.name {
             "UUID" => g.uuid = parse_uuid(text(&c)).unwrap_or_default(),
             "Name" => g.name = text(&c).to_owned(),
             "Notes" => g.notes = text(&c).to_owned(),
@@ -356,12 +369,12 @@ fn read_group(node: Node, binaries: &mut Vec<Binary>) -> Result<Group, OvError> 
     Ok(g)
 }
 
-fn read_entry(node: Node, binaries: &mut Vec<Binary>) -> Result<Entry, OvError> {
+fn read_entry(node: Node<'_>, binaries: &mut Vec<Binary>) -> Result<Entry, OvError> {
     let mut e = Entry::new(Uuid::nil(), 0);
     e.strings.clear();
     e.auto_type = None;
     for c in node.children {
-        match c.name.as_str() {
+        match c.name {
             "UUID" => e.uuid = parse_uuid(text(&c)).unwrap_or_default(),
             "IconID" => e.icon_id = parse_num(&c, 0),
             "CustomIconUUID" => e.custom_icon = parse_opt_uuid(&c),
@@ -377,11 +390,11 @@ fn read_entry(node: Node, binaries: &mut Vec<Binary>) -> Result<Entry, OvError> 
                 let mut value = Zeroizing::new(String::new());
                 let mut protected = false;
                 for f in c.children {
-                    match f.name.as_str() {
+                    match f.name {
                         "Key" => key = text(&f).to_owned(),
                         "Value" => {
                             protected = f.is_protected() || f.attr("ProtectInMemory").is_some_and(parse_bool);
-                            value = f.text;
+                            value = f.text.into_zeroizing();
                         }
                         _ => {}
                     }
@@ -392,7 +405,7 @@ fn read_entry(node: Node, binaries: &mut Vec<Binary>) -> Result<Entry, OvError> 
                 let mut name = String::new();
                 let mut index = None;
                 for f in &c.children {
-                    match f.name.as_str() {
+                    match f.name {
                         "Key" => name = text(f).to_owned(),
                         "Value" => {
                             index = match f.attr("Ref") {
@@ -428,17 +441,17 @@ fn read_entry(node: Node, binaries: &mut Vec<Binary>) -> Result<Entry, OvError> 
     Ok(e)
 }
 
-fn read_auto_type(node: Node) -> AutoType {
+fn read_auto_type(node: Node<'_>) -> AutoType {
     let mut a = AutoType::default();
     for c in node.children {
-        match c.name.as_str() {
+        match c.name {
             "Enabled" => a.enabled = parse_bool(text(&c)),
             "DataTransferObfuscation" => a.data_transfer_obfuscation = parse_num(&c, 0),
             "DefaultSequence" => a.default_sequence = text(&c).to_owned(),
             "Association" => {
                 let mut assoc = AutoTypeAssociation { window: String::new(), keystroke_sequence: String::new() };
                 for f in &c.children {
-                    match f.name.as_str() {
+                    match f.name {
                         "Window" => assoc.window = text(f).to_owned(),
                         "KeystrokeSequence" => assoc.keystroke_sequence = text(f).to_owned(),
                         _ => {}
@@ -463,12 +476,27 @@ mod tests {
         assert_eq!(parse_time("2026-10-30T12:34:56.789Z"), Some(1_793_363_696));
         assert_eq!(parse_time("2026-10-30T14:34:56+02:00"), Some(1_793_363_696));
         assert_eq!(parse_time("0001-01-01T00:00:00Z"), Some(-EPOCH_OFFSET));
+        // Out of range: no time, no overflow
+        assert_eq!(parse_time("2026-10-30T9223372036854775807:00:00Z"), None);
+        assert_eq!(parse_time("9223372036854775807-12-31T00:00:00Z"), None);
+        assert_eq!(parse_time("-9223372036854775808-01-01T00:00:00+99:99"), None);
     }
 
     #[test]
     fn binary_times() {
         let b = B64.encode((EPOCH_OFFSET + 1_700_000_000).to_le_bytes());
         assert_eq!(parse_time(&b), Some(1_700_000_000));
+    }
+
+    #[test]
+    fn exact_base64_lengths() {
+        let id = Uuid::from_u128(0x1234_5678_9abc_def0_1122_3344_5566_7788);
+        assert_eq!(parse_uuid(&format!(" {} ", B64.encode(id.as_bytes()))), Some(id));
+        assert_eq!(parse_uuid(&B64.encode([1u8; 15])), None);
+        assert_eq!(parse_uuid(&B64.encode([1u8; 17])), None);
+        assert_eq!(parse_uuid(&B64.encode([1u8; 100])), None);
+        assert_eq!(parse_uuid("not base64!"), None);
+        assert_eq!(parse_time(&B64.encode([0u8; 9])), None);
     }
 
     #[test]

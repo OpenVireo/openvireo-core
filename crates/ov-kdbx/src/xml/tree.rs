@@ -1,6 +1,11 @@
-//! A small element tree over `quick-xml`'s pull reader, with `Protected="True"` values decrypted
-//! through the inner random stream in document order, and an escaping writer on `quick-xml`'s
-//! `Writer` that encrypts them again.
+//! A small element tree, with `Protected="True"` values decrypted through the inner random stream
+//! in document order, and an escaping writer on `quick-xml`'s `Writer` that encrypts them again.
+//!
+//! The tree is read by [`fast`](super::fast) when it can (a strict tokenizer for the XML KeePass
+//! apps write), else by `quick-xml`'s pull reader: anything the fast path doesn't take whole,
+//! malformed documents included, is read again by `quick-xml`, so errors are its errors. Both feed
+//! one [`Builder`], and the fast path's trees are checked against `quick-xml`'s in the tests and
+//! under the fuzzers (`cfg(fuzzing)`).
 
 use std::borrow::Cow;
 
@@ -18,27 +23,97 @@ const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STA
 /// Deeper documents are refused (groups recurse; this bounds the stack).
 const MAX_DEPTH: usize = 512;
 
-/// One element: name, attributes in order, text and children.
+/// Text from the document: borrowed from the decrypted XML when it is used as written (most of
+/// it), else owned and wiped on drop (entity references, line endings, protected values).
+#[derive(Clone)]
+pub(crate) enum Text<'a> {
+    Borrowed(&'a str),
+    Owned(Zeroizing<String>),
+}
+
+impl Default for Text<'_> {
+    fn default() -> Self {
+        Text::Borrowed("")
+    }
+}
+
+impl std::ops::Deref for Text<'_> {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl<'a> Text<'a> {
+    pub(crate) fn as_str(&self) -> &str {
+        match self {
+            Text::Borrowed(s) => s,
+            Text::Owned(s) => s.as_str(),
+        }
+    }
+
+    /// The text as an owned string that is wiped on drop.
+    pub(crate) fn into_zeroizing(self) -> Zeroizing<String> {
+        match self {
+            Text::Borrowed(s) => Zeroizing::new(s.to_owned()),
+            Text::Owned(s) => s,
+        }
+    }
+
+    fn owned(&mut self) -> &mut String {
+        if let Text::Borrowed(s) = self {
+            *self = Text::Owned(Zeroizing::new((*s).to_owned()));
+        }
+        match self {
+            Text::Owned(s) => s,
+            Text::Borrowed(_) => unreachable!("made owned above"),
+        }
+    }
+
+    /// Appends `s`, borrowing it while it is the only text.
+    fn push(&mut self, s: &'a str) {
+        if s.is_empty() {
+            return;
+        }
+        match self {
+            Text::Borrowed("") => *self = Text::Borrowed(s),
+            _ => self.owned().push_str(s),
+        }
+    }
+
+    fn push_cow(&mut self, s: Cow<'a, str>) {
+        match s {
+            Cow::Borrowed(b) => self.push(b),
+            Cow::Owned(o) => {
+                let o = Zeroizing::new(o);
+                self.owned().push_str(&o);
+            }
+        }
+    }
+}
+
+/// One element: name, attributes in order, text and children, borrowing from the XML.
 #[derive(Default)]
-pub(crate) struct Node {
-    pub(crate) name: String,
-    pub(crate) attrs: Vec<(String, String)>,
+pub(crate) struct Node<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) attrs: Vec<(&'a str, Text<'a>)>,
     /// Text content. For an element with children: the non-whitespace text around them, each run
     /// trimmed and concatenated. For a leaf: the text exactly. For a protected element: its clear
     /// text (UTF-8, lossy).
-    pub(crate) text: Zeroizing<String>,
+    pub(crate) text: Text<'a>,
     /// For a protected element: its decrypted bytes.
     pub(crate) raw: Option<Zeroizing<Vec<u8>>>,
-    pub(crate) children: Vec<Node>,
+    pub(crate) children: Vec<Node<'a>>,
 }
 
-impl Node {
-    pub(crate) fn child(&self, name: &str) -> Option<&Node> {
+impl<'a> Node<'a> {
+    pub(crate) fn child(&self, name: &str) -> Option<&Node<'a>> {
         self.children.iter().find(|c| c.name == name)
     }
 
     pub(crate) fn attr(&self, name: &str) -> Option<&str> {
-        self.attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
+        self.attrs.iter().find(|(k, _)| *k == name).map(|(_, v)| v.as_str())
     }
 
     pub(crate) fn is_protected(&self) -> bool {
@@ -48,45 +123,221 @@ impl Node {
     /// The element as a model passthrough element.
     pub(crate) fn into_element(self) -> XmlElement {
         XmlElement {
-            name: self.name,
-            attributes: self.attrs,
-            text: self.text.to_string(),
+            name: self.name.to_owned(),
+            attributes: self.attrs.into_iter().map(|(k, v)| (k.to_owned(), v.as_str().to_owned())).collect(),
+            text: self.text.as_str().to_owned(),
             children: self.children.into_iter().map(Node::into_element).collect(),
         }
     }
 }
 
-struct Frame {
-    node: Node,
-    seg: Zeroizing<String>,
+/// A start tag: qualified name, local name and attributes (local names, normalized values).
+pub(crate) struct Tag<'a> {
+    pub(crate) qname: &'a str,
+    pub(crate) name: &'a str,
+    pub(crate) attrs: Vec<(&'a str, Text<'a>)>,
 }
 
-impl Frame {
+/// An element being read: its start tag, its text so far and where its children start in the
+/// shared stack of finished elements (taken out in one exact-size allocation at its end tag).
+struct Frame<'a> {
+    qname: &'a str,
+    name: &'a str,
+    attrs: Vec<(&'a str, Text<'a>)>,
+    /// The non-whitespace text around children, each run trimmed.
+    text: Text<'a>,
+    /// The current text run.
+    seg: Text<'a>,
+    first_child: usize,
+}
+
+impl<'a> Frame<'a> {
     /// Ends a text run at a child boundary: trimmed into `text`.
     fn flush_trimmed(&mut self) {
-        let t = self.seg.trim();
-        if !t.is_empty() {
-            self.node.text.push_str(t);
+        match std::mem::take(&mut self.seg) {
+            // Mostly indentation: the ASCII pass empties it without the Unicode check per char
+            Text::Borrowed(s) => self.text.push(s.trim_ascii().trim()),
+            Text::Owned(s) => {
+                let t = s.trim_ascii().trim();
+                if !t.is_empty() {
+                    self.text.owned().push_str(t);
+                }
+            }
         }
-        self.seg.clear();
     }
 }
 
-fn start_node(e: &BytesStart<'_>) -> Result<Node, OvError> {
-    let name = e.local_name().into_inner().to_owned();
+/// Builds the tree from start tags, end tags and text, in document order.
+pub(crate) struct Builder<'a, 's> {
+    stack: Vec<Frame<'a>>,
+    /// Finished elements whose parent is still open, in document order.
+    done: Vec<Node<'a>>,
+    root: Option<Node<'a>>,
+    stream: Option<&'s mut InnerStream>,
+}
+
+impl<'a, 's> Builder<'a, 's> {
+    pub(crate) fn new(stream: Option<&'s mut InnerStream>) -> Self {
+        Builder { stack: Vec::new(), done: Vec::new(), root: None, stream }
+    }
+
+    /// The qualified name of the innermost open element.
+    pub(crate) fn open_qname(&self) -> Option<&'a str> {
+        self.stack.last().map(|f| f.qname)
+    }
+
+    /// Whether an element is open (text outside the root is ignored).
+    pub(crate) fn in_element(&self) -> bool {
+        !self.stack.is_empty()
+    }
+
+    fn open_frame(&mut self, tag: Tag<'a>) -> Result<Frame<'a>, OvError> {
+        if self.root.is_some() {
+            return Err(err("the XML has more than one root element"));
+        }
+        if let Some(parent) = self.stack.last_mut() {
+            parent.flush_trimmed();
+        }
+        Ok(Frame {
+            qname: tag.qname,
+            name: tag.name,
+            attrs: tag.attrs,
+            text: Text::default(),
+            seg: Text::default(),
+            first_child: self.done.len(),
+        })
+    }
+
+    pub(crate) fn start(&mut self, tag: Tag<'a>) -> Result<(), OvError> {
+        if self.root.is_none() && self.stack.len() >= MAX_DEPTH {
+            return Err(err("the XML is nested too deeply"));
+        }
+        let f = self.open_frame(tag)?;
+        self.stack.push(f);
+        Ok(())
+    }
+
+    pub(crate) fn empty(&mut self, tag: Tag<'a>) -> Result<(), OvError> {
+        let f = self.open_frame(tag)?;
+        self.close(f)
+    }
+
+    pub(crate) fn end(&mut self) -> Result<(), OvError> {
+        let f = self.stack.pop().ok_or_else(|| err("the XML has an unmatched end tag"))?;
+        self.close(f)
+    }
+
+    /// Text (already with XML 1.0 line endings) inside the innermost open element.
+    pub(crate) fn text(&mut self, t: Cow<'a, str>) {
+        if let Some(f) = self.stack.last_mut() {
+            f.seg.push_cow(t);
+        }
+    }
+
+    /// A resolved entity or character reference.
+    pub(crate) fn char(&mut self, c: char) {
+        if let Some(f) = self.stack.last_mut() {
+            f.seg.owned().push(c);
+        }
+    }
+
+    fn close(&mut self, mut f: Frame<'a>) -> Result<(), OvError> {
+        let text = if f.first_child == self.done.len() {
+            std::mem::take(&mut f.seg)
+        } else {
+            f.flush_trimmed();
+            std::mem::take(&mut f.text)
+        };
+        let children = self.done.split_off(f.first_child);
+        let mut node = Node { name: f.name, attrs: f.attrs, text, raw: None, children };
+        if node.is_protected() {
+            let s = self.stream.as_deref_mut().ok_or_else(|| err("a protected value but no inner stream"))?;
+            let cleaned: Zeroizing<String> = Zeroizing::new(node.text.chars().filter(|c| !c.is_whitespace()).collect());
+            let mut raw =
+                Zeroizing::new(B64.decode(cleaned.as_bytes()).map_err(|_| err("a protected value isn't base64"))?);
+            s.apply(&mut raw);
+            node.text = Text::Owned(Zeroizing::new(String::from_utf8_lossy(&raw).into_owned()));
+            node.raw = Some(raw);
+        }
+        if self.stack.is_empty() {
+            self.root = Some(node);
+        } else {
+            self.done.push(node);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish(self) -> Result<Node<'a>, OvError> {
+        if !self.stack.is_empty() {
+            return Err(err("the XML ends inside an element"));
+        }
+        self.root.ok_or_else(|| err("the XML has no root element"))
+    }
+}
+
+/// `part` as a slice of `src`, when it lies inside it: quick-xml's names and attributes borrow
+/// from the event, though they point into the document, which is already known to be UTF-8.
+fn within<'a>(src: &'a str, part: &str) -> Option<&'a str> {
+    let start = (part.as_ptr() as usize).checked_sub(src.as_ptr() as usize)?;
+    src.get(start..start.checked_add(part.len())?)
+}
+
+/// `part` borrowed from `src` when it lies inside it, else copied.
+fn text_in<'a>(src: &'a str, part: &str) -> Text<'a> {
+    match within(src, part) {
+        Some(s) => Text::Borrowed(s),
+        None => Text::Owned(Zeroizing::new(part.to_owned())),
+    }
+}
+
+/// Whether `name` can be written back as an element or attribute name: not empty, and no markup,
+/// whitespace or control characters (the writer writes names as they are).
+fn writable_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.bytes().any(|b| {
+            matches!(b, b'<' | b'>' | b'"' | b'\'' | b'=' | b'&' | b'/' | b'!' | b'?')
+                || b.is_ascii_whitespace()
+                || b < 0x20
+        })
+}
+
+/// A `quick-xml` start tag, borrowing from the document.
+fn start_tag<'a>(src: &'a str, e: &BytesStart<'_>) -> Result<Tag<'a>, OvError> {
+    let outside = || err("an XML name outside the document");
+    let qname = within(src, e.name().into_inner()).ok_or_else(outside)?;
+    let name = within(src, e.local_name().into_inner()).ok_or_else(outside)?;
+    // quick-xml takes `<>`, `< x="1">` and names full of markup; they couldn't be written back
+    if !writable_name(name) {
+        return Err(err("the XML has an element without a valid name"));
+    }
     let mut attrs = Vec::new();
     for a in e.attributes() {
         let a = a.map_err(|e| err(format!("bad XML attribute: {e}")))?;
-        let key = a.key.local_name().into_inner().to_owned();
+        let key =
+            within(src, a.key.local_name().into_inner()).ok_or_else(|| err("an XML name outside the document"))?;
+        if !writable_name(key) {
+            return Err(err("the XML has an attribute without a valid name"));
+        }
+        // Kept by local name: `p:x` and `q:x` would be written back as two `x`
+        if attrs.iter().any(|(k, _)| *k == key) {
+            return Err(err("the XML has two attributes with the same local name"));
+        }
         let value = a
             .normalized_value(quick_xml::XmlVersion::Implicit1_0)
             .map_err(|e| err(format!("bad XML attribute: {e}")))?;
-        attrs.push((key, value.into_owned()));
+        if !value.chars().all(xml10_char) {
+            return Err(err("an XML attribute holds a character XML 1.0 doesn't allow"));
+        }
+        let value = match value {
+            Cow::Borrowed(v) => text_in(src, v),
+            Cow::Owned(v) => Text::Owned(Zeroizing::new(v)),
+        };
+        attrs.push((key, value));
     }
-    Ok(Node { name, attrs, ..Node::default() })
+    Ok(Tag { qname, name, attrs })
 }
 
-fn resolve_ref(name: &str) -> Result<char, OvError> {
+pub(crate) fn resolve_ref(name: &str) -> Result<char, OvError> {
     Ok(match name {
         "amp" => '&',
         "lt" => '<',
@@ -107,94 +358,81 @@ fn resolve_ref(name: &str) -> Result<char, OvError> {
 
 /// Parses `xml`. With a `stream`, protected values are decrypted in document order; without one,
 /// a protected value is an error.
-pub(crate) fn parse(xml: &str, mut stream: Option<&mut InnerStream>) -> Result<Node, OvError> {
+pub(crate) fn parse<'a>(xml: &'a str, mut stream: Option<&mut InnerStream>) -> Result<Node<'a>, OvError> {
     let xml = xml.strip_prefix('\u{feff}').unwrap_or(xml);
+    // A document the fast path gives up on is read again from here, protected values included
+    let start = stream.as_deref().map(InnerStream::position);
+    let fast = super::fast::parse(xml, stream.as_deref_mut());
+    #[cfg(test)]
+    FAST_READS.with(|c| c.set(c.get() + u32::from(fast.is_some())));
+    if let (Some(s), Some(p)) = (stream.as_deref_mut(), start) {
+        if fast.is_none() || cfg!(any(test, fuzzing)) {
+            s.seek(p);
+        }
+    }
+    match fast {
+        #[cfg(any(test, fuzzing))]
+        Some(fast) => {
+            // Whatever the fast path reads, quick-xml reads the same
+            let slow = parse_quick_xml(xml, stream).expect("quick-xml reads what the fast path read");
+            assert!(same_tree(&fast, &slow), "the fast path's tree differs from quick-xml's");
+            Ok(fast)
+        }
+        #[cfg(not(any(test, fuzzing)))]
+        Some(fast) => Ok(fast),
+        None => parse_quick_xml(xml, stream),
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Documents this thread read on the fast path (tests check which ones fall back).
+    pub(crate) static FAST_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Whether two trees are the same: names, attributes, text, decrypted bytes and children.
+#[cfg(any(test, fuzzing))]
+pub(crate) fn same_tree(a: &Node<'_>, b: &Node<'_>) -> bool {
+    a.name == b.name
+        && a.text.as_str() == b.text.as_str()
+        && a.raw.as_deref() == b.raw.as_deref()
+        && a.attrs.len() == b.attrs.len()
+        && a.attrs.iter().zip(&b.attrs).all(|((ka, va), (kb, vb))| ka == kb && va.as_str() == vb.as_str())
+        && a.children.len() == b.children.len()
+        && a.children.iter().zip(&b.children).all(|(x, y)| same_tree(x, y))
+}
+
+/// [`parse`] with `quick-xml`'s pull reader (BOM already stripped).
+pub(crate) fn parse_quick_xml<'a>(xml: &'a str, stream: Option<&mut InnerStream>) -> Result<Node<'a>, OvError> {
     let mut reader = quick_xml::Reader::from_str(xml);
-    let mut stack: Vec<Frame> = Vec::new();
-    let mut root: Option<Node> = None;
+    let mut b = Builder::new(stream);
     let bad = |e: quick_xml::Error| err(format!("the XML is malformed: {e}"));
-
-    let mut finish = |stack: &mut Vec<Frame>, root: &mut Option<Node>, mut f: Frame| -> Result<(), OvError> {
-        if f.node.children.is_empty() {
-            f.node.text = std::mem::take(&mut f.seg);
-        } else {
-            f.flush_trimmed();
-        }
-        if f.node.is_protected() {
-            let s = stream.as_deref_mut().ok_or_else(|| err("a protected value but no inner stream"))?;
-            let cleaned: Zeroizing<String> =
-                Zeroizing::new(f.node.text.chars().filter(|c| !c.is_whitespace()).collect());
-            let mut raw =
-                Zeroizing::new(B64.decode(cleaned.as_bytes()).map_err(|_| err("a protected value isn't base64"))?);
-            s.apply(&mut raw);
-            f.node.text = Zeroizing::new(String::from_utf8_lossy(&raw).into_owned());
-            f.node.raw = Some(raw);
-        }
-        match stack.last_mut() {
-            Some(parent) => parent.node.children.push(f.node),
-            None => *root = Some(f.node),
-        }
-        Ok(())
-    };
-
     loop {
         match reader.read_event().map_err(bad)? {
-            Event::Start(e) => {
-                if root.is_some() {
-                    return Err(err("the XML has more than one root element"));
-                }
-                if stack.len() >= MAX_DEPTH {
-                    return Err(err("the XML is nested too deeply"));
-                }
-                if let Some(parent) = stack.last_mut() {
-                    parent.flush_trimmed();
-                }
-                stack.push(Frame { node: start_node(&e)?, seg: Zeroizing::new(String::new()) });
-            }
-            Event::Empty(e) => {
-                if root.is_some() {
-                    return Err(err("the XML has more than one root element"));
-                }
-                if let Some(parent) = stack.last_mut() {
-                    parent.flush_trimmed();
-                }
-                let f = Frame { node: start_node(&e)?, seg: Zeroizing::new(String::new()) };
-                finish(&mut stack, &mut root, f)?;
-            }
-            Event::End(_) => {
-                let f = stack.pop().ok_or_else(|| err("the XML has an unmatched end tag"))?;
-                finish(&mut stack, &mut root, f)?;
-            }
-            Event::Text(t) => {
-                if let Some(f) = stack.last_mut() {
-                    f.seg.push_str(&t.xml10_content());
-                }
-            }
-            Event::CData(t) => {
-                if let Some(f) = stack.last_mut() {
-                    f.seg.push_str(&t.xml10_content());
-                }
-            }
+            Event::Start(e) => b.start(start_tag(xml, &e)?)?,
+            Event::Empty(e) => b.empty(start_tag(xml, &e)?)?,
+            Event::End(_) => b.end()?,
+            Event::Text(t) => b.text(t.xml10_content()),
+            Event::CData(t) => b.text(t.xml10_content()),
             Event::GeneralRef(r) => {
-                if let Some(f) = stack.last_mut() {
-                    f.seg.push(resolve_ref(&r)?);
+                if b.in_element() {
+                    b.char(resolve_ref(&r)?);
                 }
             }
             Event::Eof => break,
             Event::Comment(_) | Event::Decl(_) | Event::PI(_) | Event::DocType(_) => {}
         }
     }
-    if !stack.is_empty() {
-        return Err(err("the XML ends inside an element"));
-    }
-    root.ok_or_else(|| err("the XML has no root element"))
+    b.finish()
 }
 
 // ---------------------------------------------------------------------------------------------
 // Writing
 
-/// Whether `c` may appear in an XML 1.0 document (KeePassXC strips the rest on save).
-fn xml10_char(c: char) -> bool {
+/// Whether `c` may appear in an XML 1.0 document (KeePassXC strips the rest on save). Attribute
+/// values holding others are refused on read: the writer would drop them, and `Protected="True\x01"`
+/// would come back protected.
+pub(crate) fn xml10_char(c: char) -> bool {
     matches!(c, '\t' | '\n' | '\r' | '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}')
 }
 

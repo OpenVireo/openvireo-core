@@ -33,26 +33,10 @@ pub fn run(args: &[String]) -> Result {
             other => return Err(format!("python: unknown argument `{other}` (--smoke, --wheel)")),
         }
     }
-    let dir = root().join("bindings").join("python");
+    let dir = project();
     let uv = which("uv");
     let venv = dir.join(".venv");
-    let python = ensure_venv(&dir, &venv, uv.as_deref())?;
-
-    // Tools.
-    let reqs = dir.join("requirements-dev.txt");
-    let mut install = match &uv {
-        Some(uv) => {
-            let mut c = Command::new(uv);
-            c.args(["pip", "install", "--quiet", "--python"]).arg(&python);
-            c
-        }
-        None => {
-            let mut c = Command::new(&python);
-            c.args(["-m", "pip", "install", "--quiet"]);
-            c
-        }
-    };
-    step("python: install dev requirements", install.arg("-r").arg(&reqs))?;
+    let python = dev_venv()?;
 
     // Build + install the package.
     let mut develop = Command::new(bin(&venv, "maturin"));
@@ -87,19 +71,91 @@ pub fn run(args: &[String]) -> Result {
     step(&format!("python: pytest{}", if smoke { " (with the testkit relay)" } else { "" }), &mut pytest)?;
 
     if wheel {
-        let out = target_root().join("wheels");
-        let mut build = Command::new(bin(&venv, "maturin"));
-        build.args(["build", "--release", "--out"]).arg(&out).current_dir(&dir);
-        step("python: release wheel (feature test-server: off)", &mut build)?;
-        for entry in fs::read_dir(&out).map_err(|e| format!("{}: {e}", out.display()))? {
-            let p = entry.map_err(|e| e.to_string())?.path();
-            if p.extension().is_some_and(|x| x == "whl") {
-                let len = fs::metadata(&p).map_err(|e| e.to_string())?.len();
-                println!("{:<64} {:>12} bytes", p.file_name().unwrap_or_default().to_string_lossy(), len);
-            }
+        for p in release_build(&target_root().join("wheels"), false)? {
+            let len = fs::metadata(&p).map_err(|e| e.to_string())?.len();
+            println!("{:<64} {:>12} bytes", p.file_name().unwrap_or_default().to_string_lossy(), len);
         }
     }
     Ok(())
+}
+
+fn project() -> PathBuf {
+    root().join("bindings").join("python")
+}
+
+/// `bindings/python/.venv` with the dev requirements (maturin, pytest, the extras); returns its Python.
+fn dev_venv() -> Result<PathBuf> {
+    let dir = project();
+    let venv = dir.join(".venv");
+    let python = ensure_venv(&dir, &venv, which("uv").as_deref())?;
+    let reqs = dir.join("requirements-dev.txt");
+    step("python: install dev requirements", pip_install(&python).arg("-r").arg(&reqs)).map(|()| python)
+}
+
+/// `pip install` into the venv of `python` (through uv when it's on `PATH`); add the arguments.
+pub(crate) fn pip_install(python: &Path) -> Command {
+    match which("uv") {
+        Some(uv) => {
+            let mut c = Command::new(uv);
+            c.args(["pip", "install", "--quiet", "--python"]).arg(python);
+            c
+        }
+        None => {
+            let mut c = Command::new(python);
+            c.args(["-m", "pip", "install", "--quiet", "--disable-pip-version-check"]);
+            c
+        }
+    }
+}
+
+/// A new, empty venv at `venv` (replacing one there), for checking an installed wheel; returns its
+/// Python. Same interpreter rules as the dev venv.
+pub(crate) fn fresh_venv(venv: &Path) -> Result<PathBuf> {
+    let parent = venv.parent().ok_or("python: venv path has no parent")?;
+    fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    if venv.exists() {
+        fs::remove_dir_all(venv).map_err(|e| format!("{}: {e}", venv.display()))?;
+    }
+    ensure_venv(parent, venv, which("uv").as_deref())
+}
+
+/// The release build for `cargo xtask release` and `--wheel`: a release wheel for the host (never
+/// `test-server`) and, with `sdist`, the source distribution, into `out`. Returns the files written.
+/// macOS wheels target [`crate::release::MACOS_DEPLOYMENT_TARGET`] unless `MACOSX_DEPLOYMENT_TARGET`
+/// is set, as in the release workflow.
+pub(crate) fn release_build(out: &Path, sdist: bool) -> Result<Vec<PathBuf>> {
+    let dir = project();
+    let venv = dir.join(".venv");
+    dev_venv()?;
+    fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
+    let before = listing(out)?;
+    let mut build = Command::new(bin(&venv, "maturin"));
+    build.args(["build", "--release", "--out"]).arg(out).current_dir(&dir);
+    if cfg!(target_os = "macos") && std::env::var_os("MACOSX_DEPLOYMENT_TARGET").is_none() {
+        build.env("MACOSX_DEPLOYMENT_TARGET", crate::release::MACOS_DEPLOYMENT_TARGET);
+    }
+    step("python: release wheel (feature test-server: off)", &mut build)?;
+    if sdist {
+        let mut sd = Command::new(bin(&venv, "maturin"));
+        sd.args(["sdist", "--out"]).arg(out).current_dir(&dir);
+        step("python: sdist", &mut sd)?;
+    }
+    // Files maturin wrote or replaced in this run (the dir may hold older wheels).
+    let after = listing(out)?;
+    Ok(after.into_iter().filter(|f| !before.contains(f)).map(|(p, _)| p).collect())
+}
+
+/// (path, modified time) of every file in `dir`.
+fn listing(dir: &Path) -> Result<Vec<(PathBuf, std::time::SystemTime)>> {
+    let mut out = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+        let p = entry.map_err(|e| e.to_string())?.path();
+        let modified = fs::metadata(&p).and_then(|m| m.modified()).map_err(|e| format!("{}: {e}", p.display()))?;
+        if p.is_file() {
+            out.push((p, modified));
+        }
+    }
+    Ok(out)
 }
 
 /// The venv's Python, creating the venv first when it's missing or too old.

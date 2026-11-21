@@ -44,3 +44,62 @@ jobs:
         with:
           tool: cargo-deny@0.20.2
       - run: cargo xtask ci
+
+  # The Python binding (bindings/python): maturin develop with test-server, then pytest, including
+  # the live tests against the testkit relay (crates/ov-testkit/examples/http_relay.rs)
+  python:
+    name: python (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v6
+      - run: cargo xtask python --smoke
+
+  # The Kotlin/JVM binding (bindings/kotlin): Kotlin + Java tests and both smoke tests against the
+  # testkit relay. The runner has an Android SDK, so :core-android is left out explicitly.
+  kotlin-jvm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: cargo xtask kotlin --smoke -- test -Pov.android=false
+
+  # The Android AAR: cargo-ndk for arm64-v8a, armeabi-v7a and x86_64, then the AAR checks (ABIs,
+  # classes, 16 KB pages). Build only; the instrumented LoadTest needs a device.
+  android-aar:
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: 27.2.12479018 # r27c, from the runner's Android SDK
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Android targets and NDK
+        run: |
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk@4.1.2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: cargo xtask kotlin --android

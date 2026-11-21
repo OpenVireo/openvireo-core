@@ -2,14 +2,27 @@
 #
 # - `@openvireo/core-wasm` (the full and the lite module in one package) to GitHub Packages, and to
 #   npmjs.com too when the repository variable NPMJS_PUBLISH is "true" (as in openvireo-sdk);
+# - `com.openvireo:openvireo-core-jvm` (jar with natives for 5 platforms) and `openvireo-core-android` (AAR)
+#   to GitHub Packages (Maven);
 # - a GitHub release with OpenVireoCore.xcframework.zip, its SwiftPM checksum and the UniFFI Swift source,
 #   libovcore-<v>-<platform> CMake packages, signed ov-<v>-<platform> binaries (the SDK's asset names),
-#   the npm tarball, SHA256SUMS and its GPG signature SHA256SUMS.asc.
+#   the npm tarball, the `openvireo` Python wheels (macOS arm64/x86_64, manylinux_2_28 x86_64/aarch64,
+#   musllinux x86_64, Windows x64) and sdist, the jar and the AAR, SHA256SUMS and its GPG signature
+#   SHA256SUMS.asc.
 #
 # Each build runner runs `cargo xtask release --unpacked` (xtask/src/release.rs) for what it builds. The
 # macOS `ov` executables are signed with a Developer ID (hardened runtime) and notarized, the Windows one
 # signed with Azure Artifact Signing, then `cargo xtask release pack` archives them and writes SHA256SUMS,
 # and `cargo xtask release verify` checks every archive on its own platform before anything is published.
+# The native libraries of the bindings get the same signatures: the macOS dylib and the Windows DLL inside
+# the wheels (.github/scripts/wheel_natives.py repacks them with a new RECORD) and in the jar
+# (`cargo xtask release jvm-native` per platform, signed, then `--only jvm` assembles the jar and AAR).
+# The Android libraries aren't code-signed (an app's own signature covers them); like every asset, the
+# wheels, jar and AAR are covered by the GPG-signed SHA256SUMS.
+#
+# Versions: everything carries the workspace version, which must equal the tag (the `version` job). The
+# wheels get it from bindings/ov-ffi's Cargo.toml through maturin, in PEP 440 form (1.2.0-beta.1 ->
+# 1.2.0b1); `verify` fails on a file with another version. Gradle gets it as -Pov.version.
 #
 # Signing uses the same secrets, variables and steps as openvireo-sdk's release.yml, from this repository's
 # `signing` environment. Signing is required on a release tag and when asked for (`sign`); otherwise it's
@@ -26,7 +39,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish (npm packages and the GitHub release); needs a vX.Y.Z tag ref. Off = dry run.
+        description: Publish (npm and Maven packages, the GitHub release); needs a vX.Y.Z tag ref. Off = dry run.
         type: boolean
         default: false
       sign:
@@ -52,6 +65,9 @@ env:
   WASM_BINDGEN_SHA256: 9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f # x86_64-unknown-linux-musl
   BINARYEN_VERSION: "133"
   BINARYEN_SHA256: 2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489 # x86_64-linux
+  MATURIN_VERSION: "v1.16.0" # bindings/python/pyproject.toml allows >=1.9,<2.0
+  NDK_VERSION: 27.2.12479018 # r27c, installed from the runner's Android SDK
+  CARGO_NDK_VERSION: "4.1.2"
 
 jobs:
   version:
@@ -171,10 +187,146 @@ jobs:
             dist/*.swift
           if-no-files-found: error
 
+  # The `openvireo` Python wheels (bindings/python) with maturin: py3-none-<platform>, one per platform for
+  # every Python 3.10+, plus the sdist. The macOS and Windows wheels go to the signing jobs first.
+  wheels:
+    needs: version
+    name: wheel (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: darwin-arm64, runner: macos-15, target: aarch64-apple-darwin, sign: macos }
+          - { name: darwin-x64, runner: macos-15, target: x86_64-apple-darwin, sign: macos }
+          - { name: manylinux-x64, runner: ubuntu-24.04, target: x86_64-unknown-linux-gnu, manylinux: "2_28" }
+          - { name: manylinux-arm64, runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, manylinux: "2_28" }
+          - { name: musllinux-x64, runner: ubuntu-24.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2 }
+          - { name: windows-x64, runner: windows-2025, target: x86_64-pc-windows-msvc, sign: windows }
+          - { name: sdist, runner: ubuntu-24.04, sdist: true }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0" # the floor of ov, libovcore and the jar's dylibs (xtask release)
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      # maturin reads the version from bindings/ov-ffi (the workspace version, which `version` checked
+      # against the tag) and the toolchain from rust-toolchain.toml
+      - uses: PyO3/maturin-action@v1
+        if: ${{ !matrix.sdist }}
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          working-directory: bindings/python
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux || 'off' }}
+          args: --release --locked --out dist
+      - uses: PyO3/maturin-action@v1
+        if: ${{ matrix.sdist }}
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          working-directory: bindings/python
+          command: sdist
+          args: --out dist
+      - name: Check the version in the file names
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # PEP 440, as maturin writes it (xtask release's pep440 is the reference; verify checks again)
+          pep=$(echo "$VERSION" | sed -E 's/-alpha\.?/a/; s/-beta\.?/b/; s/-rc\.?/rc/')
+          ls -l bindings/python/dist
+          for f in bindings/python/dist/*; do
+            case "$(basename "$f")" in
+              "openvireo-$pep-"*.whl | "openvireo-$pep.tar.gz") ;;
+              *) echo "::error::$f is not version $pep (the release is $VERSION)"; exit 1 ;;
+            esac
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          # Unsigned macOS and Windows wheels go to sign-macos / sign-windows; the rest are ready
+          name: ${{ matrix.sign && format('wheel-unsigned-{0}', matrix.name) || format('files-wheel-{0}', matrix.name) }}
+          path: bindings/python/dist/*
+          if-no-files-found: error
+
+  # One native library per jar slice (xtask/src/kotlin.rs NATIVE_SLICES), each on its own platform: the
+  # release ov-ffi cdylib, never test-server. glibc 2.35 on Linux, like libovcore.
+  jvm-natives:
+    needs: version
+    name: jvm native (${{ matrix.prefix }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { prefix: darwin-aarch64, runner: macos-15, target: aarch64-apple-darwin, sign: macos }
+          - { prefix: darwin-x86-64, runner: macos-15, target: x86_64-apple-darwin, sign: macos }
+          - { prefix: linux-x86-64, runner: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
+          - { prefix: linux-aarch64, runner: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu }
+          - { prefix: win32-x86-64, runner: windows-2025, target: x86_64-pc-windows-msvc, sign: windows }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Build
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          rustup target add "$TARGET"
+          cargo xtask release jvm-native "$TARGET" "$RUNNER_TEMP/natives"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.sign && format('natives-unsigned-{0}', matrix.prefix) || format('natives-ready-{0}', matrix.prefix) }}
+          path: ${{ runner.temp }}/natives/
+          if-no-files-found: error
+
+  # libov_ffi.so for the AAR's ABIs with cargo-ndk, built and checked by `cargo xtask kotlin --android`
+  # (16 KB pages, classes, R8 rules); the release AAR itself is assembled in `maven-build`
+  android:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Android targets and NDK
+        run: |
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk@${{ env.CARGO_NDK_VERSION }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+      - run: cargo xtask kotlin --android -- :core-android:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-jnilibs
+          path: bindings/kotlin/build/jniLibs/
+          if-no-files-found: error
+
   # Developer ID signature with the hardened runtime, then notarization (openvireo-sdk's scripts/macos/sign.sh;
-  # the native `ov` needs no entitlements)
+  # the native `ov` needs no entitlements). The same for libov_ffi.dylib in the jar's two darwin slices and
+  # inside the two macOS wheels, which are repacked with a new RECORD; everything goes in one notarization.
   sign-macos:
-    needs: build
+    needs: [build, wheels, jvm-natives]
     runs-on: macos-15
     environment: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.sign) && 'signing' || '' }}
     outputs:
@@ -182,10 +334,34 @@ jobs:
     env:
       HAS_SECRETS: ${{ secrets.MACOS_CERTIFICATE_P12 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
       - uses: actions/download-artifact@v4
         with:
           name: ov-unsigned-darwin
           path: raw
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-unsigned-darwin-*
+          path: wheels
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: natives-unsigned-darwin-*
+          path: natives
+          merge-multiple: true
+      - name: Unpack the wheels
+        run: |
+          : > "$RUNNER_TEMP/wheel-libs.txt"
+          for whl in wheels/*.whl; do
+            dir="wheel-x/$(basename "$whl")"
+            python3 -I .github/scripts/wheel_natives.py extract "$whl" "$dir" | sed "s|^|$dir/|" >> "$RUNNER_TEMP/wheel-libs.txt"
+          done
+          cat "$RUNNER_TEMP/wheel-libs.txt"
+          [ "$(grep -c '\.dylib$' "$RUNNER_TEMP/wheel-libs.txt")" = 2 ] || { echo "::error::expected one dylib in each of 2 wheels"; exit 1; }
+          ls -l natives/*/libov_ffi.dylib
       - name: Check the signing secrets
         id: config
         run: |
@@ -208,6 +384,11 @@ jobs:
           codesign --verify --strict --verbose=2 "$exe"
           codesign -dv "$exe" 2>&1 | grep 'flags=.*runtime' > /dev/null
           "$exe" version
+          lib="$RUNNER_TEMP/libov_ffi.dylib"
+          cp natives/darwin-aarch64/libov_ffi.dylib "$lib"
+          codesign --force --options runtime --identifier com.openvireo.core.ffi --sign - "$lib"
+          codesign --verify --strict --verbose=2 "$lib"
+          python3 -c 'import ctypes, sys; ctypes.CDLL(sys.argv[1]); print("loaded", sys.argv[1])' "$lib"
       - name: Import the certificate
         id: identity
         if: steps.config.outputs.signed == 'true'
@@ -246,13 +427,23 @@ jobs:
             codesign --force --options runtime --timestamp --identifier com.openvireo.ov --sign "$IDENTITY" "$exe"
             codesign --verify --strict --verbose=2 "$exe"
           done
-          # Both executables in one submission; a bare executable can't be stapled, so Gatekeeper looks the
+          libs=(natives/*/libov_ffi.dylib)
+          while IFS= read -r lib; do libs+=("$lib"); done < "$RUNNER_TEMP/wheel-libs.txt"
+          for lib in "${libs[@]}"; do
+            codesign --force --options runtime --timestamp --identifier com.openvireo.core.ffi --sign "$IDENTITY" "$lib"
+            codesign --verify --strict --verbose=2 "$lib"
+          done
+          # Executables and libraries in one submission; a bare file can't be stapled, so Gatekeeper looks the
           # ticket up online the first time it sees the file
           work="$RUNNER_TEMP/notarize"
           mkdir -p "$work/bin"
           for exe in raw/ov-*-darwin-*/ov; do
             d="$work/bin/$(basename "$(dirname "$exe")")"
             mkdir -p "$d" && cp -p "$exe" "$d/"
+          done
+          for lib in "${libs[@]}"; do
+            d="$work/bin/lib/$(dirname "$lib")"
+            mkdir -p "$d" && cp -p "$lib" "$d/"
           done
           ditto -c -k --keepParent "$work/bin" "$work/notarize.zip"
           xcrun notarytool submit "$work/notarize.zip" --keychain-profile notarization --keychain "$KEYCHAIN" \
@@ -262,19 +453,35 @@ jobs:
           status="$(plutil -extract status raw "$work/result.json")"
           xcrun notarytool log "$id" --keychain-profile notarization --keychain "$KEYCHAIN" || true
           if [ "$status" != Accepted ]; then echo "::error::notarization: $status"; exit 1; fi
-      - name: Run the signed binary
+      - name: Run the signed binary, load the signed library and repack the wheels
         if: steps.config.outputs.signed == 'true'
         run: |
           for exe in raw/ov-*-darwin-arm64/ov; do "$exe" version; done
+          python3 -c 'import ctypes, sys; ctypes.CDLL(sys.argv[1]); print("loaded", sys.argv[1])' \
+            natives/darwin-aarch64/libov_ffi.dylib
+          for whl in wheels/*.whl; do
+            python3 -I .github/scripts/wheel_natives.py repack "$whl" "wheel-x/$(basename "$whl")"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: ov-ready-darwin
           path: raw/ov-*
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: files-wheel-darwin
+          path: wheels/*.whl
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: natives-ready-darwin
+          path: natives/
+          if-no-files-found: error
 
-  # Authenticode signature from Azure Artifact Signing, through SignTool's dlib and an OIDC login to Azure
+  # Authenticode signature from Azure Artifact Signing, through SignTool's dlib and an OIDC login to Azure;
+  # ov.exe, ov_ffi.dll of the jar's win32-x86-64 slice and ov_ffi.dll inside the Windows wheel (repacked)
   sign-windows:
-    needs: build
+    needs: [build, wheels, jvm-natives]
     runs-on: windows-2025
     environment: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.sign) && 'signing' || '' }}
     permissions:
@@ -288,10 +495,32 @@ jobs:
     env:
       HAS_SECRETS: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' && vars.ARTIFACT_SIGNING_ENDPOINT != '' && vars.ARTIFACT_SIGNING_ACCOUNT != '' && vars.ARTIFACT_SIGNING_PROFILE != '' }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
       - uses: actions/download-artifact@v4
         with:
           name: ov-unsigned-windows-x64
           path: raw
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-unsigned-windows-x64
+          path: wheels
+      - uses: actions/download-artifact@v4
+        with:
+          name: natives-unsigned-win32-x86-64
+          path: natives
+      - name: Unpack the wheel
+        run: |
+          : > "$RUNNER_TEMP/wheel-libs.txt"
+          for whl in wheels/*.whl; do
+            dir="wheel-x/$(basename "$whl")"
+            python -I .github/scripts/wheel_natives.py extract "$whl" "$dir" | sed "s|^|$dir/|" >> "$RUNNER_TEMP/wheel-libs.txt"
+          done
+          cat "$RUNNER_TEMP/wheel-libs.txt"
+          [ "$(grep -c '\.dll$' "$RUNNER_TEMP/wheel-libs.txt")" = 1 ] || { echo "::error::expected one DLL in the wheel"; exit 1; }
+          ls -l natives/win32-x86-64/ov_ffi.dll
       - name: Check the signing secrets
         id: config
         run: |
@@ -357,7 +586,10 @@ jobs:
         run: |
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\signtool.exe" |
             Sort-Object { [version]$_.Directory.Parent.Name } | Select-Object -Last 1
-          $files = @(Get-ChildItem raw\ov-*-windows-x64\*.exe | ForEach-Object FullName)
+          $exes = @(Get-ChildItem raw\ov-*-windows-x64\*.exe | ForEach-Object FullName)
+          $libs = @((Get-Item natives\win32-x86-64\ov_ffi.dll).FullName)
+          $libs += @(Get-Content "$env:RUNNER_TEMP\wheel-libs.txt" | ForEach-Object { (Get-Item $_).FullName })
+          $files = $exes + $libs
           & $signtool.FullName sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 `
             /dlib $env:DLIB /dmdf $env:METADATA @files
           if ($LASTEXITCODE) { throw "signtool failed" }
@@ -365,18 +597,82 @@ jobs:
             $sig = Get-AuthenticodeSignature $f
             "$f`: $($sig.Status), $($sig.SignerCertificate.Subject)"
             if ($sig.Status -ne "Valid") { throw "$f has no valid signature" }
+          }
+          foreach ($f in $exes) {
             & $f version
             if ($LASTEXITCODE) { throw "$f failed to run once signed" }
           }
+      - name: Repack the wheel
+        if: steps.config.outputs.signed == 'true'
+        run: |
+          for whl in wheels/*.whl; do
+            python -I .github/scripts/wheel_natives.py repack "$whl" "wheel-x/$(basename "$whl")"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: ov-ready-windows-x64
           path: raw/ov-*
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: files-wheel-windows-x64
+          path: wheels/*.whl
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: natives-ready-win32-x86-64
+          path: natives/
+          if-no-files-found: error
+
+  # The jar (every signed slice) and the AAR: `cargo xtask release --only jvm`, which generates the Kotlin
+  # and the Java facade from a host debug build and runs Gradle with the release version. Reproducible
+  # archives, so the `maven` job can rebuild them byte for byte before publishing.
+  maven-build:
+    needs: [version, sign-macos, sign-windows, jvm-natives, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+      # Outside the checkout, which must stay clean for a release build
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: natives-ready-*
+          path: ${{ runner.temp }}/natives
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-jnilibs
+          path: ${{ runner.temp }}/jniLibs
+      - name: Build
+        env:
+          DRY_RUN: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          find "$RUNNER_TEMP/natives" "$RUNNER_TEMP/jniLibs" -type f -exec ls -l {} +
+          args=(--only jvm --natives "$RUNNER_TEMP/natives" --jni-libs "$RUNNER_TEMP/jniLibs" --out dist)
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          cargo xtask release "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: files-maven
+          path: |
+            dist/*.jar
+            dist/*.aar
+          if-no-files-found: error
 
   # Archives the signed executables (`cargo xtask release pack`) and writes SHA256SUMS over every file
   pack:
-    needs: [build, sign-macos, sign-windows]
+    needs: [build, wheels, sign-macos, sign-windows, maven-build]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -402,7 +698,9 @@ jobs:
           if-no-files-found: error
 
   # Checks the signatures, then `cargo xtask release verify` on each platform: ov runs, a CMake app links
-  # libovcore, a SwiftPM app links the xcframework (macOS), Node loads both wasm modules
+  # libovcore, a SwiftPM app links the xcframework (macOS), Node loads both wasm modules, the platform's
+  # wheel installs into a fresh venv and imports, a Java program runs against the jar (its slice for this
+  # platform), and the AAR has its ABIs
   verify:
     needs: [version, pack, sign-macos, sign-windows]
     name: verify (${{ matrix.platform }})
@@ -434,6 +732,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
       - uses: actions/download-artifact@v4
         with:
           name: release
@@ -461,6 +769,24 @@ jobs:
           assessment=$(spctl --assess --type install -vv "$exe" 2>&1) || { echo "$assessment"; exit 1; }
           echo "$assessment"
           [[ "$assessment" == *"source=Notarized Developer ID"* ]]
+      - name: Check the library signatures in the jar and the wheel (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          case "$PLATFORM" in
+            darwin-arm64) slice=darwin-aarch64 wheel_arch=arm64 ;;
+            *) slice=darwin-x86-64 wheel_arch=x86_64 ;;
+          esac
+          mkdir -p libs/jar libs/wheel
+          unzip -q -o "release/openvireo-core-jvm-$VERSION.jar" "$slice/libov_ffi.dylib" -d libs/jar
+          unzip -q -o release/openvireo-*-py3-none-macosx_*_"$wheel_arch".whl 'openvireo/_core/*.dylib' -d libs/wheel
+          for lib in "libs/jar/$slice/libov_ffi.dylib" libs/wheel/openvireo/_core/*.dylib; do
+            if [ "$MACOS_SIGNED" != true ]; then
+              echo "::warning::$lib is not signed (signing was skipped)"; continue
+            fi
+            codesign --verify --strict --verbose=2 "$lib"
+            codesign -dvv "$lib" 2>&1 | grep -E '^(Identifier|Authority|TeamIdentifier|Timestamp)='
+            codesign -dvv "$lib" 2>&1 | grep '^Authority=Developer ID Application:' > /dev/null
+          done
       - name: Check the signature (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -470,6 +796,26 @@ jobs:
           if ($env:WINDOWS_SIGNED -ne "true") { "::warning::$($f.Name) is not signed (signing was skipped)"; exit 0 }
           "$($f.Name): $($sig.Status), $($sig.SignerCertificate.Subject), timestamp by $($sig.TimeStamperCertificate.Subject)"
           if ($sig.Status -ne "Valid") { throw "$($f.Name) has no valid signature" }
+      - name: Check the library signatures in the jar and the wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Windows' own bsdtar reads zips, whatever the extension
+          $tar = Join-Path $env:SystemRoot "System32\tar.exe"
+          New-Item -ItemType Directory -Force libs\jar, libs\wheel | Out-Null
+          & $tar -xf "release\openvireo-core-jvm-$env:VERSION.jar" -C libs\jar win32-x86-64/ov_ffi.dll
+          if ($LASTEXITCODE) { throw "no win32-x86-64/ov_ffi.dll in the jar" }
+          $wheel = Get-ChildItem release\openvireo-*-py3-none-win_amd64.whl | Select-Object -First 1
+          if (-not $wheel) { throw "no win_amd64 wheel" }
+          & $tar -xf $wheel.FullName -C libs\wheel
+          if ($LASTEXITCODE) { throw "can't unpack $($wheel.Name)" }
+          $libs = @(Get-Item libs\jar\win32-x86-64\ov_ffi.dll) + @(Get-ChildItem libs\wheel\openvireo\_core\*.dll)
+          foreach ($f in $libs) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            if ($env:WINDOWS_SIGNED -ne "true") { "::warning::$($f.FullName) is not signed (signing was skipped)"; continue }
+            "$($f.FullName): $($sig.Status), $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne "Valid") { throw "$($f.FullName) has no valid signature" }
+          }
       - name: Verify
         env:
           DRY_RUN: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -535,6 +881,60 @@ jobs:
           args=(--provenance --access public)
           if [[ "$VERSION" == *-* ]]; then args+=(--tag next); fi
           npm publish "release/openvireo-core-wasm-$VERSION.tgz" "${args[@]}"
+
+  # com.openvireo:openvireo-core-jvm and openvireo-core-android to GitHub Packages (Maven), with
+  # `./gradlew publish` through `cargo xtask release publish-maven`: it rebuilds both from the same signed
+  # natives and publishes only if they are byte for byte the verified release assets. A version that is
+  # already there is skipped (GitHub Packages refuses to overwrite one).
+  maven:
+    needs: [version, verify]
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: natives-ready-*
+          path: ${{ runner.temp }}/natives
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-jnilibs
+          path: ${{ runner.temp }}/jniLibs
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          args=()
+          for a in jvm android; do
+            pom="com/openvireo/openvireo-core-$a/$VERSION/openvireo-core-$a-$VERSION.pom"
+            if curl -fsSL -o /dev/null -u "$GITHUB_ACTOR:$GITHUB_TOKEN" "https://maven.pkg.github.com/$GITHUB_REPOSITORY/$pom"; then
+              echo "com.openvireo:openvireo-core-$a:$VERSION is already on GitHub Packages"
+              args+=(--skip "$a")
+            fi
+          done
+          cargo xtask release publish-maven "$RUNNER_TEMP/release" --natives "$RUNNER_TEMP/natives" \
+            --jni-libs "$RUNNER_TEMP/jniLibs" "${args[@]}"
 
   github-release:
     needs: [version, verify]
@@ -607,5 +1007,16 @@ jobs:
             \`\`\`
           - **C++**: \`libovcore-$VERSION-<platform>\` CMake packages (\`find_package(OpenVireoCore)\`,
             \`OpenVireoCore::ovcore\`) for darwin-arm64, darwin-x64, linux-x64, linux-arm64 and windows-x64.
+          - **Python**: the \`openvireo\` wheels (Python 3.10+; macOS arm64 and x86_64, manylinux_2_28 x86_64 and
+            aarch64, musllinux x86_64, Windows x64) and the sdist. The native library in the macOS and Windows
+            wheels is signed like \`ov\`.
+
+            \`\`\`sh
+            pip install openvireo --find-links https://github.com/$GITHUB_REPOSITORY/releases/expanded_assets/$GITHUB_REF_NAME
+            \`\`\`
+          - **Kotlin / Java**: \`com.openvireo:openvireo-core-jvm:$VERSION\` (macOS, Linux, Windows; Java 11+) and
+            \`com.openvireo:openvireo-core-android:$VERSION\` (Android 8.0+) on GitHub Packages
+            (\`https://maven.pkg.github.com/$GITHUB_REPOSITORY\`, a token with \`read:packages\` is needed), also
+            attached as \`openvireo-core-jvm-$VERSION.jar\` and \`openvireo-core-android-$VERSION.aar\`.
           EOF
           gh release create "$GITHUB_REF_NAME" "${args[@]}" --notes-file notes.md release/*

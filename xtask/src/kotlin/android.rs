@@ -173,8 +173,8 @@ fn check_page_alignment(elf: &[u8]) -> std::result::Result<(), String> {
 }
 
 /// One file in a zip archive (AAR, jar).
-struct ZipEntry {
-    name: String,
+pub(crate) struct ZipEntry {
+    pub(crate) name: String,
     method: u16,
     compressed: u64,
     size: u64,
@@ -207,7 +207,7 @@ impl ZipEntry {
 }
 
 /// The entries of a zip archive, from its central directory (no zip64: AARs are small).
-fn zip_entries(zip: &[u8]) -> Result<Vec<ZipEntry>> {
+pub(crate) fn zip_entries(zip: &[u8]) -> Result<Vec<ZipEntry>> {
     let u16_at = |o: usize| zip.get(o..o + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
     let u32_at = |o: usize| zip.get(o..o + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()));
     let eocd = (0..zip.len().saturating_sub(21))

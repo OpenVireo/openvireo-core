@@ -122,4 +122,28 @@ and signed `ov` binaries the same way the SDK publishes its `ov` today (Apple no
 signing, a GPG-signed `SHA256SUMS`). Until then each client builds or vendors the core at a pinned
 commit, as above.
 
+The bindings are part of the same release:
+
+- **Python**: maturin-action builds the `openvireo` wheels (macOS arm64 and x86_64, manylinux_2_28
+  x86_64 and aarch64, musllinux_1_2 x86_64, Windows x64) and the sdist; they are GitHub release
+  assets (`pip install openvireo --find-links <release>`), not on PyPI yet. The version is the
+  workspace version in PEP 440 form (`1.2.0-beta.1` becomes `1.2.0b1`).
+- **Kotlin / Java**: `cargo xtask release jvm-native <target> <dir>` builds one jar slice per platform
+  on its own runner; `cargo xtask release --only jvm --natives <dir> --jni-libs <dir>` assembles
+  `openvireo-core-jvm-<v>.jar` and `openvireo-core-android-<v>.aar` (the Android libraries from
+  `cargo xtask kotlin --android`). Both are release assets, and `cargo xtask release publish-maven`
+  publishes them to GitHub Packages as `com.openvireo:openvireo-core-jvm` and
+  `com.openvireo:openvireo-core-android`: it rebuilds them (the Gradle archives are reproducible)
+  and publishes only when they match the verified assets byte for byte.
+- **Signing**: the macOS dylib and the Windows DLL in the jar and inside the macOS and Windows wheels
+  get the same Developer ID (notarized) and Azure signatures as `ov`; the wheels are repacked with a
+  new `RECORD` (`.github/scripts/wheel_natives.py`). Every asset, wheels, jar and AAR included, is
+  in the GPG-signed `SHA256SUMS`.
+- **Verification**: `cargo xtask release verify` installs the platform's wheel into a fresh venv and
+  imports it, runs a Java program against the jar, and checks the AAR, on each of the five release
+  platforms.
+
+Locally, `cargo xtask release --dry-run --only python,jvm` builds the host's wheel, the sdist and a jar
+with only the host's slice, and `cargo xtask release verify <dir> --dry-run` checks them.
+
 The crates set `publish = false`; nothing goes to crates.io.

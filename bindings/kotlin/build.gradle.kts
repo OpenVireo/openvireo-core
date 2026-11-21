@@ -99,3 +99,13 @@ subprojects {
     group = "com.openvireo"
     version = ovVersion
 }
+
+// Reproducible archives (no file times, a fixed entry order): the release rebuilds the jar and the
+// AAR before publishing them and checks they are byte for byte the verified release assets
+// (`cargo xtask release publish-maven`).
+allprojects {
+    tasks.withType<AbstractArchiveTask>().configureEach {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
+}

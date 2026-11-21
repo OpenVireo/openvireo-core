@@ -4,8 +4,11 @@
 //!
 //! ```text
 //! cargo xtask release [--dry-run] [--out <dir>] [--only <kinds>] [--unpacked]
+//!                      [--natives <dir>] [--jni-libs <dir>]
 //! cargo xtask release pack <dir>
 //! cargo xtask release verify <dir> [--dry-run]
+//! cargo xtask release jvm-native <rust target> <dir>
+//! cargo xtask release publish-maven <release dir> --natives <dir> --jni-libs <dir> [--skip jvm|android]...
 //! ```
 //!
 //! Kinds (`--only wasm,cpp`; default: every kind the host can build):
@@ -19,6 +22,27 @@
 //!   package (headers, static library, `OpenVireoCoreConfig.cmake`) plus the licences.
 //! - `ov`: `ov-<v>-<platform>.tar.gz` (`.zip` on Windows) holding `ov-<v>-<platform>/ov` (`ov.exe`),
 //!   a README and the licences: the same names as the SDK's release, so installers keep working.
+//! - `python`: `openvireo-<pep440>-py3-none-<platform>.whl` for this host and the sdist
+//!   `openvireo-<pep440>.tar.gz` (`maturin build --release` / `maturin sdist` in
+//!   `bindings/python`). The release workflow builds the wheels with maturin-action instead (the
+//!   manylinux/musllinux containers); this kind is the local equivalent. The version is the
+//!   workspace version in PEP 440 form ([`pep440`]).
+//! - `jvm`: `openvireo-core-jvm-<v>.jar` (`bindings/kotlin`, `:core-jvm:jar`) with the natives in
+//!   `--natives <dir>` (JNA's layout, every slice of [`NATIVE_SLICES`] required), or without it a
+//!   release build of the host slice only (a local dry run). With `--jni-libs <dir>`
+//!   (`<abi>/libov_ffi.so` from cargo-ndk) also `openvireo-core-android-<v>.aar`. The Kotlin and
+//!   the Java facade are generated from a host debug build (`cargo xtask kotlin --generate-only`),
+//!   since the release profile strips UniFFI's metadata.
+//!
+//! `jvm-native <target> <dir>` builds one jar slice: the release `ov-ffi` cdylib (never
+//! `test-server`) for a Rust target in [`NATIVE_SLICES`], copied to `<dir>/<jna prefix>/<file>`.
+//! The workflow runs it on each platform's runner and signs the result before `--only jvm`.
+//!
+//! `publish-maven <release dir>` publishes `com.openvireo:openvireo-core-jvm` and
+//! `openvireo-core-android` to GitHub Packages (`./gradlew publish`, `GITHUB_ACTOR` /
+//! `GITHUB_TOKEN`): it rebuilds both from the same natives, fails unless they are byte for byte
+//! the jar and AAR in `<release dir>` (the verified release assets), then publishes those files.
+//! `--skip jvm` / `--skip android` leaves out an artifact that is already published.
 //!
 //! Platforms: a macOS host builds darwin-arm64 and darwin-x64, Linux and Windows their own arch
 //! (linux-x64, linux-arm64, windows-x64). On Linux, `ov` is a static musl executable (any distro),
@@ -33,9 +57,12 @@
 //!
 //! `verify <dir>` checks what the host can run: `SHA256SUMS`, then this platform's `ov` archive
 //! (`ov version`), its libovcore archive (a CMake consumer built and run with ctest), the
-//! xcframework (checksum, and a SwiftPM package over it built and run, on macOS) and the npm package
-//! (installed and both modules loaded in Node). Outside `--dry-run`, `ov version` must print the
-//! release version.
+//! xcframework (checksum, and a SwiftPM package over it built and run, on macOS), the npm package
+//! (installed and both modules loaded in Node), the Python wheels (every wheel and the sdist carry
+//! the version; the one for this host is installed into a fresh venv and imported), the jar (its
+//! native slices, then a Java program built against it and run with Gradle) and the AAR (ABIs,
+//! classes, 16 KB pages). Outside `--dry-run`, `ov version` must print the release version and
+//! the jar must carry every slice.
 
 use std::env;
 use std::fs;
@@ -44,12 +71,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::kotlin::NATIVE_SLICES;
 use crate::{cargo, root, target_root, Result};
 
 /// The workspace version: every artifact carries it, and the release tag must be `v<VERSION>`.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The oldest macOS the binaries run on (the same floor `cargo xtask cpp` uses).
-const MACOS_DEPLOYMENT_TARGET: &str = "11.0";
+pub(crate) const MACOS_DEPLOYMENT_TARGET: &str = "11.0";
 const XCFRAMEWORK: &str = "OpenVireoCore.xcframework";
 const SWIFT_SOURCE: &str = "OpenVireoRustCore.swift";
 const SUMS: &str = "SHA256SUMS";
@@ -63,10 +91,12 @@ enum Kind {
     Xcframework,
     Cpp,
     Ov,
+    Python,
+    Jvm,
 }
 
 impl Kind {
-    const ALL: [Kind; 4] = [Kind::Wasm, Kind::Xcframework, Kind::Cpp, Kind::Ov];
+    const ALL: [Kind; 6] = [Kind::Wasm, Kind::Xcframework, Kind::Cpp, Kind::Ov, Kind::Python, Kind::Jvm];
 
     fn name(self) -> &'static str {
         match self {
@@ -74,6 +104,8 @@ impl Kind {
             Kind::Xcframework => "xcframework",
             Kind::Cpp => "cpp",
             Kind::Ov => "ov",
+            Kind::Python => "python",
+            Kind::Jvm => "jvm",
         }
     }
 
@@ -81,7 +113,7 @@ impl Kind {
         Kind::ALL
             .into_iter()
             .find(|k| k.name() == s)
-            .ok_or_else(|| format!("release: unknown kind `{s}` (wasm, xcframework, cpp, ov)"))
+            .ok_or_else(|| format!("release: unknown kind `{s}` (wasm, xcframework, cpp, ov, python, jvm)"))
     }
 
     fn host_can_build(self) -> bool {
@@ -94,13 +126,20 @@ struct Options {
     out: PathBuf,
     kinds: Vec<Kind>,
     unpacked: bool,
+    /// `--natives`: the jar's natives in JNA's layout, every slice (else the host slice is built).
+    natives: Option<PathBuf>,
+    /// `--jni-libs`: the AAR's `<abi>/libov_ffi.so` (else no AAR).
+    jni_libs: Option<PathBuf>,
 }
 
 const USAGE: &str = "\
 usage: cargo xtask release [--dry-run] [--out <dir>] [--only <kinds>] [--unpacked]
+                           [--natives <dir>] [--jni-libs <dir>]
        cargo xtask release pack <dir>
        cargo xtask release verify <dir> [--dry-run]
-kinds: wasm, xcframework (macOS), cpp, ov (comma-separated; default: all the host can build)";
+       cargo xtask release jvm-native <rust target> <dir>
+       cargo xtask release publish-maven <release dir> --natives <dir> --jni-libs <dir> [--skip jvm|android]...
+kinds: wasm, xcframework (macOS), cpp, ov, python, jvm (comma-separated; default: all the host can build)";
 
 pub fn run(args: &[String]) -> Result {
     match args.first().map(String::as_str) {
@@ -113,19 +152,32 @@ pub fn run(args: &[String]) -> Result {
             [dir, flag] | [flag, dir] if flag == "--dry-run" => verify(&absolute(dir)?, true),
             _ => Err(USAGE.into()),
         },
+        Some("jvm-native") => match &args[1..] {
+            [target, dir] => jvm_native(target, &absolute(dir)?),
+            _ => Err(USAGE.into()),
+        },
+        Some("publish-maven") => publish_maven(&args[1..]),
         _ => build(&parse(args)?),
     }
 }
 
 fn parse(args: &[String]) -> Result<Options> {
-    let mut opts =
-        Options { dry_run: false, out: target_root().join("release-artifacts"), kinds: Vec::new(), unpacked: false };
+    let mut opts = Options {
+        dry_run: false,
+        out: target_root().join("release-artifacts"),
+        kinds: Vec::new(),
+        unpacked: false,
+        natives: None,
+        jni_libs: None,
+    };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--dry-run" => opts.dry_run = true,
             "--unpacked" => opts.unpacked = true,
             "--out" => opts.out = absolute(it.next().ok_or("--out needs a directory")?)?,
+            "--natives" => opts.natives = Some(absolute(it.next().ok_or("--natives needs a directory")?)?),
+            "--jni-libs" => opts.jni_libs = Some(absolute(it.next().ok_or("--jni-libs needs a directory")?)?),
             "--only" => {
                 for k in it.next().ok_or("--only needs a list (e.g. cpp,ov)")?.split(',') {
                     let k = Kind::parse(k.trim())?;
@@ -143,6 +195,9 @@ fn parse(args: &[String]) -> Result<Options> {
     }
     if opts.kinds.is_empty() {
         opts.kinds = Kind::ALL.into_iter().filter(|k| k.host_can_build()).collect();
+    }
+    if (opts.natives.is_some() || opts.jni_libs.is_some()) && !opts.kinds.contains(&Kind::Jvm) {
+        return Err("release: --natives and --jni-libs are for the jvm kind".into());
     }
     Ok(opts)
 }
@@ -196,6 +251,8 @@ fn build_kinds(opts: &Options, work: &Path) -> Result {
             Kind::Xcframework => xcframework(&opts.out, work)?,
             Kind::Cpp => cpp(&opts.out, work)?,
             Kind::Ov => ov(&opts.out)?,
+            Kind::Python => python(&opts.out)?,
+            Kind::Jvm => jvm(opts, work)?,
         }
     }
     Ok(())
@@ -254,6 +311,12 @@ fn check_tools(opts: &Options) -> Result {
     }
     if opts.kinds.contains(&Kind::Wasm) && !on_path(npm()) {
         return Err("the wasm package is packed with npm; install Node.js".into());
+    }
+    if opts.kinds.contains(&Kind::Jvm) && !on_path("java") {
+        return Err("the jar is built with Gradle; install a JDK 17 or later".into());
+    }
+    if opts.kinds.contains(&Kind::Python) && !on_path("uv") && !on_path("python3") && !on_path("python") {
+        return Err("the wheel is built with maturin in a venv; install uv or Python 3.10+".into());
     }
     Ok(())
 }
@@ -491,6 +554,226 @@ fn make_executable(_: &Path) -> Result {
     Ok(())
 }
 
+// ---- python --------------------------------------------------------------------------------------
+
+/// The PEP 440 form of a Cargo version, as maturin writes it into the wheel: `1.2.0-beta.1` →
+/// `1.2.0b1` (alpha → a, beta → b, rc → rc; a bare `-beta` is `b0`).
+fn pep440(version: &str) -> Result<String> {
+    let Some((base, pre)) = version.split_once('-') else { return Ok(version.to_string()) };
+    let (label, n) = pre.split_once('.').unwrap_or((pre, "0"));
+    let tag = match label {
+        "alpha" | "a" => "a",
+        "beta" | "b" => "b",
+        "rc" => "rc",
+        _ => return Err(format!("release: no PEP 440 form for the prerelease `{pre}` (use alpha.N, beta.N or rc.N)")),
+    };
+    if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("release: no PEP 440 form for the prerelease `{pre}` (use alpha.N, beta.N or rc.N)"));
+    }
+    Ok(format!("{base}{tag}{n}"))
+}
+
+/// The host's wheel and the sdist (the workflow builds the other platforms' with maturin-action).
+fn python(out: &Path) -> Result {
+    let files = crate::python::release_build(out, true)?;
+    check_python_names(out)?;
+    if !files.iter().any(|f| f.extension().is_some_and(|x| x == "whl")) {
+        return Err(format!("maturin wrote no wheel into {}", out.display()));
+    }
+    Ok(())
+}
+
+/// Every `openvireo-*.whl` and the `openvireo-*.tar.gz` sdist in `dir` carry the release version.
+fn check_python_names(dir: &Path) -> Result {
+    let pep = pep440(VERSION)?;
+    for name in entries(dir)? {
+        let wheel = name.starts_with("openvireo-") && name.ends_with(".whl");
+        let sdist = name.starts_with("openvireo-") && !name.starts_with("openvireo-core-") && name.ends_with(".tar.gz");
+        if (wheel && !name.starts_with(&format!("openvireo-{pep}-")))
+            || (sdist && name != format!("openvireo-{pep}.tar.gz"))
+        {
+            return Err(format!("{name}: not version {pep} (the release is {VERSION})"));
+        }
+    }
+    Ok(())
+}
+
+// ---- jvm -----------------------------------------------------------------------------------------
+
+fn jar_name() -> String {
+    format!("openvireo-core-jvm-{VERSION}.jar")
+}
+
+fn aar_name() -> String {
+    format!("openvireo-core-android-{VERSION}.aar")
+}
+
+/// One slice of the jar: the release cdylib for `target` at `<dir>/<jna prefix>/<file>`.
+fn jvm_native(target: &str, dir: &Path) -> Result {
+    let (_, prefix, lib) = NATIVE_SLICES.iter().find(|(t, _, _)| *t == target).ok_or_else(|| {
+        let known: Vec<&str> = NATIVE_SLICES.iter().map(|(t, _, _)| *t).collect();
+        format!("release: {target} is not a jar slice ({})", known.join(", "))
+    })?;
+    let mut cmd = cargo();
+    // cdylib only (no staticlib), release profile (stripped, LTO), never test-server.
+    cmd.args(["rustc", "--locked", "--release", "--lib", "-p", "ov-ffi", "--target", target, "--crate-type", "cdylib"]);
+    if target.ends_with("-apple-darwin") && env::var_os("MACOSX_DEPLOYMENT_TARGET").is_none() {
+        cmd.env("MACOSX_DEPLOYMENT_TARGET", MACOS_DEPLOYMENT_TARGET);
+    }
+    if target.ends_with("-windows-msvc") {
+        // Static C runtime, like ov.exe: the DLL loads in any JVM without the VC++ redistributable.
+        cmd.args(["--config", &format!("target.{target}.rustflags=[\"-C\", \"target-feature=+crt-static\"]")]);
+    }
+    crate::run(&format!("release: ov-ffi cdylib for {target} (jar slice {prefix})"), &mut cmd)?;
+    let dest = dir.join(prefix);
+    fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    copy(&target_root().join(target).join("release").join(lib), &dest.join(lib))?;
+    println!("{}: {} bytes", dest.join(lib).display(), fs::metadata(dest.join(lib)).map_err(|e| e.to_string())?.len());
+    Ok(())
+}
+
+/// The jar slice this host runs: (Rust target, JNA prefix).
+fn host_slice() -> Result<(&'static str, &'static str)> {
+    let triple = match (env::consts::OS, env::consts::ARCH) {
+        ("macos", arch) => format!("{arch}-apple-darwin"),
+        ("linux", arch) => format!("{arch}-unknown-linux-gnu"),
+        ("windows", arch) => format!("{arch}-pc-windows-msvc"),
+        (os, arch) => return Err(format!("release: no jar slice for {os}/{arch}")),
+    };
+    NATIVE_SLICES
+        .iter()
+        .find(|(t, _, _)| *t == triple)
+        .map(|(t, p, _)| (*t, *p))
+        .ok_or_else(|| format!("release: no jar slice for {triple}"))
+}
+
+fn jvm(opts: &Options, work: &Path) -> Result {
+    let natives = match &opts.natives {
+        Some(dir) => dir.clone(),
+        None => {
+            let dir = work.join("jvm-natives");
+            jvm_native(host_slice()?.0, &dir)?;
+            println!("release: jar with the host slice only (pass --natives for every slice)");
+            dir
+        }
+    };
+    // A release needs every slice; a dry run takes whatever --natives holds (at least one).
+    let required = match (&opts.natives, opts.dry_run) {
+        (Some(_), false) => "all",
+        (Some(_), true) => "",
+        (None, _) => host_slice()?.1,
+    };
+    let (jar, aar) = maven_build(&natives, required, opts.jni_libs.as_deref(), &[])?;
+    copy(&jar, &opts.out.join(jar_name()))?;
+    if let Some(aar) = aar {
+        copy(&aar, &opts.out.join(aar_name()))?;
+    }
+    Ok(())
+}
+
+/// Generates the Kotlin and the Java facade, then runs Gradle for the jar (and the AAR with
+/// `jni_libs`) plus `extra` tasks, with the release version and the given natives. Returns the jar
+/// and the AAR. `required` is `-Pov.requireNatives` (`all`, prefixes, or empty for any). The one
+/// place the release's Gradle arguments are spelled out, so `publish-maven` builds exactly what
+/// `--only jvm` built.
+fn maven_build(
+    natives: &Path,
+    required: &str,
+    jni_libs: Option<&Path>,
+    extra: &[&str],
+) -> Result<(PathBuf, Option<PathBuf>)> {
+    crate::kotlin::run(&["--generate-only".into()])?;
+    let project = root().join("bindings").join("kotlin");
+    let mut gradle = crate::kotlin::gradlew(&project);
+    gradle
+        .args(["--console=plain", "-Pov.generate=false"])
+        .arg(format!("-Pov.version={VERSION}"))
+        .arg(format!("-Pov.nativesDir={}", natives.display()))
+        .arg(format!("-Pov.requireNatives={required}"))
+        .arg(":core-jvm:jar");
+    match jni_libs {
+        Some(dir) => {
+            gradle
+                .args(["-Pov.android=true", "-Pov.requireAbis=all"])
+                .arg(format!("-Pov.jniLibsDir={}", dir.display()))
+                .arg(":core-android:assembleRelease");
+        }
+        None => {
+            gradle.arg("-Pov.android=false");
+        }
+    }
+    gradle.args(extra);
+    crate::run(&format!("release: gradle {}", if extra.is_empty() { "build" } else { "publish" }), &mut gradle)?;
+    let jar = project.join("core-jvm").join("build").join("libs").join(jar_name());
+    if !jar.is_file() {
+        return Err(format!("gradle wrote no {}", jar.display()));
+    }
+    let aar = match jni_libs {
+        Some(_) => Some(crate::kotlin::android::release_aar(&project)?),
+        None => None,
+    };
+    Ok((jar, aar))
+}
+
+/// `publish-maven <release dir> --natives <dir> --jni-libs <dir> [--skip jvm|android]...`
+fn publish_maven(args: &[String]) -> Result {
+    let mut release = None;
+    let mut natives = None;
+    let mut jni_libs = None;
+    let mut skip = Vec::new();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--natives" => natives = Some(absolute(it.next().ok_or("--natives needs a directory")?)?),
+            "--jni-libs" => jni_libs = Some(absolute(it.next().ok_or("--jni-libs needs a directory")?)?),
+            "--skip" => match it.next().map(String::as_str) {
+                Some(s @ ("jvm" | "android")) => skip.push(s.to_string()),
+                _ => return Err("--skip takes jvm or android".into()),
+            },
+            other if !other.starts_with('-') && release.is_none() => release = Some(absolute(other)?),
+            other => return Err(format!("release publish-maven: unexpected `{other}`\n{USAGE}")),
+        }
+    }
+    let (Some(release), Some(natives), Some(jni_libs)) = (release, natives, jni_libs) else {
+        return Err(USAGE.into());
+    };
+    println!(
+        "==> release {VERSION}: publish-maven (skipping: {})",
+        if skip.is_empty() { "none".into() } else { skip.join(", ") }
+    );
+    check_release_tree()?;
+    let (jar, aar) = maven_build(&natives, "all", Some(&jni_libs), &[])?;
+    let aar = aar.ok_or("no AAR")?;
+    for (built, name) in [(&jar, jar_name()), (&aar, aar_name())] {
+        let verified = release.join(&name);
+        let (have, want) = (sha256_file(built)?, sha256_file(&verified)?);
+        if have != want {
+            return Err(format!(
+                "{name}: the rebuild is {have}, the verified release asset is {want}; the Gradle build is not \
+                 reproducible, so nothing was published"
+            ));
+        }
+        println!("{name}: rebuilt byte for byte ({have})");
+    }
+    let mut tasks = Vec::new();
+    if !skip.iter().any(|s| s == "jvm") {
+        tasks.push(":core-jvm:publish");
+    }
+    if !skip.iter().any(|s| s == "android") {
+        tasks.push(":core-android:publish");
+    }
+    if tasks.is_empty() {
+        println!("nothing to publish");
+        return Ok(());
+    }
+    if env::var_os("GITHUB_TOKEN").is_none() || env::var_os("GITHUB_ACTOR").is_none() {
+        return Err("publishing to GitHub Packages needs GITHUB_ACTOR and GITHUB_TOKEN".into());
+    }
+    // Same arguments, so Gradle reuses the jar and AAR it just built (and compared) and uploads them.
+    maven_build(&natives, "all", Some(&jni_libs), &tasks)?;
+    Ok(())
+}
+
 // ---- pack ----------------------------------------------------------------------------------------
 
 /// Archives every `ov-<VERSION>-<platform>/` in `dir` (after signing) and writes `SHA256SUMS`.
@@ -626,6 +909,21 @@ fn verify_in(dir: &Path, work: &Path, dry_run: bool) -> Result {
     if tgz.is_file() && on_path(npm()) {
         verify_wasm(&tgz, work)?;
         checked.push("@openvireo/core-wasm".into());
+    }
+    let names = entries(dir)?;
+    if names.iter().any(|n| n.starts_with("openvireo-") && n.ends_with(".whl")) {
+        check_python_names(dir)?;
+        verify_python(dir, work)?;
+        checked.push("python wheel".into());
+    }
+    let jar = dir.join(jar_name());
+    if jar.is_file() && verify_jar(&jar, work, dry_run)? {
+        checked.push("jvm jar".into());
+    }
+    let aar = dir.join(aar_name());
+    if aar.is_file() {
+        crate::kotlin::android::verify_aar(&aar)?;
+        checked.push("android aar".into());
     }
     if checked.is_empty() {
         return Err(format!("nothing in {} this host ({platform}) can check", dir.display()));
@@ -857,6 +1155,141 @@ fn verify_wasm(tgz: &Path, work: &Path) -> Result {
     crate::run("release: load both modules in Node", Command::new("node").arg("check.mjs").current_dir(&app))
 }
 
+const PYTHON_CHECK: &str = r#"import importlib.metadata as md
+import sys
+import openvireo as ov
+version, digest, dist = ov.version(), ov.sha256(b"abc").hex(), md.version("openvireo")
+print(f"openvireo {dist} ({ov.__file__}): core {version}, sha256(abc) = {digest}")
+sys.exit(0 if (version, digest, dist) == ("@VERSION@", "@SHA256_ABC@", "@PEP440@") else 1)
+"#;
+
+/// Installs the wheel for this host from `dir` (no index, no sdist build) into a fresh venv and
+/// runs a check through the core.
+fn verify_python(dir: &Path, work: &Path) -> Result {
+    let pep = pep440(VERSION)?;
+    let python = crate::python::fresh_venv(&work.join("venv"))?;
+    crate::run(
+        "release: install the wheel for this host into a fresh venv",
+        crate::python::pip_install(&python)
+            .args(["--no-index", "--only-binary", ":all:", "--find-links"])
+            .arg(dir)
+            .arg(format!("openvireo=={pep}")),
+    )?;
+    let script = work.join("check.py");
+    fs::write(
+        &script,
+        PYTHON_CHECK.replace("@VERSION@", VERSION).replace("@SHA256_ABC@", SHA256_ABC).replace("@PEP440@", &pep),
+    )
+    .map_err(|e| e.to_string())?;
+    // -I: isolated, so the import is the installed wheel, never the source tree.
+    crate::run("release: import the wheel", Command::new(&python).arg("-I").arg(&script).current_dir(work))
+}
+
+const JAVA_SETTINGS: &str = "rootProject.name = \"jvm-release-check\"\n";
+
+const JAVA_BUILD: &str = r#"// A Java consumer of the release jar, with the dependencies its POM declares.
+plugins { java }
+repositories { mavenCentral() }
+dependencies {
+    implementation(files("@JAR@"))
+    implementation("net.java.dev.jna:jna:@JNA@")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:@COROUTINES@")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:@KOTLIN@")
+}
+tasks.withType<JavaCompile>().configureEach { options.release.set(11) }
+tasks.register<JavaExec>("consumer") {
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("Check")
+}
+"#;
+
+const JAVA_MAIN: &str = r#"import com.openvireo.core.java.JOv;
+import java.nio.charset.StandardCharsets;
+
+public final class Check {
+    public static void main(String[] args) throws Exception {
+        StringBuilder digest = new StringBuilder();
+        for (byte b : JOv.sha256("abc".getBytes(StandardCharsets.UTF_8))) {
+            digest.append(String.format("%02x", b));
+        }
+        String version = JOv.version();
+        System.out.println("openvireo-core-jvm: core " + version + " on " + System.getProperty("os.name") + "/"
+            + System.getProperty("os.arch") + ", sha256(\"abc\") = " + digest);
+        System.exit(digest.toString().equals("@SHA256_ABC@") && version.equals("@VERSION@") ? 0 : 1);
+    }
+}
+"#;
+
+/// A `[versions]` entry of bindings/kotlin/gradle/libs.versions.toml.
+fn kotlin_lib_version(toml: &str, key: &str) -> Result<String> {
+    let section = toml.split("[versions]").nth(1).ok_or("libs.versions.toml: no [versions]")?;
+    let section = section.split("\n[").next().unwrap_or(section);
+    section
+        .lines()
+        .filter_map(|l| l.split_once('='))
+        .find(|(k, _)| k.trim() == key)
+        .map(|(_, v)| v.trim().trim_matches('"').to_string())
+        .ok_or_else(|| format!("libs.versions.toml: no `{key}` version"))
+}
+
+/// The jar's native slices (every one outside a dry run, this host's at least), then a Java
+/// program compiled against the jar and run with Gradle (the repository's wrapper). Returns false
+/// when it was skipped (no JDK, dry run only).
+fn verify_jar(jar: &Path, work: &Path, dry_run: bool) -> Result<bool> {
+    let bytes = fs::read(jar).map_err(|e| format!("{}: {e}", jar.display()))?;
+    let names: Vec<String> = crate::kotlin::android::zip_entries(&bytes)
+        .map_err(|e| format!("{}: {e}", jar.display()))?
+        .into_iter()
+        .map(|e| e.name)
+        .collect();
+    let mut missing = Vec::new();
+    for (_, prefix, lib) in NATIVE_SLICES {
+        let entry = format!("{prefix}/{lib}");
+        if names.contains(&entry) {
+            println!("{}: {entry}", jar_name());
+        } else {
+            missing.push(entry);
+        }
+    }
+    let host = format!("{}/", host_slice()?.1);
+    if missing.iter().any(|m| m.starts_with(&host)) {
+        return Err(format!("{}: no native for this host ({host})", jar.display()));
+    }
+    if !missing.is_empty() {
+        let msg = format!("{} is missing native slices: {}", jar_name(), missing.join(", "));
+        if !dry_run {
+            return Err(msg);
+        }
+        println!("warning (dry run): {msg}");
+    }
+    if !on_path("java") {
+        if !dry_run {
+            return Err("the jar check needs a JDK 17+ (java on PATH)".into());
+        }
+        println!("warning (dry run): no java on PATH; the Java consumer check is skipped");
+        return Ok(false);
+    }
+
+    let toml_path = root().join("bindings").join("kotlin").join("gradle").join("libs.versions.toml");
+    let toml = fs::read_to_string(&toml_path).map_err(|e| format!("{}: {e}", toml_path.display()))?;
+    let app = work.join("java-consumer");
+    let src = app.join("src").join("main").join("java");
+    fs::create_dir_all(&src).map_err(|e| e.to_string())?;
+    fs::write(app.join("settings.gradle.kts"), JAVA_SETTINGS).map_err(|e| e.to_string())?;
+    let build = JAVA_BUILD
+        .replace("@JAR@", &jar.display().to_string().replace('\\', "/"))
+        .replace("@JNA@", &kotlin_lib_version(&toml, "jna")?)
+        .replace("@COROUTINES@", &kotlin_lib_version(&toml, "coroutines")?)
+        .replace("@KOTLIN@", &kotlin_lib_version(&toml, "kotlin")?);
+    fs::write(app.join("build.gradle.kts"), build).map_err(|e| e.to_string())?;
+    fs::write(src.join("Check.java"), JAVA_MAIN.replace("@VERSION@", VERSION).replace("@SHA256_ABC@", SHA256_ABC))
+        .map_err(|e| e.to_string())?;
+    let mut gradle = crate::kotlin::gradlew(&root().join("bindings").join("kotlin"));
+    gradle.arg("-p").arg(&app).args(["--console=plain", "--no-configuration-cache", "consumer"]);
+    crate::run("release: Java consumer of the jar (gradle)", &mut gradle)?;
+    Ok(true)
+}
+
 // ---- helpers -------------------------------------------------------------------------------------
 
 fn copy(from: &Path, to: &Path) -> Result {
@@ -906,7 +1339,61 @@ mod tests {
     }
 
     #[test]
+    fn versions_become_pep440_as_maturin_writes_them() {
+        assert_eq!(pep440("1.2.0").unwrap(), "1.2.0");
+        assert_eq!(pep440("1.2.0-alpha.1").unwrap(), "1.2.0a1");
+        assert_eq!(pep440("1.2.0-beta.12").unwrap(), "1.2.0b12");
+        assert_eq!(pep440("1.2.0-rc.2").unwrap(), "1.2.0rc2");
+        assert_eq!(pep440("1.2.0-beta").unwrap(), "1.2.0b0");
+        assert!(pep440("1.2.0-nightly.3").is_err());
+        assert!(pep440("1.2.0-rc.x").is_err());
+    }
+
+    #[test]
+    fn python_names_must_carry_the_version() {
+        let dir = std::env::temp_dir().join(format!("ov-release-names-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let pep = pep440(VERSION).unwrap();
+        for f in [
+            format!("openvireo-{pep}-py3-none-macosx_11_0_arm64.whl"),
+            format!("openvireo-{pep}.tar.gz"),
+            format!("openvireo-core-wasm-{VERSION}.tgz"),
+            format!("libovcore-{VERSION}-linux-x64.tar.gz"),
+        ] {
+            fs::write(dir.join(f), b"").unwrap();
+        }
+        assert!(check_python_names(&dir).is_ok());
+        fs::write(dir.join("openvireo-9.9.9-py3-none-win_amd64.whl"), b"").unwrap();
+        assert!(check_python_names(&dir).is_err());
+        fs::remove_file(dir.join("openvireo-9.9.9-py3-none-win_amd64.whl")).unwrap();
+        fs::write(dir.join("openvireo-9.9.9.tar.gz"), b"").unwrap();
+        assert!(check_python_names(&dir).is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn kotlin_versions_come_from_the_catalog() {
+        let toml = "[versions]\nkotlin = \"2.4.21\"\njna = \"5.19.1\"\n\n[libraries]\njna = { module = \"x\" }\n";
+        assert_eq!(kotlin_lib_version(toml, "kotlin").unwrap(), "2.4.21");
+        assert_eq!(kotlin_lib_version(toml, "jna").unwrap(), "5.19.1");
+        assert!(kotlin_lib_version(toml, "coroutines").is_err());
+        let real = fs::read_to_string(root().join("bindings/kotlin/gradle/libs.versions.toml")).unwrap();
+        for key in ["kotlin", "coroutines", "jna"] {
+            assert!(kotlin_lib_version(&real, key).is_ok(), "{key}");
+        }
+    }
+
+    #[test]
+    fn every_jar_slice_has_a_host_name() {
+        assert!(host_slice().is_ok());
+        assert_eq!(NATIVE_SLICES.len(), 5);
+    }
+
+    #[test]
     fn kinds_parse_and_xcframework_is_macos_only() {
+        assert_eq!(Kind::parse("python").unwrap(), Kind::Python);
+        assert_eq!(Kind::parse("jvm").unwrap(), Kind::Jvm);
         assert_eq!(Kind::parse("cpp").unwrap(), Kind::Cpp);
         assert!(Kind::parse("deb").is_err());
         assert_eq!(Kind::Xcframework.host_can_build(), cfg!(target_os = "macos"));

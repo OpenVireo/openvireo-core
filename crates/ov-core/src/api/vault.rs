@@ -771,10 +771,14 @@ impl Vault {
     // ------------------------------------------------------------------------------ import
 
     /// Imports `source` (another open vault: a local file, an account vault, a version) into this
-    /// one, without changing `source`. Its Recycle Bin and database custom data stay behind; with
-    /// [`LocalImportMode::Copies`], references between the copied entries follow them. An account
-    /// vault uploads the result on its next [`sync`](Self::sync); a local file on
-    /// [`save_local`](Self::save_local). Contract-v1.6.
+    /// one, without changing `source`. Its Recycle Bin stays behind. Database custom data
+    /// (`Meta/CustomData`): with [`LocalImportMode::Merge`] the source's items this vault doesn't
+    /// have are added (KeePassXC-Browser keys, for example), except its remote settings and the
+    /// generated items (sync generation, `_LAST_MODIFIED`, `KPXC_RANDOM_SLUG`), and this vault's own
+    /// items are never changed (contract-v1.8; before, none came along); with
+    /// [`LocalImportMode::Copies`] none come along, and references between the copied entries
+    /// follow them. An account vault uploads the result on its next [`sync`](Self::sync); a local
+    /// file on [`save_local`](Self::save_local). Contract-v1.6.
     pub fn import_from(&self, source: Vault, mode: LocalImportMode) -> Result<ImportSummary, OvError> {
         crate::impls::local_meta::import_from(self, source, mode)
     }

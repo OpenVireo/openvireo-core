@@ -2,8 +2,9 @@
 resolver = "2"
 # Every crate under crates/, bindings/ and bins/ is a member, so adding a crate never edits this file.
 members = ["crates/*", "bindings/*", "bins/*", "xtask", "benches"]
-# fuzz/ is its own workspace (cargo-fuzz, nightly only), so CI never builds it.
-exclude = ["fuzz"]
+# fuzz/ is its own workspace (cargo-fuzz, nightly only), so CI never builds it. bindings/python and
+# bindings/kotlin are maturin and Gradle projects over bindings/ov-ffi, not crates.
+exclude = ["fuzz", "bindings/python", "bindings/kotlin"]
 
 [workspace.package]
 version = "0.0.0"

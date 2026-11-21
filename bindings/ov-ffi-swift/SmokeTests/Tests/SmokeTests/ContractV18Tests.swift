@@ -39,7 +39,7 @@ final class ContractV18Tests: XCTestCase {
         try v.deleteEntry(entryId: id)
         try v.restoreEntry(version: version, entryId: id, groupPath: "Elsewhere")
         let rec = try v.entry(entryId: id)
-        XCTAssertFalse(v.isInRecycleBin(id: id))
+        XCTAssertFalse(try v.isInRecycleBin(id: id))
         XCTAssertEqual(rec.groupPath, ["Work"])
         XCTAssertEqual(rec.historyCount, 2)
         XCTAssertEqual(rec.fields.first { $0.name == "Password" }?.value, Data("v1".utf8))

@@ -110,6 +110,17 @@ pub fn argon2_kdf(kind: Argon2Type, memory: u64, iterations: u64, parallelism: u
     {
         return bad("Argon2 memory must be whole KiB, at least 8 KiB per lane");
     }
+    // Not more than this build would open again (`too_large`)
+    crate::check_kdf_limits(&Kdf::Argon2 {
+        kind,
+        salt: Vec::new(),
+        memory,
+        iterations,
+        parallelism,
+        version: 0x13,
+        secret: None,
+        associated_data: None,
+    })?;
     Ok(Kdf::Argon2 {
         kind,
         salt: primitives::random_bytes(32)?.to_vec(),
@@ -137,6 +148,7 @@ pub fn aes_kdf(rounds: u64) -> Result<Kdf, OvError> {
     if rounds == 0 {
         return Err(OvError::new(OvErrorCode::InvalidRequest, "AES-KDF rounds must be at least 1"));
     }
+    crate::check_kdf_limits(&Kdf::AesKdf { rounds, seed: Vec::new() })?;
     Ok(Kdf::AesKdf { rounds, seed: primitives::random_bytes(32)?.to_vec() })
 }
 

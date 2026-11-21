@@ -12,7 +12,7 @@ use std::io::{Read, Write};
 use aes::cipher::{BlockEncrypt, KeyInit, KeyIvInit, StreamCipher};
 use hmac::{Hmac, Mac};
 use ov_crypto::primitives::{self, Argon2Params, Argon2Variant};
-use ov_error::OvError;
+use ov_error::{OvError, OvErrorCode};
 use sha2::{Digest, Sha256, Sha512};
 use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
@@ -188,7 +188,48 @@ fn hex_decode_into(text: &str, out: &mut [u8]) -> bool {
 // Key derivation
 
 /// Runs the KDF over the composite key: the 32-byte transformed key.
+/// The most memory an Argon2 KDF may ask for: 1 GiB. KeePassXC's default is 64 MiB; a phone or a
+/// browser tab can't safely give much more, and an allocation that fails aborts the app.
+pub const MAX_ARGON2_MEMORY: u64 = 1 << 30;
+
+/// The most Argon2 work, memory × iterations in bytes: 16 GiB, about 8 s on an M3 Pro and about
+/// 20 to 25 s on an iPhone 12. KeePassXC's longest unlock setting (5 s on a fast desktop, about
+/// 150 iterations of 64 MiB) is within it.
+pub const MAX_ARGON2_WORK: u64 = 16 << 30;
+
+/// The most AES-KDF rounds: KeePassXC's own maximum, 10⁹ (about 10 s on an M3 Pro).
+pub const MAX_AES_KDF_ROUNDS: u64 = 1_000_000_000;
+
+/// Refuses a KDF over the limits above with `too_large`, before any of it runs: a `.kdbx` from
+/// elsewhere (an import, a server copy) chooses its own parameters, and huge ones would abort the
+/// app (memory) or hang it (iterations, rounds). `details` names the parameter and the limit.
+pub fn check_kdf_limits(kdf: &Kdf) -> Result<(), OvError> {
+    let over = |what: &str, value: u64, limit: u64, hint: &str| {
+        Err(OvError::new(
+            OvErrorCode::TooLarge,
+            format!("this database's key derivation {hint}; lower it in KeePassXC (Database Settings > Encryption) to open it here"),
+        )
+        .with_details(serde_json::json!({ "kdf_param": what, "value": value, "limit": limit }).to_string()))
+    };
+    match kdf {
+        Kdf::AesKdf { rounds, .. } if *rounds > MAX_AES_KDF_ROUNDS => {
+            over("rounds", *rounds, MAX_AES_KDF_ROUNDS, "has more AES-KDF rounds than OpenVireo runs (10⁹)")
+        }
+        Kdf::Argon2 { memory, .. } if *memory > MAX_ARGON2_MEMORY => {
+            over("memory", *memory, MAX_ARGON2_MEMORY, "needs more memory than OpenVireo gives it (1 GiB)")
+        }
+        Kdf::Argon2 { memory, iterations, .. } if memory.saturating_mul(*iterations) > MAX_ARGON2_WORK => over(
+            "work",
+            memory.saturating_mul(*iterations),
+            MAX_ARGON2_WORK,
+            "takes more work than OpenVireo runs (memory × iterations over 16 GiB)",
+        ),
+        _ => Ok(()),
+    }
+}
+
 pub(crate) fn transform(key: &CompositeKey, kdf: &Kdf) -> Result<Zeroizing<[u8; 32]>, OvError> {
+    check_kdf_limits(kdf)?;
     let raw = key.raw()?;
     match kdf {
         Kdf::AesKdf { rounds, seed } => aes_kdf(&raw, seed, *rounds),
@@ -244,7 +285,12 @@ fn argon2_full(
     }
     let params = b.build().map_err(weak)?;
     // Wiped on drop (argon2 `zeroize`): the blocks are derived from the composite key.
-    let mut blocks = zeroize::Zeroizing::new(vec![argon2::Block::default(); params.block_count()]);
+    // Allocated fallibly: a failed allocation would abort the app
+    let mut blocks = zeroize::Zeroizing::new(Vec::new());
+    blocks.try_reserve_exact(params.block_count()).map_err(|_| {
+        OvError::new(OvErrorCode::TooLarge, format!("not enough memory for Argon2 ({} MiB)", m_kib / 1024))
+    })?;
+    blocks.resize(params.block_count(), argon2::Block::default());
     let algorithm = match kind {
         Argon2Type::D => argon2::Algorithm::Argon2d,
         Argon2Type::Id => argon2::Algorithm::Argon2id,

@@ -420,7 +420,8 @@ impl Account {
     /// account", re-keyed to a fresh vault key, the original untouched), merged into a vault, or as
     /// copies. If the vault was created but the upload failed, [`ImportOutcome::uploaded`] is false.
     /// A wrong password or key file is `vault_key_mismatch` (TS 0.11; contract-v1.7, was `kdbx_error`).
-    /// An org owner or admin with keys that don't verify is `invalid_public_keys` naming them, as for
+    /// A file whose key derivation is over this build's limits ([`ov_kdbx::check_kdf_limits`]: Argon2
+    /// over 1 GiB or 16 GiB of work, AES-KDF over 10⁹ rounds) is `too_large`, before it runs. An org owner or admin with keys that don't verify is `invalid_public_keys` naming them, as for
     /// [`create_vault`](Self::create_vault). The database custom data (`Meta/CustomData`, where
     /// KeePassXC keeps its remote settings) comes along: whole into a new vault, minus the
     /// sync-server and account-vault remotes; on a merge, the items the vault doesn't have yet

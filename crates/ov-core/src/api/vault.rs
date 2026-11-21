@@ -368,7 +368,8 @@ impl Vault {
 
     /// Opens a local `.kdbx` (not an account vault). TS `decryptKdbx`. `vault_key_mismatch` for a
     /// wrong password or key file (as TS 0.11 and [`ov_kdbx::read`] report it; contract-v1.7, was
-    /// `kdbx_error`), `kdbx_error` for a damaged file. Edits are stamped with the system clock (on wasm32, one second after the
+    /// `kdbx_error`), `kdbx_error` for a damaged file, `too_large` for a key derivation over this build's
+    /// limits ([`ov_kdbx::check_kdf_limits`]), refused before it runs. Edits are stamped with the system clock (on wasm32, one second after the
     /// newest time in the file); [`OvClient::open_local`](crate::api::OvClient::open_local) uses the
     /// Host clock instead.
     pub async fn open_local(
@@ -415,7 +416,8 @@ impl Vault {
 
     /// Sets the key derivation a local database is saved with by [`save_local`](Self::save_local)
     /// (a KDBX 3.1 file is upgraded to KDBX 4 for Argon2). `invalid_request` for an account vault,
-    /// whose KDF belongs to its raw vault key. Contract-v1.6.
+    /// whose KDF belongs to its raw vault key; `too_large` over the limits a file is opened with
+    /// ([`ov_kdbx::check_kdf_limits`]). Contract-v1.6.
     pub fn set_kdf(&self, kdf: KdbxKdf) -> Result<(), OvError> {
         crate::impls::local_meta::set_kdf(self, kdf)
     }

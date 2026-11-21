@@ -131,7 +131,15 @@ pub fn argon2(
     let mut out = Zeroizing::new(vec![0u8; params.out_len]);
     // The work area holds password-derived blocks: keep it in wiped-on-drop memory (argon2's own
     // `hash_password_into` frees it without wiping).
-    let mut blocks = Zeroizing::new(vec![argon2::Block::default(); p.block_count()]);
+    // Allocated fallibly: a failed allocation would abort the app (huge parameters, a small device)
+    let mut blocks = Zeroizing::new(Vec::new());
+    blocks.try_reserve_exact(p.block_count()).map_err(|_| {
+        OvError::new(
+            OvErrorCode::TooLarge,
+            format!("not enough memory for Argon2 ({} MiB)", u64::from(params.m_kib) / 1024),
+        )
+    })?;
+    blocks.resize(p.block_count(), argon2::Block::default());
     argon2::Argon2::new(algorithm, argon2::Version::V0x13, p)
         .hash_password_into_with_memory(password, salt, &mut out[..], blocks.as_mut_slice())
         .map_err(weak)?;

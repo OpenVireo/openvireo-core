@@ -175,6 +175,18 @@
           "platform": "ios"
         }
       ]
+    },
+    {
+      "devices": [
+        {
+          "created_at": "2026-11-15T12:00:00Z",
+          "current": true,
+          "id": "00000000-0000-4000-8000-000000000001",
+          "last_seen_at": "2026-11-15T12:00:00Z",
+          "name": "text",
+          "platform": "android"
+        }
+      ]
     }
   ],
   "auth GET /devices op": [
@@ -2192,6 +2204,15 @@
         "platform": "ios"
       },
       "session_id": "text"
+    },
+    {
+      "auth_u": "AAEC",
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "android"
+      },
+      "session_id": "text"
     }
   ],
   "auth POST /auth/login/mfa 200": [
@@ -2428,6 +2449,28 @@
       },
       "record": "AAEC",
       "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "android"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
     }
   ],
   "auth POST /auth/recover/start 200": [
@@ -2626,6 +2669,28 @@
         "id": "00000000-0000-4000-8000-000000000001",
         "name": "text",
         "platform": "ios"
+      },
+      "kdf": {
+        "alg": "argon2id",
+        "m": 1,
+        "p": 1,
+        "salt": "AAEC",
+        "t": 1
+      },
+      "keyset": {
+        "enc_pk": "AAEC",
+        "sig": "AAEC",
+        "sign_pk": "AAEC",
+        "wrapped": "AAEC"
+      },
+      "record": "AAEC",
+      "session_id": "text"
+    },
+    {
+      "device": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "text",
+        "platform": "android"
       },
       "kdf": {
         "alg": "argon2id",
@@ -4489,6 +4554,11 @@
       "id": "00000000-0000-4000-8000-000000000001",
       "name": "text",
       "platform": "ios"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "text",
+      "platform": "android"
     }
   ],
   "auth schema Grant": [
@@ -4874,7 +4944,8 @@
     "web",
     "cli",
     "connect",
-    "ios"
+    "ios",
+    "android"
   ],
   "auth schema Principal": [
     "user:00000000-0000-4000-8000-000000000002"

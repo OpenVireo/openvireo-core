@@ -114,6 +114,8 @@ wire_enum! {
         Connect => "connect",
         /// iOS app.
         Ios => "ios",
+        /// Android app.
+        Android => "android",
     }
 }
 wire_enum! {
@@ -1480,8 +1482,11 @@ mod tests {
 
     #[test]
     fn enums_keep_unknown_values() {
+        let p: Platform = serde_json::from_value(json!("visionos")).unwrap();
+        assert_eq!(p, Platform::Other("visionos".into()));
+        assert_eq!(serde_json::to_value(&p).unwrap(), json!("visionos"));
         let p: Platform = serde_json::from_value(json!("android")).unwrap();
-        assert_eq!(p, Platform::Other("android".into()));
+        assert_eq!(p, Platform::Android);
         assert_eq!(serde_json::to_value(&p).unwrap(), json!("android"));
         assert_eq!(serde_json::to_value(Platform::QtMacos).unwrap(), json!("qt-macos"));
         assert_eq!(ShareLinkPolicy::from("off"), ShareLinkPolicy::Off);

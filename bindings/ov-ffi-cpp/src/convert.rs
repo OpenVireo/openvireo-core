@@ -144,6 +144,7 @@ pub(crate) fn client_config(c: &ffi::ClientConfig) -> Result<core::ClientConfig,
         ffi::Platform::Cli => core::Platform::Cli,
         ffi::Platform::Connect => core::Platform::Connect,
         ffi::Platform::Ios => core::Platform::Ios,
+        ffi::Platform::Android => core::Platform::Android,
         other => return Err(bad_enum("Platform", other.repr)),
     };
     Ok(core::ClientConfig {

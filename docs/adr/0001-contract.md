@@ -212,6 +212,25 @@ Kotlin and Python bindings (`openvireo-dev-guide/plans/language-bindings.md`). T
 `OpenVireoRustCore` and the C module `OpenVireoRustCoreFFI` keep their names. Earlier sections keep
 the old path as it was when they were written.
 
+## contract-v1.9 candidate: `Platform::Android` (2026-11-21, B8)
+
+User decision 2026-11-21: the device `Platform` gets an `Android` value (wire `android`) ahead of an
+Android app, so the Android binding (`bindings/kotlin/core-android`) can identify itself instead of
+borrowing `Cli`. Not tagged: the lead tags `contract-v1.9` when this merges.
+
+| # | Change |
+|---|---|
+| 1 | `ov_core::api::Platform::Android`, `as_str() == "android"`; in every binding: UniFFI `Platform.ANDROID` (Kotlin/Java/Python) / `.android` (Swift), C++ `ov::Platform::Android`, wasm `"android"` |
+| 2 | `ov_protocol::types::Platform::Android` (was parsed as `Other("android")`); `vectors/openapi/openapi.yaml` `Platform` enum gains `android` (same change on openvireo `feat/platform-android`, `docs/plans/accounts/openapi.yaml`) |
+
+Additive for callers that pass a `Platform`. A source-level break for code that matches the facade
+enum exhaustively: a Rust `match`, a Swift `switch` without `default`, a Kotlin `when` used as an
+expression, a C++ `switch` under `-Wswitch -Werror`. Device lists are unaffected: `Device.platform`
+is a `String` (open set), and a core without this change already showed `"android"` there, since the
+wire enum keeps unknown values as `Other`. Rollout: the auth server must accept `android`
+(`PLATFORMS` in `openvireo/blueprints/api/models.py`) before any client sends it; until then a
+login with `android` is refused as an invalid request.
+
 ## Consequences
 
 - Wave 1/2 agents build against these files and raise a CONTRACT-REQUEST for any change.

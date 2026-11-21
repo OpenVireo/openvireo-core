@@ -35,7 +35,7 @@ record!(OpaqueConfig => OpaqueConfig { lib: lib ": string", version: version ": 
 record!(@no_ts KdfMin => KdfMin { m: m ": number", t: t ": number" });
 unit_enum!(Platform => Platform {
     QtLinux => "qt-linux", QtMacos => "qt-macos", QtWindows => "qt-windows", Web => "web", Cli => "cli",
-    Connect => "connect", Ios => "ios",
+    Connect => "connect", Ios => "ios", Android => "android",
 });
 record!(DeviceInfo => DeviceInfo { id: id "?: string", name: name ": string", platform: platform ": Platform" });
 record!(ClientConfig => ClientConfig { device: device ": DeviceInfo", offline: offline ": boolean", server: server "?: ServerConfig" });

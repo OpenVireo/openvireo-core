@@ -386,3 +386,28 @@ pub(crate) fn sync_conflict(c: &ov_merge::SyncConflict) -> a::SyncConflict {
 pub(crate) fn from_stored<T: serde::de::DeserializeOwned>(bytes: &[u8], what: &str) -> Result<T, OvError> {
     serde_json::from_slice(bytes).map_err(|_| internal(format!("the stored {what} can't be read")))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_facade_platform_is_a_known_wire_platform() {
+        use a::Platform::*;
+        for p in [QtLinux, QtMacos, QtWindows, Web, Cli, Connect, Ios, Android] {
+            let wire = wire_platform(p);
+            assert!(!matches!(wire, w::Platform::Other(_)), "{p:?} is not a wire Platform");
+            assert_eq!(wire.as_str(), p.as_str());
+        }
+    }
+
+    #[test]
+    fn device_lists_keep_unknown_platforms() {
+        let d: w::Device = serde_json::from_value(serde_json::json!({
+            "id": "d1", "name": "n", "platform": "visionos",
+            "created_at": "2026-11-21T00:00:00Z", "last_seen_at": "2026-11-21T00:00:00Z", "current": false,
+        }))
+        .unwrap();
+        assert_eq!(device(&d).platform, "visionos");
+    }
+}

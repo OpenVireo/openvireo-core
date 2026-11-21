@@ -75,6 +75,8 @@ pub enum Platform {
     Connect,
     /// The iOS app.
     Ios,
+    /// The Android app.
+    Android,
 }
 
 impl Platform {
@@ -88,6 +90,7 @@ impl Platform {
             Platform::Cli => "cli",
             Platform::Connect => "connect",
             Platform::Ios => "ios",
+            Platform::Android => "android",
         }
     }
 }

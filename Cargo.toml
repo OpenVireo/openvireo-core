@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 # Every crate under crates/, bindings/ and bins/ is a member, so adding a crate never edits this file.
-members = ["crates/*", "bindings/*", "bins/*", "xtask"]
+members = ["crates/*", "bindings/*", "bins/*", "xtask", "benches"]
 
 [workspace.package]
 version = "0.0.0"

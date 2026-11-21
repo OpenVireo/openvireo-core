@@ -1,0 +1,43 @@
+# Criterion benchmarks (W4-F): unlock, the 5k-entry merge and a sync round trip.
+#
+#   cargo bench -p ov-benches                 # all
+#   cargo bench -p ov-benches --bench merge   # one
+#
+# They run with the bench profile (= the workspace's release profile, what the clients ship).
+# Budget (rust-core.md §8): merging a 5k-entry vault in under 300 ms on an iPhone 12.
+
+[package]
+name = "ov-benches"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+ov-kdbx = { path = "../crates/ov-kdbx" }
+
+[dev-dependencies]
+ov-crypto = { path = "../crates/ov-crypto" }
+ov-merge = { path = "../crates/ov-merge" }
+ov-protocol = { path = "../crates/ov-protocol" }
+ov-sync = { path = "../crates/ov-sync" }
+ov-testkit = { path = "../crates/ov-testkit" }
+futures = { workspace = true, features = ["executor"] }
+# Benches only (W4-F, lead-approved). No plots, no rayon.
+criterion = { version = "=0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "unlock"
+harness = false
+
+[[bench]]
+name = "merge"
+harness = false
+
+[[bench]]
+name = "sync"
+harness = false
+
+[lints]
+workspace = true

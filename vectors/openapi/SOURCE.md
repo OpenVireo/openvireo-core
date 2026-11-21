@@ -12,9 +12,13 @@ From openvireo (`github.com/openvireo/openvireo`), branch `develop`, at HEAD `14
 
 Added in `contract-v1.2` (W1-P CONTRACT-REQUEST, user-approved 2026-11-15).
 
+2026-11-21 (B8, contract-v1.9 candidate): `openapi.yaml` `Platform` gained `android`, the same
+one-line change as openvireo branch `feat/platform-android`; the copy matches the canonical file
+again once that branch is on `develop`.
+
 ## Checksums
 
 ```
-228064859f09cd52a77cab980ed42b67a0301c2292d313e161dd1785e2531549  openapi.yaml
+8462d27609d8ef5fadbffb11ed10e79d4024b36281244c1a11437451e774e3ac  openapi.yaml
 f42b2a19c8ad97350d45029361955b1dce490503655006d72b126a9a6841fd32  sync-openapi.yaml
 ```

@@ -511,6 +511,7 @@ mod tests {
         assert!(plan_has(&p, "members").unwrap());
         assert!(plan_has_billing(&p).unwrap());
         assert_eq!(platform_as_str(ffi::Platform::QtWindows).unwrap(), "qt-windows");
+        assert_eq!(platform_as_str(ffi::Platform::Android).unwrap(), "android");
         assert_eq!(platform_as_str(ffi::Platform { repr: 99 }).unwrap_err().0.code, OvErrorCode::InvalidRequest);
         let _ = crate::edge::take_last_error();
     }

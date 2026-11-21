@@ -62,6 +62,7 @@ pub enum Platform {
     Cli,
     Connect,
     Ios,
+    Android,
 }
 
 #[uniffi::remote(Record)]

@@ -59,7 +59,7 @@ enum_map!(
     signed_out_reason_in,
     [TokenReused, SessionExpired, Unauthorized, Logout, DeletionScheduled, AccountDeleted]
 );
-enum_map!(Platform, platform, platform_in, [QtLinux, QtMacos, QtWindows, Web, Cli, Connect, Ios]);
+enum_map!(Platform, platform, platform_in, [QtLinux, QtMacos, QtWindows, Web, Cli, Connect, Ios, Android]);
 
 // --------------------------------------------------------------------------------- generic
 

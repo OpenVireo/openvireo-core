@@ -175,6 +175,7 @@ pub mod ffi {
         Cli,
         Connect,
         Ios,
+        Android,
     }
 
     /// The discovery document (SPEC §10). Empty strings mean "none".

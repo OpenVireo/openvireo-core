@@ -28,7 +28,7 @@ class LoadTest {
     @Test
     fun defaultHostBuildsAClient() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        OvClient(ClientConfig(DeviceInfo(null, "android-smoke", Platform.CLI), true, null), defaultHost(context)).use { client ->
+        OvClient(ClientConfig(DeviceInfo(null, "android-smoke", Platform.ANDROID), true, null), defaultHost(context)).use { client ->
             assertEquals("android-smoke", client.config().device.name)
         }
     }

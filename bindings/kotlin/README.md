@@ -235,15 +235,15 @@ import com.openvireo.core.*
 import com.openvireo.core.hosts.defaultHost
 
 val client = OvClient(
-    ClientConfig(DeviceInfo(id = null, name = Build.MODEL, platform = Platform.CLI), offline = false, server = null),
+    ClientConfig(DeviceInfo(id = null, name = Build.MODEL, platform = Platform.ANDROID), offline = true, server = null),
     defaultHost(applicationContext),
 )
 ```
 
 Call the `suspend` functions from a coroutine (`lifecycleScope`, `viewModelScope`); they never
 block the main thread. The synchronous ones (`Vault.entries`, the crypto functions) do CPU work in
-the core, so call them off the main thread for big vaults. The core has no Android `Platform` value
-yet; until it gets one, use the closest one.
+the core, so call them off the main thread for big vaults. An Android app identifies itself as
+`Platform.ANDROID` (wire `android`); the auth server must accept that value before an app sends it.
 
 `defaultHost(context)` (package `com.openvireo.core.hosts`) bundles these parts, each replaceable:
 

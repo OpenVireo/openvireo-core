@@ -17,10 +17,6 @@ from openvireo import hosts
 KDF = ov.KdfOverrides(m=19456, t=2, p=1)  # the SDK tests' cheap KDF
 
 
-def nc() -> ov.CancelToken:
-    return ov.CancelToken()
-
-
 def entry_input(fields: dict[str, str]) -> ov.EntryInput:
     return ov.EntryInput(
         fields=[ov.FieldInput(name=k, value=v.encode(), protected=None) for k, v in fields.items()],
@@ -41,16 +37,15 @@ def find_title(v: ov.Vault, title: str) -> ov.EntryRecord:
 
 
 async def register(dev, email: str, password: str, relay) -> tuple[ov.Account, ov.NewAccount]:  # type: ignore[no-untyped-def]
-    a = await dev.client.connect(relay.issuer, nc())
-    kit = await a.register(ov.RegisterInput(email=email, password=password.encode(), kdf=KDF, trust_device=True), nc())
+    a = await dev.client.connect(relay.issuer, ov.CancelToken())  # an explicit token still works
+    kit = await a.register(ov.RegisterInput(email=email, password=password.encode(), kdf=KDF, trust_device=True))
     return a, kit
 
 
 async def login(dev, relay, email: str, password: str, secret_key: bytes | None) -> ov.Account:  # type: ignore[no-untyped-def]
-    a = await dev.client.connect(relay.issuer, nc())
+    a = await dev.client.connect(relay.issuer)
     step = await a.login(
         ov.LoginInput(email=email, password=password.encode(), secret_key=secret_key, totp=None, trust_device=True),
-        nc(),
     )
     assert isinstance(step, ov.LoginStep.UNLOCKED), step
     return a
@@ -141,30 +136,30 @@ def test_client_keeps_its_config() -> None:
 
 async def test_async_call_uses_the_host() -> None:
     with pytest.raises(ov.OvError) as e:
-        await offline_client().discover("https://example.test", nc())
+        await offline_client().discover("https://example.test")
     assert e.value.code == ov.OvErrorCode.NETWORK_ERROR
 
 
 async def test_a_host_exception_becomes_an_error_not_a_crash() -> None:
     with pytest.raises(ov.OvError) as e:
-        await offline_client(BrokenHttp()).discover("https://example.test", nc())
+        await offline_client(BrokenHttp()).discover("https://example.test")
     assert e.value.code == ov.OvErrorCode.NETWORK_ERROR
     assert "boom" in e.value.message
 
 
 async def test_local_vault_round_trip() -> None:
     pw = ov.KdbxCredentials(password="pw ✓".encode(), key_file=None)
-    v = await offline_client().create_local("Home", pw, nc())
+    v = await offline_client().create_local("Home", pw)
     work = v.add_group(None, "Work")
     entry_id = v.add_entry(work, entry_input({"Title": "VPN", "Password": "s3cret"}))
-    data = await v.save_local(nc())
-    back = await ov.Vault.open_local(data, pw, nc())
+    data = await v.save_local()
+    back = await ov.Vault.open_local(data, pw)
     rec = back.entry(entry_id)
     assert rec.group_path == ["Work"]
     assert field(rec, "Password") == b"s3cret"
     wrong = ov.KdbxCredentials(password=b"no", key_file=None)
     with pytest.raises(ov.OvError) as e:
-        await ov.Vault.open_local(data, wrong, nc())
+        await ov.Vault.open_local(data, wrong)
     assert e.value.code == ov.OvErrorCode.VAULT_KEY_MISMATCH
 
 
@@ -186,9 +181,9 @@ async def test_register_vault_sync_second_device(relay, new_device) -> None:  # 
     a, kit = await register(dev, email, "correct horse ü", relay)
     assert kit.emergency_kit.email == email
     assert a.server_config().sync == relay.sync
-    vault = await a.create_vault("Personal", None, nc())
+    vault = await a.create_vault("Personal", None)
     vault.add_entry(vault.root_group_id(), entry_input({"Title": "GitHub", "Password": "gh-pass"}))
-    report = await vault.sync(ov.SyncOptions(local_changed=True), nc())
+    report = await vault.sync(ov.SyncOptions(local_changed=True))
     assert report is not None
     assert vault.etag() is not None
     # Everything went through the Python transport.
@@ -199,42 +194,46 @@ async def test_register_vault_sync_second_device(relay, new_device) -> None:  # 
 
     # Second device: without the Secret Key the first time it's refused, with it the vault opens.
     dev2 = new_device("second")
-    a2 = await dev2.client.connect(relay.issuer, nc())
+    a2 = await dev2.client.connect(relay.issuer)
     with pytest.raises(ov.OvError) as e:
         await a2.login(
             ov.LoginInput(
                 email=email, password="correct horse ü".encode(), secret_key=None, totp=None, trust_device=True
             ),
-            nc(),
         )
     assert e.value.code == ov.OvErrorCode.INVALID_SECRET_KEY
     a2 = await login(dev2, relay, email, "correct horse ü", kit.secret_key)
-    names = [v.name for v in await a2.vaults(nc())]
+    with pytest.raises(ov.OvError) as e:
+        stopped = ov.CancelToken()
+        stopped.cancel()
+        await a2.vaults(cancel=stopped)
+    assert e.value.code == ov.OvErrorCode.ABORTED
+    names = [v.name for v in await a2.vaults()]
     assert names == ["Personal"]
-    v2 = await a2.open_vault(vault.id(), nc())
+    v2 = await a2.open_vault(vault.id())
     assert field(find_title(v2, "GitHub"), "Password") == b"gh-pass"
 
     # An edit on the second device reaches the first after a sync.
     v2.add_entry(v2.root_group_id(), entry_input({"Title": "Bank", "Password": "b"}))
-    await v2.sync(ov.SyncOptions(local_changed=True), nc())
-    await vault.sync(ov.SyncOptions(local_changed=False), nc())
+    await v2.sync(ov.SyncOptions(local_changed=True))
+    await vault.sync(ov.SyncOptions(local_changed=False))
     assert sorted(e.title for e in vault.entries(False)) == ["Bank", "GitHub"]
 
 
 async def test_error_codes_from_the_server(relay, new_device) -> None:  # type: ignore[no-untyped-def]
     email = f"err-{id(new_device)}@example.com"
     _, kit = await register(new_device(), email, "pw", relay)
-    a2 = await new_device().client.connect(relay.issuer, nc())
+    a2 = await new_device().client.connect(relay.issuer)
     with pytest.raises(ov.OvError) as e:
         await a2.login(
-            ov.LoginInput(email=email, password=b"nope", secret_key=kit.secret_key, totp=None, trust_device=True), nc()
+            ov.LoginInput(email=email, password=b"nope", secret_key=kit.secret_key, totp=None, trust_device=True)
         )
     assert (e.value.code, e.value.status) == (ov.OvErrorCode.UNAUTHORIZED, 401)
     assert e.value.wire_code == "unauthorized"
     # A host that can't be reached is a network error (the relay answers 502 for an unknown host;
     # a refused port is Offline in the transport tests).
     with pytest.raises(ov.OvError) as e:
-        await new_device().client.discover("https://nowhere.test", nc())
+        await new_device().client.discover("https://nowhere.test")
     assert e.value.code in (ov.OvErrorCode.SERVER_ERROR, ov.OvErrorCode.NETWORK_ERROR)
 
 
@@ -243,20 +242,20 @@ async def test_share_link_open_without_an_account_then_revoke(relay, new_device)
     api = a.server_config().api
     payload = ov.text_share_payload(b"the secret", "Note", None)
     created = await a.create_share(
-        payload, ov.ShareOptions(expires_in=3600, max_opens=2, passcode=None, vault_id=None, entry_id=None), nc()
+        payload, ov.ShareOptions(expires_in=3600, max_opens=2, passcode=None, vault_id=None, entry_id=None)
     )
     assert b"#" in created.url
 
     anon = new_device("anon").client
-    info = await anon.share_info(api, created.id, nc())
+    info = await anon.share_info(api, created.id)
     assert info.opens_left == 2 and info.kdf is None
-    opened = await anon.open_share(api, created.url, None, info, nc())
+    opened = await anon.open_share(api, created.url, None, info)
     assert opened.payload.fields[0].value == b"the secret"
     assert opened.opens_left == 1
 
-    await a.revoke_share(created.id, nc())
+    await a.revoke_share(created.id)
     with pytest.raises(ov.OvError) as e:
-        await anon.share_info(api, created.id, nc())
+        await anon.share_info(api, created.id)
     assert e.value.code == ov.OvErrorCode.NOT_FOUND
 
 
@@ -266,12 +265,12 @@ async def test_event_stream_reports_a_vault_change(relay, new_device) -> None:  
     email = f"events-{id(new_device)}@example.com"
     alice_dev = new_device()
     alice, kit = await register(alice_dev, email, "pw", relay)
-    vault = await alice.create_vault("Infra", None, nc())
-    stream = await alice.subscribe(nc())
+    vault = await alice.create_vault("Infra", None)
+    stream = await alice.subscribe()
     other = await login(new_device("other"), relay, email, "pw", kit.secret_key)
-    theirs = await other.open_vault(vault.id(), nc())
+    theirs = await other.open_vault(vault.id())
 
-    next_event = asyncio.ensure_future(stream.next(nc()))
+    next_event = asyncio.ensure_future(stream.next())
     # Let the stream connect (the core opens it on the first poll), then upload from the other device.
     for _ in range(100):
         if any(u.endswith("/events") for u in alice_dev.http.urls):
@@ -279,14 +278,14 @@ async def test_event_stream_reports_a_vault_change(relay, new_device) -> None:  
         await asyncio.sleep(0.02)
     await asyncio.sleep(0.2)
     theirs.add_entry(theirs.root_group_id(), entry_input({"Title": "New", "Password": "x"}))
-    await theirs.sync(ov.SyncOptions(local_changed=True), nc())
+    await theirs.sync(ov.SyncOptions(local_changed=True))
 
     ev = await asyncio.wait_for(next_event, timeout=15)
     while isinstance(ev, ov.AccountEvent.VAULTS_CHANGED):  # an access refresh can come first
-        ev = await asyncio.wait_for(stream.next(nc()), timeout=15)
+        ev = await asyncio.wait_for(stream.next(), timeout=15)
     assert isinstance(ev, ov.AccountEvent.VAULT_CHANGED), ev
     assert ev.vault_id == vault.id()
     assert not ev.deleted
     assert ev.etag == theirs.etag()
     stream.close()
-    assert await asyncio.wait_for(stream.next(nc()), timeout=5) is None
+    assert await asyncio.wait_for(stream.next(), timeout=5) is None

@@ -58,5 +58,5 @@ select = ["E", "F", "W", "I", "B", "UP", "RUF"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["python/openvireo/hosts.py", "python/openvireo/__init__.py"]
+files = ["python/openvireo/hosts.py", "python/openvireo/__init__.py", "python/openvireo/_compat.py"]
 ignore_missing_imports = true

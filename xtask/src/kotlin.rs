@@ -19,6 +19,11 @@
 //!   share link, error codes. Implies `--test-server`, as `xcframework --smoke` does.
 //! - `--test-server`: builds with the crate's `test-server` feature (the `opaque_server_*` steps).
 //! - `--generate-only`: stops after step 3 (Gradle's `:generateBindings` runs this).
+//! - `--android` (B4, [`android`]): also builds `libov_ffi.so` for the Android ABIs with cargo-ndk
+//!   (release, never `test-server`) into `bindings/kotlin/build/jniLibs`, adds
+//!   `:core-android:assembleRelease` to the Gradle run (with `-Pov.android=true
+//!   -Pov.requireAbis=all`) and then checks the AAR and prints its sizes. Can't be combined with
+//!   `--smoke` / `--test-server`: the generated Kotlin must match the natives' features.
 //! - `-- <args>`: passed to Gradle instead of `test` (e.g. `-- build`, `-- publishToMavenLocal`).
 
 use std::fs;
@@ -26,6 +31,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::{cargo, root, run as step, target_root, Result};
+
+mod android;
 
 const PACKAGE: &str = "ov-ffi";
 
@@ -60,6 +67,7 @@ pub fn run(args: &[String]) -> Result {
     let mut smoke = false;
     let mut test_server = false;
     let mut generate_only = false;
+    let mut android = false;
     let mut gradle_args: Vec<String> = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -67,15 +75,24 @@ pub fn run(args: &[String]) -> Result {
             "--smoke" => smoke = true,
             "--test-server" => test_server = true,
             "--generate-only" => generate_only = true,
+            "--android" => android = true,
             "--" => gradle_args.extend(it.by_ref().cloned()),
             other => {
                 return Err(format!(
-                    "kotlin: unknown argument `{other}` (--smoke, --test-server, --generate-only, -- <gradle args>)"
+                    "kotlin: unknown argument `{other}` (--smoke, --test-server, --generate-only, --android, -- <gradle args>)"
                 ))
             }
         }
     }
     test_server |= smoke;
+    if android && test_server {
+        return Err("kotlin: --android can't be combined with --smoke / --test-server: the Android natives are \
+                    release builds without test-server, and the generated Kotlin must match them"
+            .into());
+    }
+    if android && !generate_only {
+        android::check_tools()?;
+    }
     let features: &[&str] = if test_server { &["--features", "test-server"] } else { &[] };
     let project = root().join("bindings").join("kotlin");
     let build = project.join("build");
@@ -115,6 +132,10 @@ pub fn run(args: &[String]) -> Result {
         return Ok(());
     }
 
+    if android {
+        android::build_jni_libs(&build.join("jniLibs"))?;
+    }
+
     // 4. Gradle.
     let mut gradle = gradlew(&project);
     if gradle_args.is_empty() {
@@ -123,6 +144,9 @@ pub fn run(args: &[String]) -> Result {
         gradle.args(&gradle_args);
     }
     gradle.args(["-Pov.generate=false", "--console=plain"]);
+    if android {
+        gradle.args([":core-android:assembleRelease", "-Pov.android=true", "-Pov.requireAbis=all"]);
+    }
     if smoke {
         step(
             "kotlin: build the testkit relay",
@@ -135,7 +159,11 @@ pub fn run(args: &[String]) -> Result {
         }
         gradle.arg(format!("-Pov.testkitRelay={}", relay.display())).arg("-Pov.requireSmoke=true");
     }
-    step("kotlin: gradle", &mut gradle)
+    step("kotlin: gradle", &mut gradle)?;
+    if android {
+        android::verify_aar(&android::release_aar(&project)?)?;
+    }
+    Ok(())
 }
 
 fn gradlew(project: &Path) -> Command {

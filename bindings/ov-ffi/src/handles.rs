@@ -1,5 +1,5 @@
 //! The facade's handles as UniFFI objects. Each wraps the `ov_core` handle and forwards every
-//! method through `guard`, one Swift method per core method (rust-core-tasks.md
+//! method through `guard`, one foreign method per core method (rust-core-tasks.md
 //! §2.3). Sharing, settings, plans and share links are `Account` methods in the core; they are
 //! in [`crate::account_ext`].
 

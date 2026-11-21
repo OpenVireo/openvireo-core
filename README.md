@@ -7,7 +7,7 @@ client:
 | Client | Binding |
 |---|---|
 | Web SDK (`@openvireo/sdk` 1.0) and the web app | WASM (`bindings/ov-wasm`, `bindings/ov-wasm-lite`) |
-| iOS app and AutoFill | Swift via UniFFI (`bindings/ov-ffi-swift`) |
+| iOS app and AutoFill | Swift via UniFFI (`bindings/ov-ffi`) |
 | Desktop (Qt) | C++ via cxx (`bindings/ov-ffi-cpp`) |
 | `ov` CLI | native binary (`bins/ov`) |
 
@@ -23,7 +23,7 @@ cache, clock, log sink), so TLS, proxies and the Keychain stay with the platform
 crates/      ov-error, ov-http, ov-host (the frozen contract types), ov-crypto, ov-opaque,
              ov-protocol, ov-kdbx, ov-merge, ov-share, ov-vault, ov-sync, ov-core (the facade),
              ov-testkit (test-only: vector loaders, in-memory auth and sync servers)
-bindings/    ov-wasm, ov-wasm-lite, ov-ffi-swift, ov-ffi-cpp
+bindings/    ov-wasm, ov-wasm-lite, ov-ffi, ov-ffi-cpp
 bins/ov/     native CLI
 vectors/     contract test vectors, copied unchanged from the protocol spec
 corpus/kdbx/ .kdbx files written by other apps, for round-trip tests
@@ -46,7 +46,7 @@ know about a platform.
 - [Open items](docs/open-items.md): known bugs and follow-ups
 - [API coverage](docs/api-coverage.md): every public method of the TS SDK and the iOS `Account` → the facade
 - ADRs: [0001 the contract](docs/adr/0001-contract.md), [0002 our own KDBX crate](docs/adr/0002-kdbx.md)
-- Each binding's README: [wasm](bindings/ov-wasm/README.md), [Swift](bindings/ov-ffi-swift/README.md),
+- Each binding's README: [wasm](bindings/ov-wasm/README.md), [UniFFI/Swift](bindings/ov-ffi/README.md),
   [C++](bindings/ov-ffi-cpp/README.md); [e2e](e2e/README.md)
 - The API itself: `cargo doc --workspace --no-deps --open`
 
@@ -82,6 +82,6 @@ Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at 
 the same code go into the MIT iOS app, the MIT/Apache SDK and the GPL desktop app.
 
 Third-party crates compiled in are under permissive licences, except UniFFI's runtime crates
-(`uniffi_core` and friends), which are MPL-2.0 and are compiled into the Swift binding only. MPL-2.0 is
+(`uniffi_core` and friends), which are MPL-2.0 and are compiled into the UniFFI binding (`ov-ffi`) only. MPL-2.0 is
 file-level: shipping them unmodified needs their notice and a pointer to their source, which the iOS
 app's `scripts/build-vendor.sh` writes into `CORE-THIRD-PARTY-LICENSES.txt`.

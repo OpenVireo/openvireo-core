@@ -1,6 +1,6 @@
 //! `cargo xtask xcframework`: build OpenVireoCore.xcframework. Owned by W1-BS (only that task edits this file).
 //!
-//! 1. Release-builds `bindings/ov-ffi-swift` as a static library for iOS (arm64), the iOS
+//! 1. Release-builds `bindings/ov-ffi` as a static library for iOS (arm64), the iOS
 //!    simulator (arm64 + x86_64) and macOS (arm64 + x86_64, for `swift test`).
 //! 2. Builds the crate for the host in debug and runs its `uniffi-bindgen` (feature `cli`) on that
 //!    dylib, which still has the UniFFI metadata symbols that the stripped release builds lose.
@@ -9,7 +9,7 @@
 //!    header and module map under `Headers/OpenVireoRustCoreFFI/` (the layout the iOS app's other
 //!    xcframeworks use, so module maps don't collide).
 //!
-//! Outputs (gitignored), under `bindings/ov-ffi-swift/`:
+//! Outputs (gitignored), under `bindings/ov-ffi/`:
 //! - `build/OpenVireoCore.xcframework`
 //! - `Sources/OpenVireoRustCore/OpenVireoRustCore.swift`
 //!
@@ -17,7 +17,7 @@
 //! - `--test-server`: builds with the crate's `test-server` feature (the `opaque_server_*` steps the
 //!   iOS test servers use). Release builds leave it off.
 //! - `--macos-only`: builds only the macOS slice (enough for `swift test`; saves disk and time).
-//! - `--smoke`: then runs `swift test` in `bindings/ov-ffi-swift/SmokeTests`. Implies `--test-server`,
+//! - `--smoke`: then runs `swift test` in `bindings/ov-ffi/SmokeTests`. Implies `--test-server`,
 //!   because the smoke tests replay the OPAQUE transcript through the server steps.
 
 use std::fs;
@@ -26,8 +26,8 @@ use std::process::Command;
 
 use crate::{cargo, root, run as step, Result};
 
-const PACKAGE: &str = "ov-ffi-swift";
-const LIB: &str = "libov_ffi_swift";
+const PACKAGE: &str = "ov-ffi";
+const LIB: &str = "libov_ffi";
 const FFI_MODULE: &str = "OpenVireoRustCoreFFI";
 const SWIFT_MODULE: &str = "OpenVireoRustCore";
 const XCFRAMEWORK: &str = "OpenVireoCore.xcframework";

@@ -21,7 +21,7 @@ It runs, in order, and stops at the first failure:
 6. `cargo xtask vectors`: every checksum in `vectors/**/SOURCE.md`
 7. `cargo xtask openapi --check`: every example in the OpenAPI copies round-trips through ov-protocol
 8. a wasm32 build and wasm32 clippy of the portable crates plus `ov-wasm` and `ov-wasm-lite`
-9. on macOS, an iOS build (device, simulator arm64 and x86_64) of the portable crates plus `ov-ffi-swift`
+9. on macOS, an iOS build (device, simulator arm64 and x86_64) of the portable crates plus `ov-ffi`
 10. `cargo xtask unlinked`: no code from a crate with an ignored advisory (crypto-bigint) is linked into
     a wasm module
 11. `cargo xtask size`: raw and gzip size of both wasm modules
@@ -71,7 +71,7 @@ sync engine against them. The C++ binding exposes the same servers under its `te
 | Binding | Run |
 |---|---|
 | wasm | `cargo xtask wasm`, then in `bindings/ov-wasm`: `npm ci && npx vitest run && npx tsc -p tsconfig.json` (Node and jsdom smoke, Host adapters, low-level vectors, lite/full parity, memory wiping, an esbuild bundle, one file per contract tag) |
-| Swift | `cargo xtask xcframework --smoke` (macOS): `swift test` in `bindings/ov-ffi-swift/SmokeTests` against the vectors and transcripts |
+| Swift | `cargo xtask xcframework --smoke` (macOS): `swift test` in `bindings/ov-ffi/SmokeTests` against the vectors and transcripts |
 | C++ | `cargo test -p ov-ffi-cpp [--features test-server]`; `cargo xtask cpp --check-coverage` (every facade item bridged, 0 missing); the CMake smoke in `bindings/ov-ffi-cpp/smoke/` (commands at the top of its `CMakeLists.txt`, built with `-Wall -Wextra -Werror`) |
 
 ## The `ov` CLI

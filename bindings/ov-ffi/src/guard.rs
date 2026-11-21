@@ -1,7 +1,8 @@
 //! The FFI edge: every call into ov-core goes through one of these, so a panic becomes
-//! `OvError { code: internal }` instead of crossing into Swift (rust-core-tasks.md §2.3).
-//! That is also why every binding method `throws` in Swift, even where the core's method can't
-//! fail: today's `todo!()` stubs panic, and Swift would otherwise trap on a non-throwing call.
+//! `OvError { code: internal }` instead of crossing into the foreign language
+//! (rust-core-tasks.md §2.3). That is also why every binding method throws (`throws` in Swift),
+//! even where the core's method can't fail: today's `todo!()` stubs panic, and the foreign side
+//! would otherwise trap on a non-throwing call.
 
 use std::any::Any;
 use std::future::Future;

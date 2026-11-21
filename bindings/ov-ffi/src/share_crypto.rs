@@ -1,8 +1,8 @@
-//! Share-link crypto (SPEC §22) for Swift: the key schedule, padding, payload and owner-reference
+//! Share-link crypto (SPEC §22) for the platform bindings: the key schedule, padding, payload and owner-reference
 //! envelopes on raw bytes, and the link format (task W3-BS2). The facade's `Account.create_share` /
 //! `open_share` run the whole flow; these are the pieces the iOS `ShareLink` enum wraps.
 //!
-//! The payload and reference functions take and return the JSON **bytes**, so a Swift caller keeps
+//! The payload and reference functions take and return the JSON **bytes**, so a caller keeps
 //! its own encoder and the vectors replay byte for byte.
 
 use ov_crypto::envelope;

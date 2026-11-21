@@ -1,6 +1,6 @@
 [package]
-name = "ov-ffi-swift"
-description = "UniFFI Swift binding of the ov-core facade"
+name = "ov-ffi"
+description = "UniFFI binding of the ov-core facade (Swift, Kotlin, Python)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,10 +10,10 @@ publish = false
 
 [lib]
 crate-type = ["lib", "staticlib", "cdylib"]
-name = "ov_ffi_swift"
+name = "ov_ffi"
 
 [[bin]]
-# `uniffi-bindgen`: generates the Swift sources from the built library. Only built with `--features cli`.
+# `uniffi-bindgen`: generates the Swift, Kotlin or Python sources from the built library. Only built with `--features cli`.
 name = "uniffi-bindgen"
 path = "uniffi-bindgen.rs"
 required-features = ["cli"]

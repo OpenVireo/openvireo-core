@@ -1,5 +1,5 @@
-//! The Host traits as UniFFI foreign traits: Swift implements them (URLSession, Keychain, files,
-//! os_log) and passes them to [`Host::new`]. Small adapters turn each into the matching
+//! The Host traits as UniFFI foreign traits: the platform implements them (on Apple platforms,
+//! for example: URLSession, Keychain, files, os_log) and passes them to [`Host::new`]. Small adapters turn each into the matching
 //! `ov_core::host` trait. The FFI shapes differ from the core's only where UniFFI needs it:
 //! owned `String` arguments, header pairs as `HttpHeader` records, `Arc` instead of `Box` for
 //! the returned stream, and plain `Vec<u8>` for secrets (wrapped in `Zeroizing` on the way in).
@@ -12,7 +12,7 @@ use zeroize::Zeroizing;
 use crate::error::{OvError, TransportError};
 use crate::types_ext::{HttpRequest, HttpResponse};
 
-/// HTTP: URLSession on Apple platforms. Must not follow redirects or add cookies; see
+/// HTTP (for example URLSession on Apple platforms). Must not follow redirects or add cookies; see
 /// `ov_core::host::HttpTransport`.
 #[uniffi::export(with_foreign)]
 #[async_trait::async_trait]
@@ -43,7 +43,7 @@ pub trait ByteStream: Send + Sync {
     fn close(&self);
 }
 
-/// Secrets that persist (the Keychain). Keys are chosen by the core; see
+/// Secrets that persist (for example the Keychain on Apple platforms). Keys are chosen by the core; see
 /// `ov_core::host::SecureStore`.
 #[uniffi::export(with_foreign)]
 #[async_trait::async_trait]

@@ -423,7 +423,7 @@ not the facade, and are out of scope here.
 ## 10. contract-v1.6 additions (2026-11-19)
 
 The iOS OpenVireoKit calls that moved onto the core `Vault` (W3-BS2's CONTRACT-REQUESTs 1-8, see
-`bindings/ov-ffi-swift/README.md`), the `ov` CLI's issuer lookup and local vaults on the Host clock.
+`bindings/ov-ffi/README.md`), the `ov` CLI's issuer lookup and local vaults on the Host clock.
 Details in `docs/adr/0001-contract.md` § contract-v1.6.
 
 | Client | Rust | Notes |

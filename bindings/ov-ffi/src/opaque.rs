@@ -1,4 +1,4 @@
-//! OPAQUE (SPEC §8, RFC 9807) for Swift: the client steps over `ov-opaque`, `opaque_ids`, and with
+//! OPAQUE (SPEC §8, RFC 9807) for the platform bindings: the client steps over `ov-opaque`, `opaque_ids`, and with
 //! the `test-server` feature the opaque-ke server steps the iOS test servers use (task W3-BS2).
 //!
 //! Every step takes an optional 32-byte `seed`: `nil` uses the platform CSPRNG; a seed runs the step

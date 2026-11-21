@@ -1,9 +1,10 @@
 //! The facade's plain records and enums, exposed as they are with `#[uniffi::remote]`: each
 //! declaration below restates an `ov_core` type field for field (the compiler checks they match),
-//! so no conversion code runs and Swift sees the same names. Records that hold a handle or an
+//! so no conversion code runs and the generated bindings see the same names. Records that hold a handle or an
 //! `OvError` can't be remote; they have local mirrors in `wrapped`.
 //!
-//! `SecretBytes` fields are `[u8]` here and `Data` in Swift; the caller wipes what it receives.
+//! `SecretBytes` fields are `[u8]` here (`Data` in Swift, `ByteArray` in Kotlin, `bytes` in
+//! Python); the caller wipes what it receives.
 
 use ov_core::api::ReconnectResult;
 use ov_core::api::{

@@ -1,7 +1,21 @@
-# ov-ffi-swift
+# ov-ffi
 
-The UniFFI Swift binding of openvireo-core: the Swift module `OpenVireoRustCore` over
-`OpenVireoCore.xcframework` (binary target `OpenVireoRustCoreFFI`).
+The UniFFI binding of openvireo-core. One crate (library `ov_ffi`) generates every UniFFI front end;
+`uniffi.toml` holds the per-language settings:
+
+- Swift: the module `OpenVireoRustCore` over `OpenVireoCore.xcframework` (binary target
+  `OpenVireoRustCoreFFI`). Everything below is about this one.
+- Kotlin: package `com.openvireo.core`, loading `libov_ffi` through JNA.
+- Python: loading `libov_ffi` through ctypes.
+
+The Kotlin and Python packages are not built yet (language-bindings.md B1, B2). To generate their
+sources by hand from a host build:
+
+```sh
+cargo build -p ov-ffi --lib
+cargo run -p ov-ffi --features cli --bin uniffi-bindgen -- generate \
+  --library target/debug/libov_ffi.dylib --language kotlin --out-dir /tmp/ov-kotlin   # or python
+```
 
 ## Build and test
 

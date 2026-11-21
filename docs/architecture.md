@@ -7,7 +7,7 @@ three-way merge. Every client calls it:
 | Client | Repo | Binding | How the client gets it |
 |---|---|---|---|
 | `@openvireo/sdk` 1.0, and through it the web app | openvireo-sdk, openvireo-web | `bindings/ov-wasm` + `bindings/ov-wasm-lite` (wasm-bindgen) | the `@openvireo/core-wasm` npm package (vendored as a tarball until it is published) |
-| iOS app and its AutoFill extension | openvireo-ios | `bindings/ov-ffi-swift` (UniFFI) | `scripts/build-vendor.sh` runs `cargo xtask xcframework` at a pinned commit and links the static libraries |
+| iOS app and its AutoFill extension | openvireo-ios | `bindings/ov-ffi` (UniFFI) | `scripts/build-vendor.sh` runs `cargo xtask xcframework` at a pinned commit and links the static libraries |
 | Desktop (Qt) | openvireo | `bindings/ov-ffi-cpp` (cxx) | Corrosion builds a wrapper crate that pins `ov-ffi-cpp` to a git commit |
 | `ov` CLI | this repo | none (native Rust) | `bins/ov` |
 
@@ -31,7 +31,7 @@ flowchart TD
   subgraph bindings[bindings and bins: the only code that knows a platform]
     wasm[ov-wasm<br/>full module]
     lite[ov-wasm-lite<br/>lite module]
-    swift[ov-ffi-swift]
+    ffi[ov-ffi<br/>UniFFI: Swift, Kotlin, Python]
     cpp[ov-ffi-cpp]
     ov[bins/ov]
   end
@@ -48,7 +48,7 @@ flowchart TD
   http[ov-http<br/>HttpRequest, HttpResponse]
   err[ov-error<br/>OvError]
 
-  wasm & swift & cpp & ov --> core
+  wasm & ffi & cpp & ov --> core
   lite --> share & crypto
   core --> vault & sync & share & opaque & proto & host
   vault --> crypto & kdbx & proto
@@ -85,7 +85,7 @@ Lines are non-test Rust in `src/` on 2026-11-21.
 | `crates/ov-testkit` | 5,915 | Dev-only: typed loaders for `vectors/`, fixed and manual clocks, in-memory auth and sync servers (`TestServers`) with real EdDSA JWTs and fault injection. Native only. |
 | `bindings/ov-wasm` | 5,111 | The full wasm module and the npm package template (`npm/`: loaders, Host adapters, `.d.ts`). [README](../bindings/ov-wasm/README.md) |
 | `bindings/ov-wasm-lite` | 30 | The lite wasm module: primitives, share links and TOTP. No code of its own; it compiles `ov-wasm`'s shared modules again. |
-| `bindings/ov-ffi-swift` | 5,090 | UniFFI binding: Swift module `OpenVireoRustCore`, C module `OpenVireoRustCoreFFI`. [README](../bindings/ov-ffi-swift/README.md) |
+| `bindings/ov-ffi` | 5,090 | UniFFI binding: Swift module `OpenVireoRustCore`, C module `OpenVireoRustCoreFFI`; `uniffi.toml` also configures Kotlin (`com.openvireo.core`) and Python. [README](../bindings/ov-ffi/README.md) |
 | `bindings/ov-ffi-cpp` | 7,360 | cxx binding: `libovcore` + `<ovcore.h>` (namespace `ov`), C++17. [README](../bindings/ov-ffi-cpp/README.md) |
 | `bins/ov` | 4,531 | The `ov` CLI, on the facade, with a reqwest Host. |
 | `xtask` | | Build and check tasks (`cargo xtask help`). |

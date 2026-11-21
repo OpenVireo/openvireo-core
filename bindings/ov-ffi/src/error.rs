@@ -55,7 +55,7 @@ codes! {
 /// Every error the core returns (`ov_error::OvError`).
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Error)]
 pub enum OvError {
-    /// The one variant; Swift reads the fields through the `OvError` extension in
+    /// The one variant. Swift, for example, reads the fields through the `OvError` extension in
     /// `Sources/OpenVireoRustCore/OvError+Fields.swift`.
     Failure {
         /// The typed code.

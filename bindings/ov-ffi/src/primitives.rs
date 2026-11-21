@@ -1,4 +1,4 @@
-//! `ov-crypto` primitives for Swift (`ov_crypto::primitives`). Byte arrays of the wrong length
+//! `ov-crypto` primitives for the platform bindings (`ov_crypto::primitives`). Byte arrays of the wrong length
 //! are `invalid_request`; derived secrets come back as `Data` that the caller wipes.
 
 use ov_crypto::primitives as p;

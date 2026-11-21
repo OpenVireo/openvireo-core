@@ -9,6 +9,7 @@ use std::process::{Command, ExitCode};
 // One module per task-owned command (W1-BW wasm, W1-BS xcframework, W1-BC cpp, W1-P openapi, W4-R release).
 mod cpp;
 mod kotlin;
+mod kotlin_facade;
 mod openapi;
 mod python;
 mod release;

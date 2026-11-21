@@ -1,5 +1,6 @@
 // com.openvireo:openvireo-core-jvm: the generated Kotlin binding, the shared default hosts, the
-// JVM-only hosts (java.net.http, java.util.logging) and the natives under JNA's resource layout.
+// JVM-only hosts (java.net.http, java.util.logging), the generated Java facade
+// (com.openvireo.core.java) and the natives under JNA's resource layout.
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -16,6 +17,7 @@ base {
 @Suppress("UNCHECKED_CAST")
 val nativeSlices = rootProject.extra["ovNativeSlices"] as Map<String, String>
 val generatedDir = rootProject.extra["ovGeneratedDir"] as File
+val facadeDir = rootProject.extra["ovFacadeDir"] as File
 val nativesDir = rootProject.extra["ovNativesDir"] as File
 val sharedDir = rootProject.extra["ovSharedDir"] as File
 
@@ -48,6 +50,7 @@ kotlin {
 sourceSets {
     main {
         kotlin.srcDir(files(generatedDir).builtBy(":generateBindings"))
+        kotlin.srcDir(files(facadeDir).builtBy(":generateBindings"))
         kotlin.srcDir(sharedDir)
         resources.srcDir(files(nativesDir).builtBy(":generateBindings"))
     }

@@ -12,12 +12,12 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-/// The CLI version as a literal, so [`cli::USAGE`] can be built with `concat!`. It follows the TS
-/// CLI (`VERSION` in session.ts) until the TS CLI is retired.
+/// The CLI version as a literal, so [`cli::USAGE`] can be built with `concat!`: the openvireo-core
+/// release (the workspace version), which `cargo xtask release verify` checks `ov version` against.
 #[macro_export]
 macro_rules! version {
     () => {
-        "0.11.0"
+        env!("CARGO_PKG_VERSION")
     };
 }
 

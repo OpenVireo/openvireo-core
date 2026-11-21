@@ -218,9 +218,11 @@ function substitute(text, vars) {
   return text.replace(/\{([A-Z_]+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 }
 
-/** Values that differ on every run, so both transcripts can be compared. */
+/** Values that differ on every run, so both transcripts can be compared. The CLI version differs too: the
+ * native `ov` prints the openvireo-core release, the TS one its package version. */
 function normalise(text, info) {
   return text
+    .replace(/^ov \d+\.\d+\.\d+(-[0-9A-Za-z.]+)?(?=[:\n]|$)/gm, "ov <version>")
     .replaceAll(info.readToken, "<read-token>")
     .replaceAll(info.writeToken, "<write-token>")
     .replaceAll(info.secretKey, "<secret-key>")

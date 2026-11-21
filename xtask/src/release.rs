@@ -377,7 +377,7 @@ fn publishable_manifest(text: &str) -> Result<String> {
 
 fn xcframework(out: &Path, work: &Path) -> Result {
     crate::xcframework::run(&[])?;
-    let swift = root().join("bindings").join("ov-ffi-swift");
+    let swift = root().join("bindings").join("ov-ffi");
     let built = swift.join("build").join(XCFRAMEWORK);
 
     // SwiftPM wants the .xcframework at the top of the zip; ditto keeps symlinks and permissions.

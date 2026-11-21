@@ -1,0 +1,16 @@
+# uniffi-bindgen settings per language (read in library mode from this crate's root).
+[bindings.swift]
+# The Swift module. Not `OpenVireoCore`, which is the existing iOS framework target.
+module_name = "OpenVireoRustCore"
+# The C module inside OpenVireoCore.xcframework that the generated Swift imports.
+ffi_module_name = "OpenVireoRustCoreFFI"
+ffi_module_filename = "OpenVireoRustCoreFFI"
+
+# The Kotlin binding (JVM and Android): the package and the cdylib that JNA loads.
+[bindings.kotlin]
+package_name = "com.openvireo.core"
+cdylib_name = "ov_ffi"
+
+# The Python binding: the cdylib that ctypes loads.
+[bindings.python]
+cdylib_name = "ov_ffi"

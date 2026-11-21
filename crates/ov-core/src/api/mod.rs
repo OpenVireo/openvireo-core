@@ -1,4 +1,4 @@
-//! The facade: the only API the bindings (`ov-wasm`, `ov-ffi-swift`, `ov-ffi-cpp`) and the `ov`
+//! The facade: the only API the bindings (`ov-wasm`, `ov-ffi`, `ov-ffi-cpp`) and the `ov`
 //! CLI see.
 //!
 //! **Frozen contract** (rust-core-tasks.md §2.3, tag `contract-v1`; later additions up to

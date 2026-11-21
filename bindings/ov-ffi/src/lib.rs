@@ -1,13 +1,14 @@
-//! UniFFI Swift binding of the ov-core facade (rust-core-tasks.md §2.3, task W1-BS).
+//! UniFFI binding of the ov-core facade (rust-core-tasks.md §2.3, task W1-BS). One crate, one
+//! cdylib/staticlib, three generated front ends: Swift, Kotlin and Python (language-bindings.md).
 //!
-//! `cargo xtask xcframework` builds this crate for iOS, the iOS simulator and macOS, generates the
-//! Swift module `OpenVireoRustCore` and packs `OpenVireoCore.xcframework` (see `xtask/src/xcframework.rs`).
+//! For Apple platforms, `cargo xtask xcframework` builds this crate for iOS, the iOS simulator and
+//! macOS, generates the Swift module `OpenVireoRustCore` and packs `OpenVireoCore.xcframework` (see `xtask/src/xcframework.rs`).
 //!
 //! - [`types`]: the facade's records and enums, exposed as they are (UniFFI remote types).
 //! - [`types_ext`]: local mirrors of the records that hold handles, tuples or errors.
 //! - [`handles`], [`account_ext`]: the handles as objects; every method goes through `guard`,
 //!   so a panic becomes `OvError { code: internal }`.
-//! - [`host`]: the Host traits as foreign traits Swift implements.
+//! - [`host`]: the Host traits as foreign traits the platform implements.
 //! - [`error`]: `OvError` / `TransportError`.
 //! - [`primitives`]: SHA-256, HKDF, XChaCha20-Poly1305, Argon2id, randomness.
 //! - [`crypto`]: the rest of `ov-crypto` (Secret Key, AUK, envelopes, keysets, vault names,
@@ -19,7 +20,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-uniffi::setup_scaffolding!("ov_ffi_swift");
+uniffi::setup_scaffolding!("ov_ffi");
 
 pub mod account_ext;
 pub mod crypto;

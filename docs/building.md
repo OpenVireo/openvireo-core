@@ -52,10 +52,10 @@ inside a packed package doesn't install for its consumers. Both go away when the
 cargo xtask xcframework                 # every slice: ios, ios-sim (arm64 + x86_64), macos (arm64 + x86_64)
 cargo xtask xcframework --test-server   # also the OPAQUE server steps, for test targets
 cargo xtask xcframework --macos-only    # only the macOS slice, enough for `swift test`
-cargo xtask xcframework --smoke         # then `swift test` in bindings/ov-ffi-swift/SmokeTests
+cargo xtask xcframework --smoke         # then `swift test` in bindings/ov-ffi/SmokeTests
 ```
 
-macOS only. Outputs (git-ignored), under `bindings/ov-ffi-swift/`: `build/OpenVireoCore.xcframework` and
+macOS only. Outputs (git-ignored), under `bindings/ov-ffi/`: `build/OpenVireoCore.xcframework` and
 the generated `Sources/OpenVireoRustCore/OpenVireoRustCore.swift`. The static libraries and the
 bindgen run always use the same features, so the generated Swift never calls a symbol the library
 lacks. Never ship a `--test-server` build.

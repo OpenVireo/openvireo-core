@@ -204,6 +204,14 @@ Behaviour changes:
 | 15 | `open_vault` with nothing kept locally is one GET (was a download plus a sync that downloaded again); a rolled-back server is still detected against a cached state |
 | 16 | Merge: an entry only one side changed (by content), in the same second as the other copy, is taken whole instead of combined, so a pull with nothing changed locally doesn't upload (W3-IW3 smoke). A changed side whose clock is behind is still combined (merge fixture 03) |
 
+## Renamed: `ov-ffi-swift` → `ov-ffi` (2026-11-21)
+
+Renamed 2026-11-21, no contract change. The UniFFI binding crate `bindings/ov-ffi-swift` (library
+`ov_ffi_swift`) is now `bindings/ov-ffi` (library `ov_ffi`), so the same crate can also generate the
+Kotlin and Python bindings (`openvireo-dev-guide/plans/language-bindings.md`). The Swift module
+`OpenVireoRustCore` and the C module `OpenVireoRustCoreFFI` keep their names. Earlier sections keep
+the old path as it was when they were written.
+
 ## Consequences
 
 - Wave 1/2 agents build against these files and raise a CONTRACT-REQUEST for any change.

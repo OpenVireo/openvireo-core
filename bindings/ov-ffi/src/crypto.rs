@@ -1,4 +1,4 @@
-//! `ov-crypto` for Swift (SPEC §1-§7, §9, §18): the pieces the iOS app's `Crypto/` code wraps, so it
+//! `ov-crypto` for the platform bindings (SPEC §1-§7, §9, §18): the pieces the iOS app's `Crypto/` code wraps, so it
 //! can become thin wrappers (task W3-BS2).
 //!
 //! - Secret Key (§2), AUK (§3), envelopes `wrap`/`seal` (§4, §6) with the SA and vault-key variants,

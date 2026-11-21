@@ -116,7 +116,7 @@ fn ci() -> Result {
 
     if cfg!(target_os = "macos") {
         let mut ios = portable;
-        ios.extend(existing_packages(&["ov-ffi-swift"])?);
+        ios.extend(existing_packages(&["ov-ffi"])?);
         build_for("iOS build", &ios, &IOS_TARGETS)?;
     } else {
         println!("\n==> iOS build: skipped (needs a macOS host)");

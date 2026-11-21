@@ -173,11 +173,19 @@ pub struct StoredSession {
 }
 
 /// Why a session ended (the SDK's `SignedOutReason`).
+///
+/// What this device keeps of the user's offline cache (SPEC §20; contract-v1.8): after an accident
+/// ([`TokenReused`](Self::TokenReused), [`SessionExpired`](Self::SessionExpired)) each vault's
+/// unsynced edits and AutoFill edits stay, still encrypted with the vault key, and merge in after
+/// the same user next signs in; the vault list, keyset, sync states and server copies go. For every
+/// other reason, and for this device's own sign-out, everything goes (the
+/// [BlobCache](crate::host::BlobCache)'s `clear_user`). Before contract-v1.8 everything went every
+/// time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SignedOutReason {
-    /// A refresh token was used twice (SPEC §9).
+    /// A refresh token was used twice (SPEC §9). Unsynced edits are kept.
     TokenReused,
-    /// The refresh token expired.
+    /// The refresh token expired. Unsynced edits are kept.
     SessionExpired,
     /// The server refused the session (revoked elsewhere, password changed).
     Unauthorized,
@@ -279,6 +287,13 @@ pub struct Profile {
     pub orgs: Vec<OrgMembership>,
     /// Set while the account is pending deletion (SPEC §23).
     pub deletion_scheduled_for: Option<Rfc3339>,
+    /// The KDF parameters the keyset is wrapped with (what the offline cache keeps; SPEC §3, §20).
+    /// Contract-v1.8.
+    pub kdf: KdfParams,
+    /// The keyset's public keys, signature checked, with the fingerprint (SPEC §5). Different from
+    /// the ones this device knew means the keyset was replaced (account recovery, SPEC §18).
+    /// Contract-v1.8.
+    pub public_keys: PublicKeys,
 }
 
 /// One device signed in to the account (`GET /me/devices`).

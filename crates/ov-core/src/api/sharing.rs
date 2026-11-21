@@ -61,6 +61,21 @@ impl Account {
         self.share_vault_impl(&vault_id, grantee, role, &cancel).await
     }
 
+    /// [`share_vault`](Self::share_vault) to the keys the user confirmed (the fingerprint shown from
+    /// [`look_up`](Self::look_up) or [`recipient`](Self::recipient)): the grantee's keys are fetched
+    /// and checked again, and if they are no longer `keys` (changed since they were shown) nothing is
+    /// sealed and the error is `invalid_public_keys`. Contract-v1.8.
+    pub async fn share_vault_with_keys(
+        &self,
+        vault_id: String,
+        grantee: Grantee,
+        role: VaultRole,
+        keys: PublicKeys,
+        cancel: CancelToken,
+    ) -> Result<GrantResult, OvError> {
+        self.share_vault_confirmed_impl(&vault_id, grantee, role, keys, &cancel).await
+    }
+
     /// Changes a member's role on a vault (re-grants at the current key version).
     pub async fn change_role(
         &self,
@@ -72,7 +87,8 @@ impl Account {
         self.share_vault_impl(&vault_id, Grantee::Principal(principal), role, &cancel).await.map(|_| ())
     }
 
-    /// Removes members and rotates the vault key in one step (SPEC §7).
+    /// Removes members and rotates the vault key in one step (SPEC §7), with the pending-rotation
+    /// rules of [`rotate_vault_key`](Self::rotate_vault_key).
     pub async fn revoke(
         &self,
         vault_id: String,
@@ -85,6 +101,14 @@ impl Account {
     /// Key rotation (SPEC §7 "Key versions and rotation"): a new key sealed to every remaining
     /// member, `POST keys` (removing `remove` at once), download, re-key, conditional PUT (merge and
     /// retry on 412), activate, and re-encrypt the name. Needs `manage` (`forbidden` otherwise).
+    ///
+    /// A rotation already pending on the vault (contract-v1.8):
+    /// - one this account holds the pending key for (another of its devices, or this one, stopped
+    ///   before activating) is finished first (re-key, activate, name), then the new rotation runs
+    ///   from that version;
+    /// - one it doesn't hold the key for is `conflict` (409) with
+    ///   [`wire_code`](OvError::wire_code) `rotation_pending` (in `server_code`), until it is
+    ///   activated or, after 24 hours, the server lets this rotation replace it.
     pub async fn rotate_vault_key(
         &self,
         vault_id: String,

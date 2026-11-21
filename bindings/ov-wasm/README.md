@@ -230,6 +230,21 @@ iOS); all on the full module (F):
 | one wrong-key code | a wrong local-file key is `vault_key_mismatch` (was `kdbx_error`) |
 | wrong Secret Key vs wrong password | sign-in `unauthorized` errors have `details.reason` `"keyset_unwrap_failed"` or `"opaque_refused"` |
 
+### Facade additions in contract-v1.8
+
+| Need | Binding |
+|---|---|
+| share to the keys the user confirmed | `account.shareVaultWithKeys(vaultId, grantee, role, publicKeys)` (`invalid_public_keys` if they changed) |
+| a self-hosted database's bytes without its key | `selfHosted.download(databaseId)` → `Uint8Array \| undefined` |
+| a service account's vault as a file | `sa.vaultKdbxCredentials(vaultId)`, `sa.syncVaultKdbx(vaultId, kdbx, base?, options?)` |
+| the profile's KDF and keyset keys | `Profile.kdf`, `Profile.publicKeys` |
+| not a sync server | `selfHosted.health()` rejects with `code: "not_sync_server"` |
+
+Behaviour changes (no new calls): Recycle Bin restore to the previous group (files become KDBX 4.1 when
+needed), `vault.sync()` keeps edits made while it runs, `restoreEntry` on a binned entry keeps its
+history, `exportPlain` = the ExportDialog's bytes, `rotation_pending`, deletion `details`, accidental
+session ends keep unsynced edits, `openVault` is one GET.
+
 Record fields added in v1.6 (`usageCount`, `AttachmentInfo.protected`, `SyncOptions.acceptServerState`) default when a JS record that
 lacks them comes back in (`applyAutofillEdits`, `keepAutofillEdit`).
 
@@ -238,7 +253,7 @@ lacks them comes back in (`applyAutofillEdits`, `keepAutofillEdit`).
 ```sh
 cargo xtask wasm                      # builds both modules into pkg/ (needs wasm-bindgen-cli 0.2.130 and binaryen)
 cd bindings/ov-wasm && npm ci
-npx vitest run                        # 10 files: smoke (Node, jsdom), host, low-level vectors, shared/lite parity, wipe, lite panic, esbuild bundle, contract-v1.6, contract-v1.7
+npx vitest run                        # 11 files: smoke (Node, jsdom), host, low-level vectors, shared/lite parity, wipe, lite panic, esbuild bundle, contract-v1.6, contract-v1.7, contract-v1.8
 npx tsc -p tsconfig.json              # the .d.ts describe the API (test/types.ts)
 ```
 

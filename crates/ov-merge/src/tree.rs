@@ -460,6 +460,8 @@ impl Pass<'_> {
             self.changes.push(group_record(ChangeType::Moved, src, format!("Previous location: {name}")));
             if let Some(g) = find_group_mut(&mut self.into.root, id) {
                 g.times.location_changed = src.times.location_changed;
+                // Where it was before the move goes with it, so the Recycle Bin restores it there
+                g.previous_parent_group = src.previous_parent_group;
             }
         }
         if modified < src.times.last_modification {

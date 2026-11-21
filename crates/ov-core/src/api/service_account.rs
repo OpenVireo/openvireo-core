@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use ov_error::OvError;
 
-use super::{CancelToken, OvClient, Principal, SecretBytes, ServerConfig, Vault, VaultRole};
+use super::{
+    CancelToken, KdbxCredentials, OvClient, Principal, SecretBytes, ServerConfig, SyncOptions, Vault,
+    VaultKdbxSyncResult, VaultRole,
+};
 use crate::state::ServiceAccountState;
 
 /// A vault granted to a service account.
@@ -125,6 +128,33 @@ impl ServiceAccount {
     ) -> Result<(), OvError> {
         let value = crate::impls::util::secret_text(value, "field value")?;
         self.write_impl(&reference, &value, create, &cancel).await
+    }
+
+    /// The credentials a granted vault's `.kdbx` is under, as
+    /// [`Account::vault_kdbx_credentials`](crate::api::Account::vault_kdbx_credentials): its newest
+    /// vault key as a raw key file. A secret: wipe it. Contract-v1.8.
+    pub async fn vault_kdbx_credentials(
+        &self,
+        vault_id: String,
+        cancel: CancelToken,
+    ) -> Result<KdbxCredentials, OvError> {
+        crate::impls::vault_files::sa_credentials(self, &vault_id, &cancel).await
+    }
+
+    /// Syncs a granted vault held as `.kdbx` bytes, as
+    /// [`Account::sync_vault_kdbx`](crate::api::Account::sync_vault_kdbx) does (needs `write` to
+    /// upload; a read-only grant gets `forbidden` when there is something to upload). An SA keeps no
+    /// offline cache, so the merge base is `base` (the server's bytes from the caller's last sync)
+    /// or none. Contract-v1.8.
+    pub async fn sync_vault_kdbx(
+        &self,
+        vault_id: String,
+        kdbx: Vec<u8>,
+        base: Option<Vec<u8>>,
+        options: SyncOptions,
+        cancel: CancelToken,
+    ) -> Result<VaultKdbxSyncResult, OvError> {
+        crate::impls::vault_files::sa_sync(self, &vault_id, kdbx, base, options, &cancel).await
     }
 
     /// Wipes the keyset, vault keys and cached vaults; later calls fail with `signed_out`.

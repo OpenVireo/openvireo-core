@@ -103,7 +103,8 @@ final class VaultModelTests: XCTestCase {
         try reopened.emptyRecycleBin()
         XCTAssertNil(try reopened.groupIdAt(path: "Email/Work"))
         let csv = String(decoding: try reopened.exportPlain(format: .csv, groupIds: nil), as: UTF8.self)
-        XCTAssertTrue(csv.hasPrefix("\"Folder\""))
+        // contract-v1.8: the web app's header, unquoted
+        XCTAssertTrue(csv.hasPrefix("Folder,Title,Username,Password,URL,Notes"))
     }
 }
 

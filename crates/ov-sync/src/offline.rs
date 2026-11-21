@@ -207,6 +207,7 @@ impl VaultSession {
                 self.key = Some(key);
             }
         }
+        let mut fresh: Option<SyncState> = None;
         if self.db.is_none() {
             // Nothing local yet: the server copy becomes the working copy
             let got = match blob.get(None).await {
@@ -218,15 +219,69 @@ impl VaultSession {
                     return Err(e);
                 }
             };
-            let GetResult::Ok { data, .. } = got else {
+            let GetResult::Ok { data, version } = got else {
                 return Err(
                     OvError::new(OvErrorCode::NotFound, "this vault has no data on the sync server").with_status(404)
                 );
             };
-            let (db, version) = open_with_key_versions(&data, &sorted)?;
-            let k = sorted.iter().find(|k| k.version == version).expect("the version that opened it");
-            self.key = Some(vault_credentials(&k.key)?);
+            let (db, kv) = open_with_key_versions(&data, &sorted)?;
+            let k = sorted.iter().find(|k| k.version == kv).expect("the version that opened it");
+            let key = vault_credentials(&k.key)?;
+            let state = SyncState {
+                etag: version.etag.clone(),
+                revision: version.revision.unwrap_or(-1),
+                generation: ov_kdbx::vault::sync_generation(&db),
+                snapshot: ov_merge::snapshot_of(&db),
+                base: Some(data.clone()),
+                last_sync: iso_time(blob.client().clock().now_unix_ms()),
+            };
+            // What this device synced before still tells a rolled-back server
+            if let (Some(prev), false) = (self.state.clone().flatten(), opts.accept_server_state) {
+                if state.revision >= 0 && state.revision < prev.revision {
+                    return Err(OvError::new(
+                        OvErrorCode::ServerRolledBack,
+                        format!(
+                            "the sync server returned revision {}, older than revision {} this device already synced",
+                            state.revision, prev.revision
+                        ),
+                    ));
+                }
+                if state.generation < prev.generation {
+                    return Err(OvError::new(
+                        OvErrorCode::ServerRolledBack,
+                        format!(
+                            "the server copy has sync generation {}, older than {} already synced here",
+                            state.generation, prev.generation
+                        ),
+                    ));
+                }
+            }
+            if opts.rekey_to.is_none() {
+                // Just downloaded and nothing to change: no second request (contract-v1.8)
+                if let Some(cache) = &self.cache {
+                    cache.save_state(&state).await?;
+                }
+                self.offline = false;
+                self.db = Some(db.clone());
+                self.key = Some(key.clone());
+                self.state = Some(Some(state.clone()));
+                let index = sorted.iter().position(|k| k.version == kv);
+                return Ok(SyncResult {
+                    outcome: SyncOutcome::Pulled,
+                    db,
+                    key,
+                    credentials_index: index,
+                    data: Some(data),
+                    state,
+                    conflicts: Vec::new(),
+                    changes: Vec::new(),
+                    attempts: 1,
+                    clock_offset_ms: blob.clock_offset_ms(),
+                });
+            }
+            self.key = Some(key);
             self.db = Some(db);
+            fresh = Some(state);
         }
         let rekey = opts.rekey_to.map(|to| {
             move |db: &mut Database| -> Result<Option<CompositeKey>, OvError> {
@@ -234,12 +289,14 @@ impl VaultSession {
             }
         });
         let local_key = self.key.clone().expect("a key with the working copy");
-        let state = self.state.clone().flatten();
+        // A copy just downloaded for a re-keyed upload is its own base: upload against it
+        let from_download = fresh.is_some();
+        let state = fresh.or_else(|| self.state.clone().flatten());
         let mut o = SyncOptions::new(&local_key, &creds)
             .state(state.as_ref())
             .local_changed(opts.local_changed.unwrap_or(true))
-            .accept_server_state(opts.accept_server_state)
-            .remote_is_base(opts.remote_is_base);
+            .accept_server_state(opts.accept_server_state && !from_download)
+            .remote_is_base(opts.remote_is_base || from_download);
         if let Some(r) = &rekey {
             o = o.before_upload(r as &dyn BeforeUpload);
         }

@@ -7,13 +7,16 @@
 //! Differences from the TS code, all deliberate:
 //! - Deleting a group for good records a `DeletedObject` for every entry and subgroup inside it, as
 //!   KeePassXC does (kdbxweb records only the group), so sync can't bring them back.
-//! - `PreviousParentGroup` is set on a move only for KDBX 4.1 databases (4.0 has no such element).
+//! - `PreviousParentGroup` is set on every move, whatever the database's version (kdbxweb sets it
+//!   only on KDBX 4.1 databases): a 4.0 database that has one is saved as 4.1
+//!   ([`write_version`](crate::write_version)), so the Recycle Bin can restore items to where they
+//!   were.
 
 use base64::Engine as _;
 use ov_error::{OvError, OvErrorCode};
 use zeroize::Zeroizing;
 
-use crate::model::{Database, DeletedObject, Entry, Group, KdbxVersion, StringField, Timestamp, Uuid, STANDARD_FIELDS};
+use crate::model::{Database, DeletedObject, Entry, Group, StringField, Timestamp, Uuid, STANDARD_FIELDS};
 use crate::vault::new_uuid;
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
@@ -234,10 +237,6 @@ fn in_recycle_bin(db: &Database, id: Uuid) -> bool {
     find_group(&db.root, rb).is_some_and(|bin| find_group(bin, id).is_some())
 }
 
-fn is_v41(db: &Database) -> bool {
-    db.header.version >= KdbxVersion { major: 4, minor: 1 }
-}
-
 // ---------------------------------------------------------------------------------------------
 // Moving and deleting
 
@@ -281,24 +280,19 @@ enum Item {
     Group(Group),
 }
 
-/// Moves a detached item into group `to` (kdbxweb `move`): `LocationChanged` = now, and on 4.1
-/// `PreviousParentGroup` = the old parent.
+/// Moves a detached item into group `to` (kdbxweb `move`): `LocationChanged` = now and
+/// `PreviousParentGroup` = the old parent (on every version, see the module docs).
 fn attach(db: &mut Database, item: Item, from: Uuid, to: Uuid, now: Timestamp) -> Result<(), OvError> {
-    let v41 = is_v41(db);
     let dest = find_group_mut(&mut db.root, to).ok_or_else(|| not_found_group("Target group"))?;
     match item {
         Item::Entry(mut e) => {
             e.times.location_changed = now;
-            if v41 {
-                e.previous_parent_group = Some(from);
-            }
+            e.previous_parent_group = Some(from);
             dest.entries.push(e);
         }
         Item::Group(mut g) => {
             g.times.location_changed = now;
-            if v41 {
-                g.previous_parent_group = Some(from);
-            }
+            g.previous_parent_group = Some(from);
             dest.groups.push(g);
         }
     }

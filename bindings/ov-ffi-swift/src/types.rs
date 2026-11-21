@@ -195,6 +195,8 @@ pub struct Profile {
     pub plan: Option<Plan>,
     pub orgs: Vec<OrgMembership>,
     pub deletion_scheduled_for: Option<String>,
+    pub kdf: KdfParams,
+    pub public_keys: PublicKeys,
 }
 
 #[uniffi::remote(Record)]

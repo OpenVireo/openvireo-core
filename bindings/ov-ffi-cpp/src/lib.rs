@@ -28,6 +28,7 @@ mod primitives;
 mod records;
 mod test_servers;
 mod v16;
+mod v18;
 
 pub use edge::FfiError;
 pub use handles::{
@@ -614,6 +615,10 @@ pub mod ffi {
         plan: Plan,
         orgs: Vec<OrgMembership>,
         deletion_scheduled_for: String,
+        /// The KDF the keyset is wrapped with (contract-v1.8).
+        kdf: KdfParams,
+        /// The keyset's public keys, signature checked (contract-v1.8).
+        public_keys: PublicKeys,
     }
 
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -2015,6 +2020,35 @@ pub mod ffi {
         fn access_token(self: &Account, force_refresh: bool, cancel: &CancelToken) -> Result<Vec<u8>>;
         /// [`Vault::sync`] with every option (`accept_server_state`).
         fn sync_with_options(self: &Vault, options: SyncOptions, cancel: &CancelToken) -> Result<SyncReport>;
+
+        // ---- contract-v1.8
+        /// `share_vault` to the keys the user confirmed; `invalid_public_keys` if they changed.
+        fn share_vault_with_keys(
+            self: &Account,
+            vault_id: &str,
+            grantee: &Grantee,
+            role: VaultRole,
+            keys: &PublicKeys,
+            cancel: &CancelToken,
+        ) -> Result<GrantResult>;
+        /// A database as the server has it, without its key; `has == false` when there is none.
+        fn download(self: &SelfHosted, database_id: &str, cancel: &CancelToken) -> Result<OptionalBytes>;
+        /// A granted vault's newest key as `.kdbx` credentials (a raw key file). Wipe them.
+        fn vault_kdbx_credentials(
+            self: &ServiceAccount,
+            vault_id: &str,
+            cancel: &CancelToken,
+        ) -> Result<KdbxCredentials>;
+        /// Syncs a granted vault held as `.kdbx` bytes; `has_base == false` is no base.
+        fn sync_vault_kdbx(
+            self: &ServiceAccount,
+            vault_id: &str,
+            kdbx: Vec<u8>,
+            has_base: bool,
+            base: Vec<u8>,
+            options: SyncOptions,
+            cancel: &CancelToken,
+        ) -> Result<VaultKdbxSyncResult>;
 
         // ---- in-process test servers (feature `test-server`; README.md "Test servers")
         type TestServers;

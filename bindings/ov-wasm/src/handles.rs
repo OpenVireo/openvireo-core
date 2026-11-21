@@ -545,6 +545,24 @@ impl AccountJs {
         })
     }
 
+    /// Shares a vault to the keys the user confirmed; `invalid_public_keys` if they changed since
+    /// (contract-v1.8).
+    #[wasm_bindgen(js_name = shareVaultWithKeys, unchecked_return_type = "Promise<GrantResult>")]
+    pub fn share_vault_with_keys(
+        &self,
+        vault_id: String,
+        #[wasm_bindgen(unchecked_param_type = "Grantee")] grantee: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "VaultRole")] role: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "PublicKeys")] keys: JsValue,
+        signal: Option<AbortSignal>,
+    ) -> Promise {
+        let a = self.0.clone();
+        call(signal, move |t| async move {
+            a.share_vault_with_keys(vault_id, arg(&grantee, "grantee")?, arg(&role, "role")?, arg(&keys, "keys")?, t)
+                .await
+        })
+    }
+
     /// Changes a member's role on a vault.
     #[wasm_bindgen(js_name = changeRole, unchecked_return_type = "Promise<void>")]
     pub fn change_role(
@@ -1289,6 +1307,30 @@ impl ServiceAccountJs {
         call(signal, move |t| async move { s.write(reference, value, create, t).await })
     }
 
+    /// The credentials a granted vault's `.kdbx` is under (contract-v1.8). Wipe them.
+    #[wasm_bindgen(js_name = vaultKdbxCredentials, unchecked_return_type = "Promise<KdbxCredentials>")]
+    pub fn vault_kdbx_credentials(&self, vault_id: String, signal: Option<AbortSignal>) -> Promise {
+        let s = self.0.clone();
+        call(signal, move |t| async move { s.vault_kdbx_credentials(vault_id, t).await })
+    }
+
+    /// Syncs a granted vault held as `.kdbx` bytes (contract-v1.8).
+    #[wasm_bindgen(js_name = syncVaultKdbx, unchecked_return_type = "Promise<VaultKdbxSyncResult>")]
+    pub fn sync_vault_kdbx(
+        &self,
+        vault_id: String,
+        kdbx: Vec<u8>,
+        base: Option<Vec<u8>>,
+        #[wasm_bindgen(unchecked_param_type = "SyncOptions | undefined")] options: JsValue,
+        signal: Option<AbortSignal>,
+    ) -> Promise {
+        let s = self.0.clone();
+        call(signal, move |t| async move {
+            let options: Option<api::SyncOptions> = arg(&options, "options")?;
+            s.sync_vault_kdbx(vault_id, kdbx, base, options.unwrap_or_default(), t).await
+        })
+    }
+
     /// Drops the keys from memory.
     pub fn close(&self) {
         self.0.close();
@@ -1387,6 +1429,14 @@ impl SelfHostedJs {
             let (credentials, options) = (arg(&credentials, "credentials")?, arg(&options, "options")?);
             s.sync_database_with(database_id, kdbx, credentials, options, t).await
         })
+    }
+
+    /// A database as the server has it, without its key; `undefined` when there is none
+    /// (contract-v1.8).
+    #[wasm_bindgen(unchecked_return_type = "Promise<Uint8Array | undefined>")]
+    pub fn download(&self, database_id: String, signal: Option<AbortSignal>) -> Promise {
+        let s = self.0.clone();
+        call(signal, move |t| async move { s.download(database_id, t).await })
     }
 
     /// The versions the server keeps of a database, newest first (contract-v1.6).

@@ -449,6 +449,25 @@ Details in `docs/adr/0001-contract.md` § contract-v1.6.
 | desktop "continue anyway" after a server rollback / lost database | `SyncOptions::accept_server_state` | W3-ID2 |
 | desktop code still on its own HTTP (`AuthClient`) borrowing the session | `Account::access_token` | W3-ID2 |
 
+## 12. contract-v1.8 additions (2026-11-20)
+
+From the iOS migration (W3-II2b, W3-II3) and the desktop (W3-ID2c). Details and the behaviour changes in
+`docs/adr/0001-contract.md` § contract-v1.8.
+
+| Client | Rust | Notes |
+|---|---|---|
+| Swift `share(_:with:role:)` with the fingerprint the user compared; desktop VaultSharing | `Account::share_vault_with_keys` | `invalid_public_keys` when the keys changed since they were shown |
+| Swift `SelfHostedSync.download` (first copy of a linked DB) | `SelfHosted::download` | `None` for 404 |
+| Swift `SelfHostedSync.pair` health check | `SelfHosted::health` | `server_code` `not_sync_server` |
+| desktop service-account session (C++ `AuthClient` exchange + `GET /vaults`) | `ServiceAccount::vault_kdbx_credentials`, `ServiceAccount::sync_vault_kdbx` | as the Account ones |
+| desktop offline profile; keyset replaced by recovery | `Profile.kdf`, `Profile.public_keys` | from `Account::me` |
+| Swift/desktop rotation finishing a pending one | `Account::rotate_vault_key` | `server_code` `rotation_pending` |
+| Swift deletion screens | `OvError::details` | `deletion_blocked` → `orgs`; `account_pending_deletion` → `scheduledFor` |
+| Swift `Export` / web ExportDialog | `Vault::export_plain` | the web app's bytes |
+| Swift `restoreEntry` keeping history | `Vault::restore_entry` | binned entry leaves the bin |
+| Swift edits replayed after a sync (`editsDuringSync`) | `Vault::sync` | merged by the core |
+| Swift `FileBlobCache.clearUser` keeping unsynced edits | the core on `token_reused` / `session_expired` | `clear_user` now always wipes all |
+
 ## 11. contract-v1.7 additions (2026-11-20)
 
 From the SDK 1.0 migration (W3-IW2) and the desktop (W3-ID2). Details in

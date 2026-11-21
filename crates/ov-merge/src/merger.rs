@@ -4,7 +4,7 @@
 //! deletions decided against the base, the Recycle Bin, the sync generation bump; plus the conflict
 //! checks against the last-sync snapshot.
 
-use ov_kdbx::model::{Database, DeletedObject, Entry, Group, Timestamp, Uuid};
+use ov_kdbx::model::{CustomDataItem, Database, DeletedObject, Entry, Group, Timestamp, Uuid};
 
 use crate::fields::{fields_of, resolve_fields, same_fields, same_value, union_keys, FieldKey, Fields};
 use crate::tree::{self, entries_under, find_entry, find_group, groups_under, MergeIntoOptions, MergeMode};
@@ -135,8 +135,14 @@ pub fn merge_in_place(
     let mut changes: Vec<MergeChange> = Vec::new();
     let mut conflicts: Vec<EntryConflict> = Vec::new();
     let mut combined: Vec<Uuid> = Vec::new();
+    // Entries only one side changed, copied whole onto the other copy: (into local, into remote)
+    let (mut taken_local, mut taken_remote): (Vec<Uuid>, Vec<Uuid>) = (Vec::new(), Vec::new());
     // Before combine_entries and the structure merge copy one entry's location over the other's
     let locations = locations_of(local, remote);
+    // Database custom data merges three ways against the base, after the structure merge (which
+    // then leaves it alone): its one-way rule would drop an item the other side added
+    let custom_data =
+        base.map(|b| merge_custom_data(&local.meta.custom_data, &remote.meta.custom_data, &b.meta.custom_data));
     if let Some(base) = base {
         let ids: Vec<Uuid> = entries_under(&local.root).iter().map(|e| e.uuid).collect();
         for id in ids {
@@ -155,6 +161,30 @@ pub fn merge_in_place(
             // The structure merge keeps the newer entry: right when only one side changed and it is strictly newer
             let needed =
                 (local_changed && remote_changed) || (local_changed && lt <= rt) || (remote_changed && rt <= lt);
+            if needed && local_changed != remote_changed && lt == rt {
+                // Only one side changed it (by content, against the base), in the same second as the
+                // other copy's time (an edit in the second of the last sync): that side's entry wins
+                // whole and the other copy becomes it. Combining would stamp both with `now` and push
+                // history on the unchanged side, so a pull with nothing changed here would upload. A
+                // changed side whose clock is behind (strictly older) is still combined, as the
+                // desktop's SyncEngine does (merge fixture 03).
+                let (from, into, taken) = if remote_changed {
+                    (&*remote, &mut *local, &mut taken_local)
+                } else {
+                    (&*local, &mut *remote, &mut taken_remote)
+                };
+                let (src, parent) = find_entry(&from.root, id).expect("the entry is on both sides");
+                changes.push(tree::entry_record(
+                    ChangeType::Modified,
+                    src,
+                    Some(&parent.name),
+                    "Took the version changed on the other device",
+                ));
+                let copy = tree::copy_entry(src, Some(from), into, true);
+                put_back(into, copy);
+                taken.push(id);
+                continue;
+            }
             if needed {
                 let c = combine_entries(local, remote, base, id, now);
                 let (entry, parent) = find_entry(&local.root, id).expect("combined entry is in local");
@@ -185,9 +215,13 @@ pub fn merge_in_place(
         }
         None => Vec::new(),
     };
-    let opts = MergeIntoOptions::default();
-    let to_remote = tree::merge_into_raw(local, remote, MergeMode::KeepNewer, &opts);
-    let to_local = tree::merge_into_raw(remote, local, MergeMode::KeepNewer, &opts);
+    let opts = MergeIntoOptions { skip_database_custom_data: custom_data.is_some(), ..Default::default() };
+    let mut to_remote = tree::merge_into_raw(local, remote, MergeMode::KeepNewer, &opts);
+    let mut to_local = tree::merge_into_raw(remote, local, MergeMode::KeepNewer, &opts);
+    if let Some(merged) = &custom_data {
+        to_local.extend(apply_custom_data(&mut local.meta.custom_data, merged));
+        to_remote.extend(apply_custom_data(&mut remote.meta.custom_data, merged));
+    }
     let placed = apply_locations(local, remote, &locations);
     let mut after = match base {
         Some(base) if !pending.is_empty() => apply_deletions(local, remote, base, &pending),
@@ -197,6 +231,7 @@ pub fn merge_in_place(
 
     let added = entry_ids(&to_local, |c| c == ChangeType::Added, &[]);
     let mut updated = combined.clone();
+    updated.extend(taken_local.iter().copied());
     let moved_here = entry_ids(&to_local, |c| matches!(c, ChangeType::Modified | ChangeType::Moved), &added);
     for id in moved_here.into_iter().chain(placed.moved_here.iter().copied()) {
         if !updated.contains(&id) && !added.contains(&id) {
@@ -204,8 +239,10 @@ pub fn merge_in_place(
         }
     }
     let deleted = entry_ids(&after, |c| c == ChangeType::Deleted, &[]);
-    let remote_changed = !combined.is_empty() || !after.is_empty() || !to_remote.is_empty() || placed.remote;
-    let local_changed = !combined.is_empty() || !after.is_empty() || !to_local.is_empty() || placed.local;
+    let remote_changed =
+        !combined.is_empty() || !taken_remote.is_empty() || !after.is_empty() || !to_remote.is_empty() || placed.remote;
+    let local_changed =
+        !combined.is_empty() || !taken_local.is_empty() || !after.is_empty() || !to_local.is_empty() || placed.local;
     changes.extend(to_remote);
     changes.extend(to_local);
     changes.extend(placed.changes);
@@ -219,6 +256,67 @@ pub fn merge_in_place(
     pool::compact_binaries(local);
     pool::compact_binaries(remote);
     MergeReport { conflicts, added, updated, deleted, changes, local_changed, remote_changed }
+}
+
+/// The three-way merge of database custom data (contract-v1.8): per key, the value both sides
+/// agree on; else the side that changed it since `base` (a removal included); changed on both, the
+/// item with the newer `LastModificationTime` (local on a tie). The sync generation is left out:
+/// the merge sets it. Local's order first, then the items only remote has.
+fn merge_custom_data(
+    local: &[CustomDataItem],
+    remote: &[CustomDataItem],
+    base: &[CustomDataItem],
+) -> Vec<CustomDataItem> {
+    let get = |items: &[CustomDataItem], k: &str| items.iter().find(|i| i.key == k).cloned();
+    let mut keys: Vec<&str> = Vec::new();
+    for i in local.iter().chain(remote) {
+        if i.key != SYNC_GENERATION_KEY && !keys.contains(&i.key.as_str()) {
+            keys.push(&i.key);
+        }
+    }
+    let value = |i: &Option<CustomDataItem>| i.as_ref().map(|i| i.value.clone());
+    let mut out = Vec::new();
+    for k in keys {
+        let (l, r, b) = (get(local, k), get(remote, k), get(base, k));
+        let pick = if value(&l) == value(&r) {
+            l
+        } else if value(&l) == value(&b) {
+            r
+        } else if value(&r) == value(&b) {
+            l
+        } else {
+            match (&l, &r) {
+                (Some(li), Some(ri)) if ri.last_modification > li.last_modification => r,
+                (None, _) => r,
+                _ => l,
+            }
+        };
+        out.extend(pick);
+    }
+    out
+}
+
+/// Makes `items` hold `merged` (keeping its own sync generation item); returns a change per item
+/// added, changed or removed.
+fn apply_custom_data(items: &mut Vec<CustomDataItem>, merged: &[CustomDataItem]) -> Vec<MergeChange> {
+    let mut changes = Vec::new();
+    for i in items.iter() {
+        if i.key != SYNC_GENERATION_KEY && !merged.iter().any(|m| m.key == i.key) {
+            changes.push(tree::db_record(ChangeType::Metadata, format!("Removed custom data {} [{}]", i.key, i.value)));
+        }
+    }
+    for m in merged {
+        if !items.iter().any(|i| i.key == m.key && i.value == m.value) {
+            changes.push(tree::db_record(ChangeType::Metadata, format!("Adding custom data {} [{}]", m.key, m.value)));
+        }
+    }
+    if changes.is_empty() {
+        return changes;
+    }
+    let generation = items.iter().find(|i| i.key == SYNC_GENERATION_KEY).cloned();
+    *items = merged.to_vec();
+    items.extend(generation);
+    changes
 }
 
 /// The entry UUIDs of `changes` whose type passes `pick`, each once, leaving out `except`.
@@ -251,6 +349,8 @@ struct Location {
     /// `None` for the root group, which counts as the same group whatever its UUID.
     group: Option<Uuid>,
     changed: Timestamp,
+    /// The moved-last copy's `PreviousParentGroup` (where the Recycle Bin restores it).
+    previous: Option<Uuid>,
 }
 
 fn locations_of(local: &Database, remote: &Database) -> Vec<Location> {
@@ -265,6 +365,7 @@ fn locations_of(local: &Database, remote: &Database) -> Vec<Location> {
                 entry: l.uuid,
                 group: (parent.uuid != db.root.uuid).then_some(parent.uuid),
                 changed: winner.times.location_changed,
+                previous: winner.previous_parent_group,
             })
         })
         .collect()
@@ -282,8 +383,9 @@ struct Placed {
     remote: bool,
 }
 
-/// Puts each copy where `locations` says, with that `LocationChanged`, without touching any
-/// modification times (or `PreviousParentGroup`, as the structure merge's moves).
+/// Puts each copy where `locations` says, with that `LocationChanged` and the moved-last copy's
+/// `PreviousParentGroup` (so a deletion synced from another device restores to where it was),
+/// without touching any modification times.
 fn apply_locations(local: &mut Database, remote: &mut Database, locations: &[Location]) -> Placed {
     let mut placed = Placed { changes: Vec::new(), local: false, remote: false, moved_here: Vec::new() };
     for loc in locations {
@@ -295,7 +397,10 @@ fn apply_locations(local: &mut Database, remote: &mut Database, locations: &[Loc
                 continue;
             }
             let previous = parent.uuid;
-            if previous == group && entry.times.location_changed == loc.changed {
+            if previous == group
+                && entry.times.location_changed == loc.changed
+                && entry.previous_parent_group == loc.previous
+            {
                 continue;
             }
             if previous != group {
@@ -307,6 +412,7 @@ fn apply_locations(local: &mut Database, remote: &mut Database, locations: &[Loc
             }
             if let Some(e) = tree::find_entry_mut(&mut db.root, loc.entry) {
                 e.times.location_changed = loc.changed;
+                e.previous_parent_group = loc.previous;
             }
             if is_local {
                 placed.local = true;
@@ -557,8 +663,22 @@ pub fn needs_common_base(local: &Database, remote: &Database, snapshot: &[(Uuid,
 /// ([`needs_common_base`]) compares whole-second modification times: an edit made in the same second
 /// as the last sync looks unchanged to it, and the newer copy would then win whole (its other
 /// side's edit going to history) where the base keeps both, field by field.
+///
+/// Different database custom data (sync generation aside) counts too: it merges against the base.
 pub fn copies_differ(local: &Database, remote: &Database) -> bool {
-    has_pending_deletions(local, remote)
+    fn custom(db: &Database) -> Vec<(&str, &str)> {
+        let mut v: Vec<(&str, &str)> = db
+            .meta
+            .custom_data
+            .iter()
+            .filter(|i| i.key != SYNC_GENERATION_KEY)
+            .map(|i| (i.key.as_str(), i.value.as_str()))
+            .collect();
+        v.sort_unstable();
+        v
+    }
+    custom(local) != custom(remote)
+        || has_pending_deletions(local, remote)
         || entries_under(&local.root)
             .iter()
             .any(|l| find_entry(&remote.root, l.uuid).is_some_and(|(r, _)| !same_fields(l, local, r, remote)))

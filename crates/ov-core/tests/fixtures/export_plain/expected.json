@@ -1,0 +1,34 @@
+[
+  {
+    "folder": "Home",
+    "title": "Mail \"personal\"",
+    "username": "me@example.com",
+    "passwordValue": "p,w\"1",
+    "url": "https://mail.example.com/a/b",
+    "notes": "line1\nline2"
+  },
+  {
+    "folder": "Home",
+    "title": "(Untitled Entry)",
+    "username": "",
+    "passwordValue": "x",
+    "url": "",
+    "notes": "tab\there \u0001 ctl"
+  },
+  {
+    "folder": "Work",
+    "title": "VPN",
+    "username": "ops",
+    "passwordValue": "ü✓ 🔑",
+    "url": "",
+    "notes": "</script>   \\ end"
+  },
+  {
+    "folder": "Servers",
+    "title": "db",
+    "username": "root",
+    "passwordValue": "s3cr3t\\",
+    "url": "ssh://db",
+    "notes": ""
+  }
+]

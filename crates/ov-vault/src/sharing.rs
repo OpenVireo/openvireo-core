@@ -84,7 +84,10 @@ pub fn new_vault(name: &str, me: &str, keyset: &Keyset, org: Option<(&str, &[Mem
             if principal == me || !is_manager(&m.role) || m.status != MemberStatus::Confirmed {
                 continue;
             }
-            let pk = trusted(public)?;
+            // Name the member whose keys don't verify, so the app can say whom to ask (contract-v1.8)
+            let pk = trusted(public).map_err(|e| {
+                e.with_details(serde_json::json!({ "principal": principal, "email": m.email }).to_string())
+            })?;
             grants.push(Grant {
                 principal,
                 role: VaultRole::Manage,

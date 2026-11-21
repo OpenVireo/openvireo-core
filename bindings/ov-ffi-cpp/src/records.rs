@@ -304,6 +304,8 @@ pub(crate) fn profile(p: core::Profile) -> ffi::Profile {
         plan: p.plan.map(plan).unwrap_or_default(),
         orgs: p.orgs.into_iter().map(org_membership).collect(),
         deletion_scheduled_for: opt(p.deletion_scheduled_for),
+        kdf: kdf_params(p.kdf),
+        public_keys: public_keys(p.public_keys),
     }
 }
 

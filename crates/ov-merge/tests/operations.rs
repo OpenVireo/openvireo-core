@@ -115,7 +115,9 @@ fn import_into_merges_by_uuid_and_twice_changes_nothing() {
     assert_eq!(find(&target, 1).unwrap().title(), "New title");
     assert_eq!(find(&target, 1).unwrap().history.len(), 1);
     assert!(find(&target, 3).is_none(), "the source's Recycle Bin stays behind");
-    assert_eq!(target.meta.custom_data.len(), 1, "database custom data stays behind");
+    // contract-v1.8: the source's items the target lacks come along, never its remote settings
+    let items: Vec<(&str, &str)> = target.meta.custom_data.iter().map(|i| (i.key.as_str(), i.value.as_str())).collect();
+    assert_eq!(items, [("KPXC_REMOTE_SYNC_SETTINGS", "x"), ("Other", "y")]);
 
     let again = target.clone();
     let s = import_into(&source, &mut target);

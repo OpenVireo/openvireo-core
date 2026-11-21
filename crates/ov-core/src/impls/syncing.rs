@@ -139,6 +139,11 @@ pub(crate) async fn sync_vault(
 
 /// [`sync_vault`], where `remote_is_base`: the vault was just downloaded, so the first attempt
 /// uploads against that copy instead of downloading it again (a 412 downloads).
+///
+/// Edits made to the handle while a round runs are merged into its result three ways (the copy the
+/// round started from is the base) and uploaded by up to two more rounds, each against the copy the
+/// round before left on the server (contract-v1.8). A later round that fails leaves them as
+/// unsynced edits and the call returns what the earlier rounds did.
 pub(crate) async fn sync_vault_with(
     v: &Vault,
     options: SyncOptions,
@@ -146,6 +151,7 @@ pub(crate) async fn sync_vault_with(
     remote_is_base: bool,
     cancel: &CancelToken,
 ) -> Result<SyncReport, OvError> {
+    const ROUNDS: usize = 3;
     cancel.check()?;
     let (id, keys) = vault_keys(v).await?;
     let client = match &v.inner.source {
@@ -158,7 +164,6 @@ pub(crate) async fn sync_vault_with(
     };
     let blob = client.vault(&id);
     let mut session = v.inner.session.lock().await;
-    session.db = Some(v.db().clone());
     if session.key.is_none() {
         let newest = keys
             .iter()
@@ -168,36 +173,100 @@ pub(crate) async fn sync_vault_with(
     }
     let cw = CancelWrap(cancel.clone());
     let rekey = rekey_to.map(|k| Zeroizing::new(k.to_vec()));
-    let opts = SessionSyncOptions {
-        local_changed: Some(options.local_changed),
-        accept_server_state: options.accept_server_state,
-        rekey_to: rekey.as_deref().map(|k| &k[..]),
-        remote_is_base,
-        cancel: Some(&cw),
-    };
-    let result = session.sync(&blob, &keys, opts).await;
-    v.inner.offline.store(session.offline, std::sync::atomic::Ordering::SeqCst);
-    if let VaultSource::Account { account, .. } = &v.inner.source {
-        account.note_clock(blob.clock_offset_ms());
-        if let Err(e) = &result {
-            if e.is(OvErrorCode::SignedOut) && e.status.is_some() {
-                account.session_ended().await;
+    let mut total: Option<SyncReport> = None;
+    for round in 0..ROUNDS {
+        let first = round == 0;
+        let start = v.db().clone();
+        session.db = Some(start.clone());
+        let opts = SessionSyncOptions {
+            local_changed: Some(!first || options.local_changed),
+            accept_server_state: first && options.accept_server_state,
+            rekey_to: rekey.as_deref().map(|k| &k[..]).filter(|_| first),
+            remote_is_base: !first || remote_is_base,
+            cancel: Some(&cw),
+        };
+        let result = session.sync(&blob, &keys, opts).await;
+        v.inner.offline.store(session.offline, std::sync::atomic::Ordering::SeqCst);
+        if let VaultSource::Account { account, .. } = &v.inner.source {
+            account.note_clock(blob.clock_offset_ms());
+            if let Err(e) = &result {
+                if e.is(OvErrorCode::SignedOut) && e.status.is_some() {
+                    account.session_ended(e).await;
+                }
+                if e.is_unreachable() {
+                    account.set_offline(true);
+                }
+            } else {
+                account.set_offline(false);
             }
-            if e.is_unreachable() {
-                account.set_offline(true);
+        }
+        let r = match result {
+            Ok(r) => r,
+            Err(e) if first => return Err(e),
+            Err(_) => {
+                // The edits made during the first rounds stay in the working copy, kept on the device
+                session.db = Some(v.db().clone());
+                let _ = session.keep_edits().await;
+                break;
             }
-        } else {
-            account.set_offline(false);
+        };
+        *lock(&v.inner.etag) = Some(r.state.etag.clone());
+        total = Some(combine_reports(total, report(&r)));
+        let synced = session.db.clone().unwrap_or_else(|| r.db.clone());
+        let now = v.now();
+        let more = {
+            let mut db = v.db();
+            if *db == start {
+                *db = synced;
+                false
+            } else {
+                // Edited while the round ran: those edits on top of its result
+                let (mut merged, m) = ov_merge::merge(Some(&start), &db, &synced, now);
+                merged.header = synced.header.clone();
+                *db = merged.clone();
+                session.db = Some(merged);
+                m.remote_changed
+            }
+        };
+        if !more {
+            break;
+        }
+        if round + 1 == ROUNDS {
+            let _ = session.keep_edits().await;
         }
     }
-    let r = result?;
-    if let Some(db) = &session.db {
-        *v.db() = db.clone();
-    }
-    *lock(&v.inner.etag) = Some(r.state.etag.clone());
-    let rep = report(&r);
+    let rep = total.expect("the first round succeeded");
     *lock(&v.inner.conflicts) = rep.conflicts.clone();
     Ok(rep)
+}
+
+fn outcome_rank(o: SyncOutcome) -> u8 {
+    match o {
+        SyncOutcome::Unchanged => 0,
+        SyncOutcome::Pulled => 1,
+        SyncOutcome::Uploaded => 2,
+        SyncOutcome::Created => 3,
+    }
+}
+
+/// The report of several rounds of one sync: the most a round did, every round's conflicts, changes
+/// and attempts, the last round's ETag and clock.
+fn combine_reports(so_far: Option<SyncReport>, next: SyncReport) -> SyncReport {
+    let Some(mut a) = so_far else { return next };
+    if outcome_rank(next.outcome) > outcome_rank(a.outcome) {
+        a.outcome = next.outcome;
+    }
+    for c in next.conflicts {
+        if !a.conflicts.contains(&c) {
+            a.conflicts.push(c);
+        }
+    }
+    a.changes.extend(next.changes);
+    a.attempts += next.attempts;
+    a.etag = next.etag.or(a.etag);
+    a.clock_offset_ms = next.clock_offset_ms.or(a.clock_offset_ms);
+    a.clock_skewed = next.clock_skewed;
+    a
 }
 
 /// Downloads (or, offline, opens this device's copy of) an account vault through a new session.
@@ -233,7 +302,7 @@ pub(crate) async fn open_session(
         }
         Err(err) => {
             if err.is(OvErrorCode::SignedOut) && err.status.is_some() {
-                account.session_ended().await;
+                account.session_ended(&err).await;
             }
             if !(account.keeps_offline_data() && err.is_unreachable()) {
                 return Err(err);

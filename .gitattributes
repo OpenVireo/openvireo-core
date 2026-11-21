@@ -1,0 +1,2 @@
+# Byte-exact fixtures: never convert line endings on checkout (Windows runners use core.autocrlf=true).
+crates/ov-core/tests/fixtures/export_plain/expected.* -text

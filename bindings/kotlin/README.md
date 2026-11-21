@@ -38,7 +38,7 @@ import java.nio.file.Path
 
 fun main() = runBlocking {
     val client = OvClient(
-        ClientConfig(DeviceInfo(id = null, name = "my-tool", platform = Platform.CLI), offline = false, server = null),
+        ClientConfig(DeviceInfo(id = null, name = "my-tool", platform = Platform.CLI), offline = true, server = null),
         defaultHost(cacheDir = Path.of("ov-cache")),
     )
     val account = client.connect("https://accounts.openvireo.com", CancelToken())
@@ -78,7 +78,7 @@ try {
 | Part | Default | Notes |
 |---|---|---|
 | `HttpTransport` | `JavaNetHttpTransport` | `java.net.http`, async, no redirects, no cookies, streams for server events. `UrlConnectionTransport` is the `HttpURLConnection` alternative (it also runs on Android; the JVM's `HttpURLConnection` can't send PATCH). |
-| `SecureStore` | `MemoryStore` | Nothing persists, so each run is a new device. Implement `SecureStore` over your OS keychain to keep sessions and trusted Secret Keys. |
+| `SecureStore` | `MemoryStore` | Nothing persists, so each run is a new device. Implement `SecureStore` over your OS keychain to keep sessions and trusted Secret Keys; `connect` then restores the session signed in but locked, so call `unlock(password, null)` instead of `login`. |
 | `BlobCache` | `FileCache(cacheDir)`, or `MemoryCache` | The offline cache: ciphertext and public data only. |
 | `Clock` | `SystemClock` | |
 | `LogSink` | `JulLogSink` | `java.util.logging`, logger `openvireo.<module>`. |

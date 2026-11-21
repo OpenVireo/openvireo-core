@@ -15,9 +15,10 @@ adds ready-made platform parts (HTTP, secret store, offline cache, clock, loggin
 Until the package is on PyPI, wheels are attached to the core's GitHub releases:
 
 ```sh
-pip install openvireo --find-links https://github.com/openvireo/openvireo-core/releases/expanded_assets/<tag>
-pip install "openvireo[httpx]"     # optional: async HTTP on httpx (otherwise urllib in a thread)
-pip install "openvireo[keyring]"   # optional: keep sessions in the OS keychain
+# Not on PyPI yet: always pin the version and pass --find-links (the release's asset list).
+pip install "openvireo==X.Y.Z" --find-links https://github.com/openvireo/openvireo-core/releases/expanded_assets/vX.Y.Z
+# Optional extras, same flags: "openvireo[httpx]==X.Y.Z" (async HTTP on httpx, otherwise urllib in
+# a thread), "openvireo[keyring]==X.Y.Z" (keep sessions in the OS keychain).
 ```
 
 ## Quickstart
@@ -31,7 +32,7 @@ from openvireo.hosts import KeyringStore, default_host
 async def main() -> None:
     client = ov.OvClient(
         ov.ClientConfig(device=ov.DeviceInfo(id=None, name="my script", platform=ov.Platform.CLI),
-                        offline=False, server=None),
+                        offline=True, server=None),  # offline=True keeps the cache
         default_host(store=KeyringStore(), cache_dir="~/.cache/openvireo"),
     )
     account = await client.connect("https://accounts.openvireo.com")

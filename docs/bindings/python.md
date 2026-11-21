@@ -405,7 +405,6 @@ The pairing token is kept in the Host's `SecureStore` and the sync state in its 
 persistent store (`KeyringStore`) and `cache_dir=`. `result.kdbx` is the merged database: save it as
 the local file.
 
-<!-- TODO(B7): these two samples assume the optional-cancel wrapper covers the classmethods SelfHosted.pair and ServiceAccount.from_token (restore_self_hosted takes no token). -->
 
 **Service accounts** (an `ov_sa_...` token, for CI): `await ov.ServiceAccount.from_token(client, token)`.
 Then `vaults(refresh)`, `read("ov://Vault/Entry/Field")`, `write(...)` and `inject(template)`.

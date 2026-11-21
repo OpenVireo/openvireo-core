@@ -54,12 +54,24 @@ pub fn import_preview(source: &Database) -> (usize, usize) {
 
 /// Merges `source` into `target` by UUID, keeping the newer version of each entry (the older one goes
 /// into its history) and deleting nothing, so importing the same file twice changes nothing. The
-/// target's root group (an account vault's name) and database custom data are left as they are.
+/// target's root group (an account vault's name) and database custom data items stay as they are;
+/// the source's items the target doesn't have are added (contract-v1.8), except its remote
+/// settings (`KPXC_REMOTE_SYNC_SETTINGS`, which belong to the file they were set on) and the
+/// generated ones (sync generation, `_LAST_MODIFIED`, `KPXC_RANDOM_SLUG`).
 /// The target's attachment pool is rebuilt.
 pub fn import_into(source: &Database, target: &mut Database) -> ImportSummary {
     let opts =
         MergeIntoOptions { skip_database_custom_data: true, skip_groups: recycle_bin_of(source).into_iter().collect() };
-    let changes = tree::merge_into_raw(source, target, MergeMode::KeepNewer, &opts);
+    let mut changes = tree::merge_into_raw(source, target, MergeMode::KeepNewer, &opts);
+    for item in &source.meta.custom_data {
+        let skip = ["KPXC_REMOTE_SYNC_SETTINGS", "KPXC_SYNC_GENERATION", "_LAST_MODIFIED", "KPXC_RANDOM_SLUG"];
+        if skip.contains(&item.key.as_str()) || target.meta.custom_data.iter().any(|i| i.key == item.key) {
+            continue;
+        }
+        target.meta.custom_data.push(item.clone());
+        changes
+            .push(tree::db_record(ChangeType::Metadata, format!("Adding custom data {} [{}]", item.key, item.value)));
+    }
     pool::compact_binaries(target);
     let is_entry = |c: &MergeChange| c.subject == ChangeSubject::Entry;
     let mut added: Vec<Uuid> = Vec::new();

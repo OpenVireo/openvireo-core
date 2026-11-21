@@ -10,6 +10,8 @@ client:
 | iOS app and AutoFill | Swift via UniFFI (`bindings/ov-ffi`) |
 | Desktop (Qt) | C++ via cxx (`bindings/ov-ffi-cpp`) |
 | `ov` CLI | native binary (`bins/ov`) |
+| Python scripts | Python via UniFFI (`bindings/python`, package `openvireo`) |
+| JVM and Android | Kotlin and Java via UniFFI (`bindings/kotlin`, `com.openvireo:openvireo-core-jvm` / `-android`) |
 
 The core does no I/O. Each platform passes in a small `Host` (HTTP transport, secure store, offline
 cache, clock, log sink), so TLS, proxies and the Keychain stay with the platform.
@@ -46,8 +48,11 @@ know about a platform.
 - [Open items](docs/open-items.md): known bugs and follow-ups
 - [API coverage](docs/api-coverage.md): every public method of the TS SDK and the iOS `Account` → the facade
 - ADRs: [0001 the contract](docs/adr/0001-contract.md), [0002 our own KDBX crate](docs/adr/0002-kdbx.md)
+- [Language bindings](docs/bindings/README.md): which binding to use, with guides for
+  [Python](docs/bindings/python.md) and [Kotlin and Java](docs/bindings/kotlin-java.md)
 - Each binding's README: [wasm](bindings/ov-wasm/README.md), [UniFFI/Swift](bindings/ov-ffi/README.md),
-  [C++](bindings/ov-ffi-cpp/README.md); [e2e](e2e/README.md)
+  [C++](bindings/ov-ffi-cpp/README.md), [Python](bindings/python/README.md),
+  [Kotlin/Java](bindings/kotlin/README.md); [e2e](e2e/README.md)
 - The API itself: `cargo doc --workspace --no-deps --open`
 
 ## Building

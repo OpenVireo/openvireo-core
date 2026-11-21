@@ -255,13 +255,14 @@ mod tests {
         let ext = std::env::var("OV_KEEPASSXC_SRC").map(std::path::PathBuf::from).unwrap_or_else(|_| {
             std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("kpnx/openvireo")
         });
-        let mut read = 0;
+        let (mut read, mut required) = (0, 0);
         for line in manifest.lines().filter(|l| !l.starts_with('#') && !l.trim().is_empty()) {
             let cols: Vec<&str> = line.split('\t').collect();
             let path = match cols[0].strip_prefix("ext:") {
                 Some(p) => ext.join(p),
                 None => dir.join(cols[0]),
             };
+            required += u32::from(cols[4] == "required");
             let Ok(bytes) = std::fs::read(&path) else {
                 assert_ne!(cols[4], "required", "{} is missing", cols[0]);
                 continue;
@@ -281,7 +282,8 @@ mod tests {
             assert_eq!(fast_reads(), before + 1, "{} fell back to quick-xml", cols[0]);
             read += 1;
         }
-        assert!(read >= 13, "the required files were read");
+        // Required files must exist (above); optional and external ones count when present
+        assert!(required >= 12 && read >= required, "{read} files read, {required} required");
     }
 
     #[test]

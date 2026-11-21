@@ -17,7 +17,7 @@ use ov_kdbx::CompositeKey;
 use ov_protocol::sync::GetResult;
 
 use crate::client::Blob;
-use crate::engine::{sync_kdbx, BeforeUpload, Cancel, SyncOptions, SyncOutcome, SyncResult};
+use crate::engine::{sync_kdbx, BaseCache, BeforeUpload, Cancel, SyncOptions, SyncOutcome, SyncResult};
 use crate::state::{from_cached, iso_time, to_cached, SyncState};
 
 /// One vault's record in the offline cache, keyed by user (two accounts on one device can share a
@@ -126,6 +126,8 @@ pub struct VaultSession {
     /// The last sync couldn't reach the server, or the vault was opened from the offline cache.
     pub offline: bool,
     has_pending: bool,
+    /// The last sync's base, opened.
+    base: BaseCache,
 }
 
 impl std::fmt::Debug for VaultSession {
@@ -150,7 +152,15 @@ impl VaultSession {
     /// A session. With `cache` the state, base and pending edits persist (SPEC §20); without it
     /// (offline cache off) the state lives only in this session.
     pub fn new(cache: Option<VaultCache>) -> Self {
-        VaultSession { cache, db: None, key: None, state: None, offline: false, has_pending: false }
+        VaultSession {
+            cache,
+            db: None,
+            key: None,
+            state: None,
+            offline: false,
+            has_pending: false,
+            base: BaseCache::new(),
+        }
     }
 
     /// The server ETag at the last sync (compare with a `vault` event's etag).
@@ -262,6 +272,7 @@ impl VaultSession {
                     cache.save_state(&state).await?;
                 }
                 self.offline = false;
+                self.base.keep(&data, &key, db.clone());
                 self.db = Some(db.clone());
                 self.key = Some(key.clone());
                 self.state = Some(Some(state.clone()));
@@ -296,7 +307,8 @@ impl VaultSession {
             .state(state.as_ref())
             .local_changed(opts.local_changed.unwrap_or(true))
             .accept_server_state(opts.accept_server_state && !from_download)
-            .remote_is_base(opts.remote_is_base || from_download);
+            .remote_is_base(opts.remote_is_base || from_download)
+            .base_cache(&self.base);
         if let Some(r) = &rekey {
             o = o.before_upload(r as &dyn BeforeUpload);
         }
@@ -376,6 +388,7 @@ impl VaultSession {
             cache.save_state(&state).await?;
         }
         self.offline = false;
+        self.base.keep(&data, &key, db.clone());
         self.db = Some(db.clone());
         self.key = Some(key.clone());
         self.state = Some(Some(state.clone()));

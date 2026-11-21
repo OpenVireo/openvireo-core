@@ -9,6 +9,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+ov-crypto = { path = "../ov-crypto" }
 ov-error = { path = "../ov-error" }
 ov-host = { path = "../ov-host" }
 ov-kdbx = { path = "../ov-kdbx" }

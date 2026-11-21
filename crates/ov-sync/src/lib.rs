@@ -27,8 +27,8 @@ pub mod state;
 
 pub use client::{Blob, StaticToken, SyncClient, TokenSource};
 pub use engine::{
-    is_clock_skewed, open_with, sync_kdbx, BeforeUpload, Cancel, Progress, SyncOptions, SyncOutcome, SyncResult,
-    SyncStep, CLOCK_SKEW_WARNING_MS,
+    is_clock_skewed, open_with, sync_kdbx, BaseCache, BeforeUpload, Cancel, Progress, SyncOptions, SyncOutcome,
+    SyncResult, SyncStep, CLOCK_SKEW_WARNING_MS,
 };
 pub use events::{EventStream, EventStreamOptions, StreamItem};
 pub use offline::{SessionSyncOptions, VaultCache, VaultSession};

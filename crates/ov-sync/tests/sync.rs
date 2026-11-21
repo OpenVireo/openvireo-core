@@ -8,14 +8,20 @@ use std::sync::{Arc, Mutex};
 
 use common::*;
 use ov_error::OvErrorCode;
+use ov_kdbx::entries::delete_entry;
+use ov_kdbx::model::Database;
+use ov_kdbx::vault::{rekey_to_vault_key, vault_credentials};
 use ov_protocol::sync::{etag_for, GetResult, HeadResult, PutCondition};
-use ov_sync::{deserialize_sync_state, serialize_sync_state, sync_kdbx, SyncOptions, SyncOutcome, SyncStep};
+use ov_sync::{
+    deserialize_sync_state, serialize_sync_state, sync_kdbx, BaseCache, SyncOptions, SyncOutcome, SyncState, SyncStep,
+};
 
 macro_rules! scenario {
     ($($name:ident),* $(,)?) => {$(
         #[test]
         fn $name() {
             scenarios::$name(&FakeSync::new());
+            scenarios::with_base_cache(|| scenarios::$name(&FakeSync::new()));
         }
     )*};
 }
@@ -182,4 +188,52 @@ fn offline_is_a_network_error() {
     assert!(e.is_unreachable());
     assert_eq!(e.code, OvErrorCode::NetworkError);
     assert!(local == before);
+}
+
+/// A cached base counts only while a key that opened it is among the credentials, as when it is
+/// opened from bytes: here another device deleted A for good and re-keyed, so with only the new key
+/// the base is no use and A stays (no base, no deletions); with the old key too it is deleted.
+#[test]
+fn a_cached_base_needs_a_key_that_opens_it() {
+    let new_key = [9u8; 32];
+    let k = creds();
+    let setup = || -> (FakeSync, Database, SyncState, BaseCache) {
+        let w = FakeSync::new();
+        let Copies { mut local, mut remote, .. } = three_copies(|db| {
+            add_entry(db, "A", &[("Password", "p")], 100, None);
+            add_entry(db, "B", &[], 100, None);
+        });
+        let c = [creds()];
+        let mine = BaseCache::new();
+        let first = run(sync_kdbx(&w.blob("db"), &mut local, &SyncOptions::new(&k, &c).base_cache(&mine))).unwrap();
+        assert!(mine.get(first.state.base.as_ref().unwrap()).is_some(), "the first upload is kept");
+        let dev2 = run(sync_kdbx(&w.blob("db"), &mut remote, &SyncOptions::new(&k, &c))).unwrap();
+        let mut d2 = dev2.db;
+        let a = id_of(&d2, "A");
+        delete_entry(&mut d2, a, 300).unwrap(); // to the bin
+        delete_entry(&mut d2, a, 301).unwrap(); // for good
+        let rekey = |db: &mut Database| Ok(Some(rekey_to_vault_key(db, &new_key)?));
+        let opts = SyncOptions::new(&k, &c).state(Some(&dev2.state)).before_upload(&rekey);
+        run(sync_kdbx(&w.blob("db"), &mut d2, &opts)).unwrap();
+        (w, local, first.state, mine)
+    };
+    let new = vault_credentials(&new_key).unwrap();
+
+    let (w, mut local, state, mine) = setup();
+    let only_new = [new.clone()];
+    let r = run(sync_kdbx(
+        &w.blob("db"),
+        &mut local,
+        &SyncOptions::new(&k, &only_new).state(Some(&state)).base_cache(&mine),
+    ))
+    .unwrap();
+    assert!(by_title(&r.db, "A").is_some(), "merged without the base");
+
+    let (w, mut local, state, mine) = setup();
+    let both = [new, creds()];
+    let r =
+        run(sync_kdbx(&w.blob("db"), &mut local, &SyncOptions::new(&k, &both).state(Some(&state)).base_cache(&mine)))
+            .unwrap();
+    assert!(by_title(&r.db, "A").is_none(), "merged with the cached base");
+    assert!(by_title(&r.db, "B").is_some());
 }

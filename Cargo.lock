@@ -1725,6 +1725,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "futures",
+ "ov-crypto",
  "ov-error",
  "ov-host",
  "ov-kdbx",

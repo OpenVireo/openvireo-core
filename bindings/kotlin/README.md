@@ -101,6 +101,61 @@ Every generated object is `AutoCloseable` (`close()` frees its native handle), a
 `EventStream.closeStream()`, `ByteStream.closeStream()`, `ServiceAccount.endSession()`,
 `OvException.Failure.errorMessage`, `TransportException.Tls/Other.reason`.
 
+## Java
+
+`com.openvireo.core.java` is the whole API without coroutines: every `suspend` method returns a
+`CompletableFuture`. It is in the same jar (and AAR).
+
+```java
+import com.openvireo.core.*;
+import com.openvireo.core.java.*;
+import java.nio.file.Path;
+
+JOvClient client = new JOvClient(
+    new ClientConfig(new DeviceInfo(null, "my-tool", Platform.CLI), false, null),
+    JDefaultHosts.create(Path.of("ov-cache")));
+JAccount account = client.connect("https://accounts.openvireo.com").join();
+LoginStep step = account.login(new LoginInput(email, password, secretKey, null, true)).join();
+if (step instanceof LoginStep.Unlocked) {
+    for (VaultInfo v : account.vaults().join()) System.out.println(v.getName());
+}
+JVault vault = account.openVault(vaultId).join();
+String id = vault.addEntry(vault.rootGroupId(), JRecords.newEntryInput(fields, List.of(), null, null, EntryExpiry.Keep.INSTANCE));
+vault.sync(new SyncOptions(true, false)).join();
+```
+
+- **`J<Object>`** (`JOvClient`, `JAccount`, `JVault`, `JServiceAccount`, `JSelfHosted`,
+  `JEventStream`, `JTotpChallenge`) wraps each generated object Java can't use as is. `suspend`
+  methods return `CompletableFuture<T>` (`Void` for none); synchronous ones are plain calls. A method
+  that takes a `CancelToken` has a second overload without it: cancel the future to cancel the call
+  (the coroutine, the Rust future and the token). Objects come back wrapped; `unwrap()` gives the
+  generated object, `close()` frees it. `CancelToken`, `Host` and the OPAQUE state objects need no
+  wrapper. Wrap an object you got from a record with `new JTotpChallenge(step.getChallenge())`.
+- **Threads**: futures run on `JScope.defaultScope()` (a `SupervisorJob` on `Dispatchers.Default`).
+  Every wrapper constructor also takes an `Executor` (or a `CoroutineScope`); objects it returns use
+  the same one. Don't block on `join()` inside a Host part.
+- **`JOv`**: every free function (crypto primitives, share links, TOTP, OPAQUE, wire codes) as a static.
+- **Unsigned numbers** are the next wider signed type (`UInt` → `long`, `UShort` → `int`), checked
+  going in. Kotlin hides constructors and getters with unsigned types from Java, so records with one
+  have a `JRecords.new<Record>(...)` factory and `JRecords.get<Field>(record)` getters, e.g.
+  `JRecords.newShareOptions(3600L, 2L, null, null, null)`, `JRecords.getOpensLeft(info)`.
+- **Errors**: futures complete exceptionally with `OvException`; `join()` wraps it in
+  `CompletionException`, `get()` in `ExecutionException`. `JErrors.code(e)`, `wireCode`, `status`,
+  `retryAfter`, ... unwrap those and return `null` for other exceptions. Synchronous methods declare
+  `throws OvException` where the core can fail.
+- **Host parts in Java**: implement `JHttpTransport` (`send`, `openStream` → `JByteStream`),
+  `JSecureStore` and `JBlobCache` with futures; `Clock` and `LogSink` are plain interfaces (lambdas
+  work). `JHosts.create(http, store, cache, clock, log)` or `JHosts.builder()` builds the `Host`;
+  `JDefaultHosts.builder()` starts from the platform defaults (`JavaNetHttpTransport`/`JulLogSink` on
+  the JVM, `UrlConnectionTransport`/`AndroidLogSink` on Android) and takes either Java parts or the
+  shipped Kotlin ones. `JHosts.fromKotlin(new JavaNetHttpTransport())` turns a Kotlin part into its
+  Java interface, to decorate it. The same rules apply as for Kotlin parts: no redirects, no cookies,
+  `TransportException` from a transport, `JErrors.ovException(code, message)` from a store or cache.
+
+The facade is **generated** (`xtask/src/kotlin_facade.rs`) from the uniffi-bindgen Kotlin on every
+build, so it can't drift from the core; `FacadeCoverageTest` checks by reflection that every
+`suspend` or unsigned member of the generated classes has a counterpart.
+
 ## Building
 
 ```sh
@@ -120,6 +175,9 @@ Needs Rust (the repo's toolchain) and JDK 17+ (to run Gradle 9; the jar targets 
   `build/generated/uniffi/kotlin/com/openvireo/core/ov_ffi.kt`, only rewriting it when it changes.
   `-Pov.generatedDir=<dir>` uses sources made elsewhere (and skips cargo); `-Pov.generate=false`
   just skips cargo.
+- **The Java facade** is generated in the same step from that file into
+  `build/generated/facade/kotlin` (`rootProject.extra["ovFacadeDir"]`, compiled into both the jar and
+  the AAR). With `-Pov.generatedDir`, pass `-Pov.facadeDir=<dir>` too.
 - **Natives** come from a directory in JNA's resource layout:
   `<dir>/{darwin-aarch64,darwin-x86-64}/libov_ffi.dylib`, `<dir>/{linux-x86-64,linux-aarch64}/libov_ffi.so`,
   `<dir>/win32-x86-64/ov_ffi.dll`. The default is `build/natives`, where the xtask copies the host
@@ -136,10 +194,10 @@ Needs Rust (the repo's toolchain) and JDK 17+ (to run Gradle 9; the jar targets 
 
 | Path | What |
 |---|---|
-| `shared/src/main/kotlin` | Hand-written code for every artifact (JVM jar and the Android AAR): the hosts that run on both, `OvException` field extensions. A source directory, not a Gradle project, because each artifact compiles it next to the generated sources. |
-| `core-jvm/` | The JVM jar: `JavaNetHttpTransport`, `JulLogSink`, `defaultHost`, natives as resources, tests. |
-| `core-android/` | The Android AAR: `AndroidLogSink`, `defaultHost(context)`, consumer R8 rules, the instrumented `LoadTest`. Only in the build when an Android SDK is found (see [Android](#android)). |
-| `build/generated/uniffi/kotlin`, `build/natives`, `build/jniLibs` | Generated by the xtask, git-ignored. |
+| `shared/src/main/kotlin` | Hand-written code for every artifact (JVM jar and the Android AAR): the hosts that run on both, `OvException` field extensions, the Java facade's runtime (`JScope`, `JHosts` and the `J*` Host interfaces, `JErrors`). A source directory, not a Gradle project, because each artifact compiles it next to the generated sources. |
+| `core-jvm/` | The JVM jar: `JavaNetHttpTransport`, `JulLogSink`, `defaultHost`, `JDefaultHosts`, natives as resources, tests (Kotlin in `src/test/kotlin`, plain Java in `src/test/java`). |
+| `core-android/` | The Android AAR: `AndroidLogSink`, `defaultHost(context)`, `JDefaultHosts`, consumer R8 rules, the instrumented `LoadTest`. Only in the build when an Android SDK is found (see [Android](#android)). |
+| `build/generated/uniffi/kotlin`, `build/generated/facade/kotlin`, `build/natives`, `build/jniLibs` | Generated by the xtask, git-ignored. |
 
 ### Tests
 
@@ -151,6 +209,13 @@ Needs Rust (the repo's toolchain) and JDK 17+ (to run Gradle 9; the jar targets 
   streaming transport, share link and error codes, with both transports, against the testkit relay
   (`crates/ov-testkit/examples/http_relay.rs`). It is skipped unless `-Pov.testkitRelay=<path>` is
   given, which `cargo xtask kotlin --smoke` does.
+- `FacadeCoverageTest`: by reflection, every `suspend` or unsigned member, free function, hidden
+  record and Host interface of the generated binding has a facade counterpart.
+- `JavaFacadeTest` (Java): free functions, `JRecords`, `JErrors`, futures failing with the core's
+  code, and cancelling a future cancelling the request in a Java transport.
+- `JavaSmokeTest` (Java): the `SmokeTest` steps through the facade only, with a plain-Java
+  `JHttpTransport` over `java.net.http` and with the shipped transport via `JHosts.fromKotlin`, and a
+  Java `JSecureStore`/`JBlobCache`/`Clock`/`LogSink` on the second device. Skipped like `SmokeTest`.
 
 ## Android
 

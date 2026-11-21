@@ -79,7 +79,9 @@ cargo xtask kotlin --android            # also the Android AAR: cargo-ndk for ar
 
 Needs JDK 17+ (Gradle 9 runs on it); the jar itself targets Java 11. The generated Kotlin and the natives are
 built into `bindings/kotlin/build/` (git-ignored), never committed; `-Pov.nativesDir=<dir>` points the
-jar at a full set of natives in JNA's layout. Details: [bindings/kotlin/README.md](../bindings/kotlin/README.md).
+jar at a full set of natives in JNA's layout. The same step generates the Java facade
+(`com.openvireo.core.java`, `CompletableFuture` wrappers, `xtask/src/kotlin_facade.rs`) from the generated
+Kotlin; it is compiled into the jar and the AAR. Details: [bindings/kotlin/README.md](../bindings/kotlin/README.md).
 
 `--android` needs an Android SDK + NDK r27+, `cargo install cargo-ndk --locked` and `rustup target add
 aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` (not in `rust-toolchain.toml`, so

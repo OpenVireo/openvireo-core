@@ -5,7 +5,8 @@
 //   default `:generateBindings` runs `cargo xtask kotlin --generate-only`, which builds the host
 //   `ov-ffi` cdylib (debug, unstripped: bindgen reads its metadata), writes
 //   build/generated/uniffi/kotlin and copies the host native into build/natives/<jna-prefix>/.
-//   `-Pov.generatedDir=<dir>` supplies the sources instead (and skips cargo).
+//   `-Pov.generatedDir=<dir>` supplies the sources instead (and skips cargo). The same step generates
+//   the Java facade (`com.openvireo.core.java`) into build/generated/facade/kotlin (`-Pov.facadeDir`).
 // - Natives come from a directory in JNA's resource layout (darwin-aarch64/, darwin-x86-64/,
 //   linux-x86-64/, linux-aarch64/, win32-x86-64/). Default build/natives (host slice only);
 //   `-Pov.nativesDir=<dir>` points at a full set (the release matrix fills one).
@@ -49,6 +50,13 @@ val ovTestServer: Boolean = providers.gradleProperty("ov.testServer").orNull?.to
 /** The generated Kotlin sources of `ov-ffi` (one file, com/openvireo/core/ov_ffi.kt). */
 val ovGeneratedDir: File = generatedOverride?.let { file(it) } ?: layout.buildDirectory.dir("generated/uniffi/kotlin").get().asFile
 
+/**
+ * The generated Java facade (`com.openvireo.core.java`, made from the sources above by the same
+ * `cargo xtask kotlin --generate-only`). With `-Pov.generatedDir`, pass `-Pov.facadeDir` too.
+ */
+val ovFacadeDir: File = providers.gradleProperty("ov.facadeDir").orNull?.let { file(it) }
+    ?: layout.buildDirectory.dir("generated/facade/kotlin").get().asFile
+
 /** Natives in JNA's resource layout. */
 val ovNativesDir: File = providers.gradleProperty("ov.nativesDir").orNull?.let { file(it) }
     ?: layout.buildDirectory.dir("natives").get().asFile
@@ -67,6 +75,7 @@ val ovNativeSlices: Map<String, String> = linkedMapOf(
 
 extra["ovVersion"] = ovVersion
 extra["ovGeneratedDir"] = ovGeneratedDir
+extra["ovFacadeDir"] = ovFacadeDir
 extra["ovNativesDir"] = ovNativesDir
 extra["ovSharedDir"] = ovSharedDir
 extra["ovNativeSlices"] = ovNativeSlices
@@ -81,6 +90,7 @@ tasks.register<Exec>("generateBindings") {
         if (ovTestServer) add("--test-server")
     })
     outputs.dir(ovGeneratedDir)
+    outputs.dir(ovFacadeDir)
     // cargo is incremental and the xtask rewrites files only when they change.
     outputs.upToDateWhen { false }
 }

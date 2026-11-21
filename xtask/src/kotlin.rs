@@ -7,6 +7,8 @@
 //!    `bindings/kotlin/build/generated/uniffi/kotlin` (package `com.openvireo.core`, from
 //!    `bindings/ov-ffi/uniffi.toml`). Files are rewritten only when they change, so Gradle doesn't
 //!    recompile 28k lines of generated Kotlin for nothing.
+//!    Then generates the Java facade (`com.openvireo.core.java`, see `kotlin_facade.rs`) from that
+//!    Kotlin into `bindings/kotlin/build/generated/facade/kotlin`, the same way.
 //! 3. Copies the host library into `bindings/kotlin/build/natives/<jna-prefix>/` (JNA's resource
 //!    layout, see [`NATIVE_SLICES`]); the jar picks it up from there.
 //! 4. Runs `./gradlew test` in `bindings/kotlin` (with `-Pov.generate=false`, since steps 1-3 are
@@ -121,6 +123,22 @@ pub fn run(args: &[String]) -> Result {
     let changed = sync_tree(&scratch, &generated)?;
     fs::remove_dir_all(&scratch).map_err(|e| format!("{}: {e}", scratch.display()))?;
     println!("kotlin: generated sources in {} ({changed} file(s) changed)", generated.display());
+
+    // 2b. The Java facade (`com.openvireo.core.java`), generated from those sources.
+    let facade_scratch = build.join("facade-tmp");
+    reset_dir(&facade_scratch)?;
+    let ov_ffi = generated.join("com").join("openvireo").join("core").join("ov_ffi.kt");
+    let stats = crate::kotlin_facade::generate(&ov_ffi, &facade_scratch)?;
+    let facade = build.join("generated").join("facade").join("kotlin");
+    let changed = sync_tree(&facade_scratch, &facade)?;
+    fs::remove_dir_all(&facade_scratch).map_err(|e| format!("{}: {e}", facade_scratch.display()))?;
+    println!(
+        "kotlin: Java facade in {} ({} files, {}/{} methods wrapped, {changed} file(s) changed)",
+        facade.display(),
+        stats.files,
+        stats.wrapped,
+        stats.total
+    );
 
     // 3. The host native, in JNA's layout.
     let natives = build.join("natives").join(prefix);

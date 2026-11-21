@@ -24,7 +24,7 @@ pub mod model;
 pub mod vault;
 mod xml;
 
-pub use crypto::CompositeKey;
+pub use crypto::{check_kdf_limits, CompositeKey, MAX_AES_KDF_ROUNDS, MAX_ARGON2_MEMORY, MAX_ARGON2_WORK};
 use ov_crypto::primitives;
 use ov_error::OvError;
 
@@ -203,4 +203,80 @@ pub fn uses_kdbx41_elements(db: &Database) -> bool {
     cd(&m.custom_data)
         || m.custom_icons.iter().any(|i| i.name.is_some() || i.last_modification.is_some())
         || group(&db.root)
+}
+
+#[cfg(test)]
+mod kdf_limit_tests {
+    use super::*;
+    use crate::model::{Argon2Type, Kdf};
+    use ov_error::OvErrorCode;
+
+    fn argon2(memory: u64, iterations: u64) -> Kdf {
+        Kdf::Argon2 {
+            kind: Argon2Type::Id,
+            salt: vec![1; 32],
+            memory,
+            iterations,
+            parallelism: 1,
+            version: 0x13,
+            secret: None,
+            associated_data: None,
+        }
+    }
+
+    fn too_large(r: Result<impl Sized, ov_error::OvError>, param: &str) {
+        let Err(e) = r else { panic!("expected too_large for {param}") };
+        assert_eq!(e.code, OvErrorCode::TooLarge, "{e}");
+        assert!(e.details.as_deref().unwrap_or("").contains(&format!("\"kdf_param\":\"{param}\"")), "{e:?}");
+    }
+
+    #[test]
+    fn limits_take_their_values_and_refuse_one_more() {
+        let gib = 1u64 << 30;
+        assert!(check_kdf_limits(&argon2(MAX_ARGON2_MEMORY, 16)).is_ok());
+        too_large(check_kdf_limits(&argon2(MAX_ARGON2_MEMORY + 1024, 1)), "memory");
+        assert!(check_kdf_limits(&argon2(64 << 20, 256)).is_ok());
+        too_large(check_kdf_limits(&argon2(64 << 20, 257)), "work");
+        too_large(check_kdf_limits(&argon2(gib, u64::MAX)), "work");
+        assert!(check_kdf_limits(&Kdf::AesKdf { rounds: MAX_AES_KDF_ROUNDS, seed: vec![2; 32] }).is_ok());
+        too_large(check_kdf_limits(&Kdf::AesKdf { rounds: MAX_AES_KDF_ROUNDS + 1, seed: vec![2; 32] }), "rounds");
+        // KeePassXC's defaults and its longest unlock setting open
+        assert!(check_kdf_limits(&argon2(64 << 20, 10)).is_ok());
+        assert!(check_kdf_limits(&argon2(64 << 20, 150)).is_ok());
+    }
+
+    /// A file whose header asks for `kdf`: refused before the KDF runs (a 4 TiB Argon2 would abort
+    /// the process, 2⁶⁴ rounds would never end), whatever the key.
+    #[test]
+    fn files_over_the_limits_are_refused_before_the_kdf_runs() {
+        let (db, key) = vault::create_vault_kdbx("V", &[3; 32], 1_700_000_000).unwrap();
+        for (kdf, param) in [
+            (argon2(u64::from(u32::MAX) * 1024, 2), "memory"),
+            (argon2(512 << 20, u64::from(u32::MAX)), "work"),
+            (Kdf::AesKdf { rounds: u64::MAX, seed: vec![2; 32] }, "rounds"),
+        ] {
+            let mut h = db.header.clone();
+            h.kdf = kdf;
+            let header = header::write_outer(&h, h.version, &[4; 32], &[5; 16]);
+            let mut file = header.clone();
+            file.extend_from_slice(&primitives::sha256(&header));
+            file.extend_from_slice(&[0; 32 + 64]);
+            let started = std::time::Instant::now();
+            too_large(read(&file, &key), param);
+            assert!(started.elapsed().as_secs() < 2, "refused at once");
+            // Nor written: this build couldn't open it again
+            let mut big = db.clone();
+            big.header = h;
+            too_large(write(&big, &key), param);
+        }
+    }
+
+    #[test]
+    fn kdf_choices_over_the_limits_are_refused() {
+        too_large(vault::argon2_kdf(Argon2Type::Id, MAX_ARGON2_MEMORY * 2, 1, 1), "memory");
+        too_large(vault::argon2_kdf(Argon2Type::D, 512 << 20, 100, 4), "work");
+        too_large(vault::aes_kdf(MAX_AES_KDF_ROUNDS + 1), "rounds");
+        assert!(vault::argon2_kdf(Argon2Type::Id, 64 << 20, 10, 4).is_ok());
+        assert!(vault::aes_kdf(60_000_000).is_ok());
+    }
 }

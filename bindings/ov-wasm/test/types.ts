@@ -42,16 +42,6 @@ export async function lowLevel(): Promise<void> {
   const m = core.kdbxMerge(out, out, undefined, { password: "pw" });
   console.log(auk, fin.authU, merged.conflicts, m.report.remoteChanged);
 
-  // contract-v1.8
-  const recipient = await account.lookUp("bob@example.com");
-  const granted: GrantResult = await account.shareVaultWithKeys("v", { kind: "email", email: "bob@example.com" }, "read", recipient.publicKeys);
-  const downloaded: Uint8Array | undefined = await sh.download("db");
-  const saCreds: KdbxCredentials = await sa.vaultKdbxCredentials("v");
-  const saSynced: VaultKdbxSyncResult = await sa.syncVaultKdbx("v", out, undefined, undefined);
-  const profile: Profile = await account.me();
-  const profileKeys: PublicKeys = profile.publicKeys;
-  const profileKdf: KdfParams = profile.kdf;
-  console.log(granted.fingerprint, downloaded, saCreds, saSynced.report.outcome, profileKeys.fingerprint, profileKdf.alg);
   const lite: LiteCore = await loadLite();
   const parts: ShareLinkParts = lite.parseShareLink("https://s.example/AAAAAAAAAAAAAAAAAAAAAA#key");
   const open = new lite.ShareOpen(parts.base, undefined, undefined);
@@ -93,7 +83,6 @@ export async function contractV16(core: Core, client: InstanceType<Core["OvClien
   const fileCreds: KdbxCredentials = await account.vaultKdbxCredentials("v");
   const synced: VaultKdbxSyncResult = await account.syncVaultKdbx("v", out, undefined, { localChanged: true, acceptServerState: true });
   const jwt: Uint8Array = await account.accessToken(false);
-  const b32: Uint8Array = core.base32Decode("JBSWY3DP");
   // contract-v1.8
   const recipient = await account.lookUp("bob@example.com");
   const granted: GrantResult = await account.shareVaultWithKeys("v", { kind: "email", email: "bob@example.com" }, "read", recipient.publicKeys);
@@ -104,6 +93,7 @@ export async function contractV16(core: Core, client: InstanceType<Core["OvClien
   const profileKeys: PublicKeys = profile.publicKeys;
   const profileKdf: KdfParams = profile.kdf;
   console.log(granted.fingerprint, downloaded, saCreds, saSynced.report.outcome, profileKeys.fingerprint, profileKdf.alg);
+  const b32: Uint8Array = core.base32Decode("JBSWY3DP");
   const lite: LiteCore = await loadLite();
   const b32lite: Uint8Array = lite.base32Decode("JBSWY3DP");
   console.log(b32, b32lite, fileCreds, synced.report.outcome, jwt, used, count, prot, summary, preview, targets, value, out, old, issuer, config, mode);

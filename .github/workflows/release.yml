@@ -18,7 +18,7 @@
 # the wheels (.github/scripts/wheel_natives.py repacks them with a new RECORD) and in the jar
 # (`cargo xtask release jvm-native` per platform, signed, then `--only jvm` assembles the jar and AAR).
 # The Android libraries aren't code-signed (an app's own signature covers them); like every asset, the
-# wheels, jar and AAR are covered by the GPG-signed SHA256SUMS.
+# wheels, jar and AAR are covered by the GPG-signed SHA256SUMS, and each also gets its own .asc.
 #
 # Versions: everything carries the workspace version, which must equal the tag (the `version` job). The
 # wheels get it from bindings/ov-ffi's Cargo.toml through maturin, in PEP 440 form (1.2.0-beta.1 ->
@@ -967,6 +967,14 @@ jobs:
             echo "::error::SHA256SUMS.asc is signed by a key of $primary, not the release key $RELEASE_KEY"; exit 1
           fi
           sha256sum -c SHA256SUMS
+          # The bindings' packages get a signature each too (pip and Maven users fetch single files)
+          for f in openvireo-*.whl openvireo-*.tar.gz openvireo-core-jvm-*.jar openvireo-core-android-*.aar; do
+            case "$f" in openvireo-core-wasm-*) continue ;; esac
+            [ -f "$f" ] || { echo "::error::no $f in the release"; exit 1; }
+            gpg --batch --armor --detach-sign --output "$f.asc" "$f"
+            primary=$(gpg --batch --status-fd 1 --verify "$f.asc" "$f" 2>/dev/null | awk '$2 == "VALIDSIG" { print $NF }')
+            [ "$primary" = "$RELEASE_KEY" ] || { echo "::error::$f.asc is not by the release key"; exit 1; }
+          done
       - name: Create the release, or replace the files on a re-run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1009,7 +1017,7 @@ jobs:
             \`OpenVireoCore::ovcore\`) for darwin-arm64, darwin-x64, linux-x64, linux-arm64 and windows-x64.
           - **Python**: the \`openvireo\` wheels (Python 3.10+; macOS arm64 and x86_64, manylinux_2_28 x86_64 and
             aarch64, musllinux x86_64, Windows x64) and the sdist. The native library in the macOS and Windows
-            wheels is signed like \`ov\`.
+            wheels is signed like \`ov\`; each wheel, the sdist, the jar and the AAR also has a \`.asc\` signature.
 
             \`\`\`sh
             pip install openvireo --find-links https://github.com/$GITHUB_REPOSITORY/releases/expanded_assets/$GITHUB_REF_NAME

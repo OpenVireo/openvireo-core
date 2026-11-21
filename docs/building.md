@@ -138,7 +138,7 @@ The bindings are part of the same release:
 - **Signing**: the macOS dylib and the Windows DLL in the jar and inside the macOS and Windows wheels
   get the same Developer ID (notarized) and Azure signatures as `ov`; the wheels are repacked with a
   new `RECORD` (`.github/scripts/wheel_natives.py`). Every asset, wheels, jar and AAR included, is
-  in the GPG-signed `SHA256SUMS`.
+  in the GPG-signed `SHA256SUMS`, and the wheels, sdist, jar and AAR also get a `.asc` each.
 - **Verification**: `cargo xtask release verify` installs the platform's wheel into a fresh venv and
   imports it, runs a Java program against the jar, and checks the AAR, on each of the five release
   platforms.

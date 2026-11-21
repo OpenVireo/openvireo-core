@@ -1,0 +1,611 @@
+# Builds, signs, verifies and publishes an openvireo-core release when a vX.Y.Z tag is pushed:
+#
+# - `@openvireo/core-wasm` (the full and the lite module in one package) to GitHub Packages, and to
+#   npmjs.com too when the repository variable NPMJS_PUBLISH is "true" (as in openvireo-sdk);
+# - a GitHub release with OpenVireoCore.xcframework.zip, its SwiftPM checksum and the UniFFI Swift source,
+#   libovcore-<v>-<platform> CMake packages, signed ov-<v>-<platform> binaries (the SDK's asset names),
+#   the npm tarball, SHA256SUMS and its GPG signature SHA256SUMS.asc.
+#
+# Each build runner runs `cargo xtask release --unpacked` (xtask/src/release.rs) for what it builds. The
+# macOS `ov` executables are signed with a Developer ID (hardened runtime) and notarized, the Windows one
+# signed with Azure Artifact Signing, then `cargo xtask release pack` archives them and writes SHA256SUMS,
+# and `cargo xtask release verify` checks every archive on its own platform before anything is published.
+#
+# Signing uses the same secrets, variables and steps as openvireo-sdk's release.yml, from this repository's
+# `signing` environment. Signing is required on a release tag and when asked for (`sign`); otherwise it's
+# skipped with a warning, so a dispatch from a branch or a fork still builds and verifies everything.
+#
+# A workflow_dispatch is a dry run unless `publish` is set: it uploads every file as the run's `release`
+# artifact and publishes nothing. Publishing needs a tag ref (`gh workflow run release.yml --ref vX.Y.Z
+# -f publish=true` re-publishes a tag); versions already published are skipped, so a run can be re-run.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish (npm packages and the GitHub release); needs a vX.Y.Z tag ref. Off = dry run.
+        type: boolean
+        default: false
+      sign:
+        description: Sign the binaries (needs a `signing` environment that allows this ref)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Signing is required on a release tag and when asked for; it's skipped with a warning otherwise
+  REQUIRE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.sign == true }}
+  # Pinned downloads; update each version and checksum together
+  ARTIFACT_SIGNING_CLIENT_VERSION: "1.0.146" # the same as openvireo-sdk and the desktop app
+  ARTIFACT_SIGNING_CLIENT_SHA256: 7761e5d8f31e54b764da21d33cd8b0a2940e1b05526c7dfcb5e94b0431426f70
+  WASM_BINDGEN_VERSION: "0.2.130" # must equal wasm-bindgen in Cargo.lock (`cargo xtask wasm` checks)
+  WASM_BINDGEN_SHA256: 9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f # x86_64-unknown-linux-musl
+  BINARYEN_VERSION: "133"
+  BINARYEN_SHA256: 2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489 # x86_64-linux
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Read the workspace version
+        id: version
+        run: |
+          version=$(sed -n '/^\[workspace\.package\]/,/^\[/ s/^version = "\(.*\)"$/\1/p' Cargo.toml)
+          if [ -z "$version" ]; then echo "::error::no version in Cargo.toml [workspace.package]"; exit 1; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "openvireo-core $version"
+      - name: Check the tag matches the workspace version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::the workspace version is $VERSION but the tag is $GITHUB_REF_NAME"; exit 1
+          fi
+      - name: Check publishing has a tag
+        if: (github.event_name == 'push' || inputs.publish) && !startsWith(github.ref, 'refs/tags/v')
+        run: |
+          echo "::error::publishing needs a vX.Y.Z tag ref, not $GITHUB_REF; run with publish off for a dry run"
+          exit 1
+
+  # `cargo xtask release --unpacked` per runner: archives for everything but `ov`, whose executables stay
+  # unpacked for the signing jobs (the Linux ones go as they are)
+  build:
+    needs: version
+    name: build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: wasm, runner: ubuntu-24.04, only: wasm }
+          - { name: xcframework, runner: macos-15, only: xcframework }
+          - { name: darwin, runner: macos-15, only: "cpp,ov", ov: unsigned }
+          # glibc 2.35 for libovcore; ov itself is static musl
+          - { name: linux-x64, runner: ubuntu-22.04, only: "cpp,ov", ov: ready }
+          - { name: linux-arm64, runner: ubuntu-22.04-arm, only: "cpp,ov", ov: ready }
+          - { name: windows-x64, runner: windows-2025, only: "cpp,ov", ov: unsigned }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Targets and tools
+        env:
+          NAME: ${{ matrix.name }}
+        run: |
+          case "$NAME" in
+            darwin | xcframework)
+              rustup target add aarch64-apple-darwin x86_64-apple-darwin
+              ;;
+            linux-*)
+              rustup target add "$(uname -m)-unknown-linux-musl"
+              sudo apt-get update -q && sudo apt-get install -yq musl-tools
+              ;;
+            wasm)
+              tools="$RUNNER_TEMP/tools"
+              mkdir -p "$tools/bin"
+              wb="wasm-bindgen-$WASM_BINDGEN_VERSION-x86_64-unknown-linux-musl"
+              curl -fsSL -o "$tools/$wb.tar.gz" \
+                "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$WASM_BINDGEN_VERSION/$wb.tar.gz"
+              echo "$WASM_BINDGEN_SHA256  $tools/$wb.tar.gz" | sha256sum -c -
+              tar -xzf "$tools/$wb.tar.gz" -C "$tools"
+              cp "$tools/$wb/wasm-bindgen" "$tools/bin/"
+              by="binaryen-version_$BINARYEN_VERSION"
+              curl -fsSL -o "$tools/$by.tar.gz" \
+                "https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/$by-x86_64-linux.tar.gz"
+              echo "$BINARYEN_SHA256  $tools/$by.tar.gz" | sha256sum -c -
+              tar -xzf "$tools/$by.tar.gz" -C "$tools"
+              cp "$tools/$by/bin/wasm-opt" "$tools/bin/"
+              echo "$tools/bin" >> "$GITHUB_PATH"
+              "$tools/bin/wasm-bindgen" --version
+              "$tools/bin/wasm-opt" --version
+              ;;
+          esac
+      - uses: actions/setup-node@v4
+        if: matrix.name == 'wasm'
+        with:
+          node-version: 22
+      - name: Build
+        env:
+          ONLY: ${{ matrix.only }}
+          DRY_RUN: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          args=(--only "$ONLY" --unpacked --out dist)
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          cargo xtask release "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        if: matrix.ov != ''
+        with:
+          name: ov-${{ matrix.ov }}-${{ matrix.name }}
+          path: dist/ov-*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: files-${{ matrix.name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.tgz
+            dist/*.checksum
+            dist/*.swift
+          if-no-files-found: error
+
+  # Developer ID signature with the hardened runtime, then notarization (openvireo-sdk's scripts/macos/sign.sh;
+  # the native `ov` needs no entitlements)
+  sign-macos:
+    needs: build
+    runs-on: macos-15
+    environment: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.sign) && 'signing' || '' }}
+    outputs:
+      signed: ${{ steps.config.outputs.signed }}
+    env:
+      HAS_SECRETS: ${{ secrets.MACOS_CERTIFICATE_P12 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ov-unsigned-darwin
+          path: raw
+      - name: Check the signing secrets
+        id: config
+        run: |
+          chmod 755 raw/ov-*-darwin-*/ov
+          if [ "$HAS_SECRETS" = true ]; then echo "signed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$REQUIRE_SIGNING" = true ]; then
+            echo "::error::macOS signing is not configured (MACOS_CERTIFICATE_P12, MACOS_CERTIFICATE_PASSWORD, APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD in the signing environment); see openvireo-sdk's .github/RELEASE-SIGNING.md"
+            exit 1
+          fi
+          echo "::warning::macOS signing skipped: no signing secrets here; the macOS binaries are not signed or notarized"
+          echo "signed=false" >> "$GITHUB_OUTPUT"
+      # Without signing secrets: an ad hoc signature with the hardened runtime on a copy, to catch a build
+      # that stops running once signed the way the release signs it
+      - name: Check a signed copy still runs
+        if: steps.config.outputs.signed == 'false'
+        run: |
+          exe="$RUNNER_TEMP/ov"
+          cp raw/ov-*-darwin-arm64/ov "$exe"
+          codesign --force --options runtime --identifier com.openvireo.ov --sign - "$exe"
+          codesign --verify --strict --verbose=2 "$exe"
+          codesign -dv "$exe" 2>&1 | grep 'flags=.*runtime' > /dev/null
+          "$exe" version
+      - name: Import the certificate
+        id: identity
+        if: steps.config.outputs.signed == 'true'
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -hex 16)
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain"
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
+          # shellcheck disable=SC2046 # the keychain list is one path per word
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk '/"Developer ID Application/ { print $2; exit }')
+          if [ -z "$identity" ]; then echo "::error::MACOS_CERTIFICATE_P12 has no Developer ID Application identity"; exit 1; fi
+          xcrun notarytool store-credentials notarization --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$keychain"
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"
+      - name: Sign and notarize
+        if: steps.config.outputs.signed == 'true'
+        env:
+          IDENTITY: ${{ steps.identity.outputs.identity }}
+          KEYCHAIN: ${{ steps.identity.outputs.keychain }}
+        run: |
+          for exe in raw/ov-*-darwin-*/ov; do
+            codesign --force --options runtime --timestamp --identifier com.openvireo.ov --sign "$IDENTITY" "$exe"
+            codesign --verify --strict --verbose=2 "$exe"
+          done
+          # Both executables in one submission; a bare executable can't be stapled, so Gatekeeper looks the
+          # ticket up online the first time it sees the file
+          work="$RUNNER_TEMP/notarize"
+          mkdir -p "$work/bin"
+          for exe in raw/ov-*-darwin-*/ov; do
+            d="$work/bin/$(basename "$(dirname "$exe")")"
+            mkdir -p "$d" && cp -p "$exe" "$d/"
+          done
+          ditto -c -k --keepParent "$work/bin" "$work/notarize.zip"
+          xcrun notarytool submit "$work/notarize.zip" --keychain-profile notarization --keychain "$KEYCHAIN" \
+            --wait --timeout 30m --output-format json | tee "$work/result.json"
+          echo
+          id="$(plutil -extract id raw "$work/result.json")"
+          status="$(plutil -extract status raw "$work/result.json")"
+          xcrun notarytool log "$id" --keychain-profile notarization --keychain "$KEYCHAIN" || true
+          if [ "$status" != Accepted ]; then echo "::error::notarization: $status"; exit 1; fi
+      - name: Run the signed binary
+        if: steps.config.outputs.signed == 'true'
+        run: |
+          for exe in raw/ov-*-darwin-arm64/ov; do "$exe" version; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ov-ready-darwin
+          path: raw/ov-*
+          if-no-files-found: error
+
+  # Authenticode signature from Azure Artifact Signing, through SignTool's dlib and an OIDC login to Azure
+  sign-windows:
+    needs: build
+    runs-on: windows-2025
+    environment: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.sign) && 'signing' || '' }}
+    permissions:
+      contents: read
+      id-token: write # azure/login with the federated credential for this repository's signing environment
+    outputs:
+      signed: ${{ steps.config.outputs.signed }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      HAS_SECRETS: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' && vars.ARTIFACT_SIGNING_ENDPOINT != '' && vars.ARTIFACT_SIGNING_ACCOUNT != '' && vars.ARTIFACT_SIGNING_PROFILE != '' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ov-unsigned-windows-x64
+          path: raw
+      - name: Check the signing secrets
+        id: config
+        run: |
+          if [ "$HAS_SECRETS" = true ]; then echo "signed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$REQUIRE_SIGNING" = true ]; then
+            echo "::error::Windows signing is not configured (secrets AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID and variables ARTIFACT_SIGNING_ENDPOINT, ARTIFACT_SIGNING_ACCOUNT, ARTIFACT_SIGNING_PROFILE in the signing environment); see openvireo-sdk's .github/RELEASE-SIGNING.md"
+            exit 1
+          fi
+          echo "::warning::Windows signing skipped: no signing secrets here; the Windows binary is not signed"
+          echo "signed=false" >> "$GITHUB_OUTPUT"
+      # Without signing secrets: a throwaway self-signed signature on a copy, to check it still runs signed
+      - name: Check a signed copy still runs
+        if: steps.config.outputs.signed == 'false'
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=OpenVireo CI test" -CertStoreLocation Cert:\CurrentUser\My
+          $exe = Join-Path $env:RUNNER_TEMP "ov-test.exe"
+          Copy-Item (Get-ChildItem raw\ov-*-windows-x64\ov.exe).FullName $exe
+          $before = (Get-Item $exe).Length
+          Set-AuthenticodeSignature -FilePath $exe -Certificate $cert -HashAlgorithm SHA256 | Out-Null
+          $sig = Get-AuthenticodeSignature $exe
+          if ($sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw "the test signature is missing" }
+          "signed copy: $before -> $((Get-Item $exe).Length) bytes, status $($sig.Status) (untrusted test certificate)"
+          & $exe version
+          if ($LASTEXITCODE) { throw "the signed copy failed to run" }
+      - name: Sign in to Azure
+        if: steps.config.outputs.signed == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Set up Artifact Signing
+        id: dlib
+        if: steps.config.outputs.signed == 'true'
+        env:
+          ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          # SignTool's dlib for Artifact Signing; it signs with the Azure CLI login from the previous step
+          curl -fsSL -o "$RUNNER_TEMP/signing-client.nupkg" \
+            "https://api.nuget.org/v3-flatcontainer/microsoft.artifactsigning.client/$ARTIFACT_SIGNING_CLIENT_VERSION/microsoft.artifactsigning.client.$ARTIFACT_SIGNING_CLIENT_VERSION.nupkg"
+          echo "$ARTIFACT_SIGNING_CLIENT_SHA256  $RUNNER_TEMP/signing-client.nupkg" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/signing-client.nupkg" -d "$RUNNER_TEMP/signing-client"
+          python - "$RUNNER_TEMP/signing-metadata.json" <<'EOF'
+          import json, os, sys
+          excluded = ["EnvironmentCredential", "ManagedIdentityCredential", "WorkloadIdentityCredential",
+                      "SharedTokenCacheCredential", "VisualStudioCredential", "VisualStudioCodeCredential",
+                      "AzurePowerShellCredential", "AzureDeveloperCliCredential", "InteractiveBrowserCredential"]
+          json.dump({"Endpoint": os.environ["ENDPOINT"], "CodeSigningAccountName": os.environ["ACCOUNT"],
+                     "CertificateProfileName": os.environ["PROFILE"], "ExcludeCredentials": excluded},
+                    open(sys.argv[1], "w"), indent=2)
+          EOF
+          echo "dlib=$(cygpath -w "$RUNNER_TEMP/signing-client/bin/x64/Azure.CodeSigning.Dlib.dll")" >> "$GITHUB_OUTPUT"
+          echo "metadata=$(cygpath -w "$RUNNER_TEMP/signing-metadata.json")" >> "$GITHUB_OUTPUT"
+      - name: Sign
+        if: steps.config.outputs.signed == 'true'
+        shell: pwsh
+        env:
+          DLIB: ${{ steps.dlib.outputs.dlib }}
+          METADATA: ${{ steps.dlib.outputs.metadata }}
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\signtool.exe" |
+            Sort-Object { [version]$_.Directory.Parent.Name } | Select-Object -Last 1
+          $files = @(Get-ChildItem raw\ov-*-windows-x64\*.exe | ForEach-Object FullName)
+          & $signtool.FullName sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 `
+            /dlib $env:DLIB /dmdf $env:METADATA @files
+          if ($LASTEXITCODE) { throw "signtool failed" }
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature $f
+            "$f`: $($sig.Status), $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne "Valid") { throw "$f has no valid signature" }
+            & $f version
+            if ($LASTEXITCODE) { throw "$f failed to run once signed" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ov-ready-windows-x64
+          path: raw/ov-*
+          if-no-files-found: error
+
+  # Archives the signed executables (`cargo xtask release pack`) and writes SHA256SUMS over every file
+  pack:
+    needs: [build, sign-macos, sign-windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: files-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ov-ready-*
+          path: dist
+          merge-multiple: true
+      - run: cargo xtask release pack dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: dist/*
+          if-no-files-found: error
+
+  # Checks the signatures, then `cargo xtask release verify` on each platform: ov runs, a CMake app links
+  # libovcore, a SwiftPM app links the xcframework (macOS), Node loads both wasm modules
+  verify:
+    needs: [version, pack, sign-macos, sign-windows]
+    name: verify (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64, runner: ubuntu-24.04 }
+          - { platform: linux-arm64, runner: ubuntu-24.04-arm }
+          - { platform: darwin-x64, runner: macos-15-intel }
+          - { platform: darwin-arm64, runner: macos-15 }
+          - { platform: windows-x64, runner: windows-2025 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      PLATFORM: ${{ matrix.platform }}
+      VERSION: ${{ needs.version.outputs.version }}
+      MACOS_SIGNED: ${{ needs.sign-macos.outputs.signed }}
+      WINDOWS_SIGNED: ${{ needs.sign-windows.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: Unpack ov
+        run: |
+          mkdir sig
+          if [[ "$PLATFORM" == windows-* ]]; then
+            pwsh -Command "Expand-Archive -Path 'release/ov-$VERSION-$PLATFORM.zip' -DestinationPath sig"
+          else
+            tar -xzf "release/ov-$VERSION-$PLATFORM.tar.gz" -C sig
+          fi
+      - name: Check the signature (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          exe="sig/ov-$VERSION-$PLATFORM/ov"
+          if [ "$MACOS_SIGNED" != true ]; then
+            echo "::warning::$exe is not signed (signing was skipped)"; exit 0
+          fi
+          codesign --verify --strict --verbose=2 "$exe"
+          codesign -dvv "$exe" 2>&1 | grep -E '^(Identifier|Authority|TeamIdentifier|Timestamp)='
+          codesign -dvv "$exe" 2>&1 | grep '^Authority=Developer ID Application:' > /dev/null
+          codesign -dv "$exe" 2>&1 | grep 'flags=.*runtime' > /dev/null
+          # Notarized: Gatekeeper finds the ticket online (a bare executable can't be stapled)
+          assessment=$(spctl --assess --type install -vv "$exe" 2>&1) || { echo "$assessment"; exit 1; }
+          echo "$assessment"
+          [[ "$assessment" == *"source=Notarized Developer ID"* ]]
+      - name: Check the signature (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $f = Get-Item "sig\ov-$env:VERSION-$env:PLATFORM\ov.exe"
+          $sig = Get-AuthenticodeSignature $f.FullName
+          if ($env:WINDOWS_SIGNED -ne "true") { "::warning::$($f.Name) is not signed (signing was skipped)"; exit 0 }
+          "$($f.Name): $($sig.Status), $($sig.SignerCertificate.Subject), timestamp by $($sig.TimeStamperCertificate.Subject)"
+          if ($sig.Status -ne "Valid") { throw "$($f.Name) has no valid signature" }
+      - name: Verify
+        env:
+          DRY_RUN: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          args=(release)
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          cargo xtask release verify "${args[@]}"
+
+  github-packages:
+    needs: [version, verify]
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@openvireo"
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if npm view "@openvireo/core-wasm@$VERSION" version >/dev/null 2>&1; then
+            echo "@openvireo/core-wasm@$VERSION is already on GitHub Packages"; exit 0
+          fi
+          args=()
+          if [[ "$VERSION" == *-* ]]; then args+=(--tag next); fi # a prerelease never becomes `latest`
+          npm publish "release/openvireo-core-wasm-$VERSION.tgz" "${args[@]}"
+
+  npmjs:
+    needs: [version, verify]
+    if: (github.event_name == 'push' || inputs.publish) && vars.NPMJS_PUBLISH == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # trusted publishing and provenance
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest # trusted publishing needs npm 11.5.1 or later
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if npm view "@openvireo/core-wasm@$VERSION" version >/dev/null 2>&1; then
+            echo "@openvireo/core-wasm@$VERSION is already on npmjs.com"; exit 0
+          fi
+          args=(--provenance --access public)
+          if [[ "$VERSION" == *-* ]]; then args+=(--tag next); fi
+          npm publish "release/openvireo-core-wasm-$VERSION.tgz" "${args[@]}"
+
+  github-release:
+    needs: [version, verify]
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-24.04
+    environment: signing
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: Sign SHA256SUMS
+        working-directory: release
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          # The OpenVireo release key (primary key); the secret holds its signing subkey
+          RELEASE_KEY: FE2778BF074705E0994BBAF9FEBA35562DE104CB
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "::error::GPG_PRIVATE_KEY is not set in the signing environment; see openvireo-sdk's .github/RELEASE-SIGNING.md"
+            exit 1
+          fi
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --armor --detach-sign --output SHA256SUMS.asc SHA256SUMS
+          # VALIDSIG's last field is the primary key of the subkey that signed
+          primary=$(gpg --batch --status-fd 1 --verify SHA256SUMS.asc SHA256SUMS 2>/dev/null | awk '$2 == "VALIDSIG" { print $NF }')
+          if [ "$primary" != "$RELEASE_KEY" ]; then
+            echo "::error::SHA256SUMS.asc is signed by a key of $primary, not the release key $RELEASE_KEY"; exit 1
+          fi
+          sha256sum -c SHA256SUMS
+      - name: Create the release, or replace the files on a re-run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
+          args=(--repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --verify-tag --generate-notes)
+          if [[ "$VERSION" == *-* ]]; then args+=(--prerelease); fi
+          checksum="$(cat release/OpenVireoCore.xcframework.zip.checksum)"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          cat > notes.md <<EOF
+          openvireo-core $VERSION, the shared Rust core of OpenVireo. \`SHA256SUMS.asc\` is a GPG signature of
+          \`SHA256SUMS\` by the [OpenVireo release key](https://openvireo.com/verifying-signatures)
+          (\`FE27 78BF 0747 05E0 994B BAF9 FEBA 3556 2DE1 04CB\`).
+
+          - **\`ov\`**: single native binaries; the macOS ones are signed with a Developer ID and notarized, the
+            Windows one signed with Azure Artifact Signing. On Linux (static, any distro) and macOS:
+
+            \`\`\`sh
+            curl -LO $base/ov-$VERSION-linux-x64.tar.gz
+            curl -LO $base/SHA256SUMS
+            curl -LO $base/SHA256SUMS.asc
+            gpg --verify SHA256SUMS.asc SHA256SUMS
+            sha256sum --ignore-missing -c SHA256SUMS
+            tar -xzf ov-$VERSION-linux-x64.tar.gz && sudo install ov-$VERSION-linux-x64/ov /usr/local/bin/
+            \`\`\`
+          - **WebAssembly**: \`@openvireo/core-wasm\` $VERSION on GitHub Packages (full and lite modules), also
+            attached as \`openvireo-core-wasm-$VERSION.tgz\`.
+          - **Swift**: \`OpenVireoCore.xcframework.zip\` (iOS, iOS simulator, macOS) with the UniFFI source
+            \`OpenVireoRustCore.swift\`:
+
+            \`\`\`swift
+            .binaryTarget(name: "OpenVireoRustCoreFFI", url: "$base/OpenVireoCore.xcframework.zip",
+                          checksum: "$checksum")
+            \`\`\`
+          - **C++**: \`libovcore-$VERSION-<platform>\` CMake packages (\`find_package(OpenVireoCore)\`,
+            \`OpenVireoCore::ovcore\`) for darwin-arm64, darwin-x64, linux-x64, linux-arm64 and windows-x64.
+          EOF
+          gh release create "$GITHUB_REF_NAME" "${args[@]}" --notes-file notes.md release/*

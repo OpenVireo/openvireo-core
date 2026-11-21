@@ -1,0 +1,62 @@
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "openvireo"
+description = "Python binding of openvireo-core: OpenVireo accounts, vaults, sync and share links"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT OR Apache-2.0"
+authors = [{ name = "OpenVireo", email = "admin@openvireo.com" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Security :: Cryptography",
+    "Typing :: Typed",
+]
+# The version is the core's (bindings/ov-ffi's Cargo.toml).
+dynamic = ["version"]
+dependencies = []
+
+[project.optional-dependencies]
+httpx = ["httpx>=0.27"]
+keyring = ["keyring>=24"]
+
+[project.urls]
+Homepage = "https://openvireo.com"
+Repository = "https://github.com/openvireo/openvireo-core"
+
+[tool.maturin]
+# UniFFI mode: maturin builds the ov-ffi cdylib, runs the crate's own uniffi-bindgen (so the
+# generator matches the pinned uniffi) and packs the generated module as `openvireo._core`. The
+# library is loaded through ctypes, not the CPython ABI, so the wheel is py3-none-<platform>.
+bindings = "uniffi"
+manifest-path = "../ov-ffi/Cargo.toml"
+module-name = "openvireo._core"
+python-source = "python"
+# Release wheels never enable `test-server` (the opaque_server_* steps). The smoke build adds it
+# with `maturin develop --features test-server` (`cargo xtask python --smoke`).
+features = []
+locked = true
+strip = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["python/openvireo/_core"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["python/openvireo/hosts.py", "python/openvireo/__init__.py"]
+ignore_missing_imports = true

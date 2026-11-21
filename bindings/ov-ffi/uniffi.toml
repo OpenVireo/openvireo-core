@@ -11,6 +11,17 @@ ffi_module_filename = "OpenVireoRustCoreFFI"
 package_name = "com.openvireo.core"
 cdylib_name = "ov_ffi"
 
+# Kotlin-only names. Every generated object is `AutoCloseable`, whose `close()` frees the handle,
+# so a method called `close` would clash with it; and errors are `Throwable`s, whose `message` an
+# error field can't redeclare.
+[bindings.kotlin.rename]
+"ByteStream.close" = "closeStream"
+"EventStream.close" = "closeStream"
+"ServiceAccount.close" = "endSession"
+"OvError.Failure.message" = "errorMessage"
+"TransportError.Tls.message" = "reason"
+"TransportError.Other.message" = "reason"
+
 # The Python binding: the cdylib that ctypes loads.
 [bindings.python]
 cdylib_name = "ov_ffi"

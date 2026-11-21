@@ -67,6 +67,19 @@ generated Swift into `Vendor/Frameworks/core/{test,release}/`. The Debug configu
 build, Release the plain one. The app links the static libraries directly rather than the xcframework
 bundle. See openvireo-ios `Vendor/core/SOURCE.md`.
 
+## Kotlin/JVM: `com.openvireo:openvireo-core-jvm`
+
+```sh
+cargo xtask kotlin                      # host cdylib, uniffi-bindgen kotlin, host native, ./gradlew test
+cargo xtask kotlin --smoke              # also the smoke test against the testkit relay (implies --test-server)
+cargo xtask kotlin --generate-only      # stop before Gradle (what Gradle's :generateBindings runs)
+cargo xtask kotlin -- build             # any Gradle tasks instead of `test`
+```
+
+Needs JDK 17+ (Gradle 9 runs on it); the jar itself targets Java 11. The generated Kotlin and the natives are
+built into `bindings/kotlin/build/` (git-ignored), never committed; `-Pov.nativesDir=<dir>` points the
+jar at a full set of natives in JNA's layout. Details: [bindings/kotlin/README.md](../bindings/kotlin/README.md).
+
 ## C++: `libovcore` + `<ovcore.h>`
 
 ```sh

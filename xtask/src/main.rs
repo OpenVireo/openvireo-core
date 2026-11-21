@@ -9,6 +9,7 @@ use std::process::{Command, ExitCode};
 // One module per task-owned command (W1-BW wasm, W1-BS xcframework, W1-BC cpp, W1-P openapi, W4-R release).
 mod cpp;
 mod openapi;
+mod python;
 mod release;
 mod wasm;
 mod xcframework;
@@ -28,6 +29,7 @@ Commands:
   xcframework   build OpenVireoCore.xcframework                  (W1-BS)
   cpp           build the C++ static libs + headers              (W1-BC)
   openapi       round-trip every OpenAPI example through ov-protocol (W1-P)
+  python        build the openvireo Python package + pytest      (B1; `--smoke`, `--wheel`)
   release       build every release artifact the host can build + SHA256SUMS (W4-R; `release --help`)
 
 Portable crates (built for wasm32 and iOS by `ci`) are every package under crates/ except
@@ -48,6 +50,7 @@ fn main() -> ExitCode {
         Some("cpp") => cpp::run(&args[1..]),
         Some("openapi") => openapi::run(&args[1..]),
         Some("release") => release::run(&args[1..]),
+        Some("python") => python::run(&args[1..]),
         None | Some("help" | "-h" | "--help") => {
             print!("{HELP}");
             Ok(())

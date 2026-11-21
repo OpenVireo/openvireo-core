@@ -1,0 +1,12 @@
+﻿: hello
+retry: 5000
+id: 7
+event: vault
+data: {"id":"v1","etag":"\"e\"","revision":3}
+
+event: access
+data: {"vault":"v1","change":"revoked"}
+
+event: databasedata: {"id":"d","deleted":true}data: a
+data: b
+

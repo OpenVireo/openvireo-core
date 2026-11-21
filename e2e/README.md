@@ -72,7 +72,7 @@ The throwaway project is set through `COMPOSE_PROJECT_NAME`, so the iOS script's
 | 4 | Alice (SDK) checks Bob's fingerprint and shares to his keys with write access. Bob (ov) reads and writes, and Alice sees it. Bob (SDK) writes, and Alice (ov) reads it. After Alice drops Bob to read, ov's write is refused. | SDK ↔ ov, two users |
 | 5 | ov makes a link with 2 opens. The SDK opens it twice and the third open is refused, and ov's and the SDK's share lists agree. A passcode link from ov is refused without the passcode and with the wrong one, and opens with the right one. A link made on the SDK is revoked on ov. | ov → SDK, SDK → ov |
 | 6 | The SDK rotates the vault key. Bob (ov) and a new SDK device use the new key. Revoking Bob rotates again and removes him on ov and on the SDK. Then `ov rotate` changes a secret and the SDK reads it. | SDK, ov |
-| 6b | A device that was signed in before another device rotated the key opens and syncs the vault without listing the vaults first. This is a **known failure** on contract-v1.8 (see below). | SDK |
+| 6b | A device that was signed in before another device rotated the key opens and syncs the vault without listing the vaults first. Fixed after contract-v1.8 (W3-X found it): the core fetches the vault's keys again when the server copy doesn't open with the ones it holds. | SDK |
 | 7 | ov deletes the account (wrong email refused; the preview counts its share link). The link stops working, the old SDK session ends, and a new SDK sign-in sees the account pending and restores it. Then ov uses it again. The reverse also runs: the SDK deletes and ov restores. | ov ↔ SDK |
 
 Cells marked n/a need new client code:
@@ -90,9 +90,7 @@ Cells marked n/a need new client code:
 Known failures are listed in `KNOWN` in `cross-client.mjs`. They show as `FAIL (known)` and don't change the
 exit status unless `OV_E2E_STRICT=1`. Delete an entry once its fix lands.
 
-- **6b**: the core's `Account` keeps a vault's key list from the last `vaults()` call. On a device that was
-  signed in before another device rotated the key, `open_vault` and `Vault::sync` fail with
-  `vault_key_mismatch` until the app lists the vaults again.
+None at the moment.
 
 ## Running a subset
 

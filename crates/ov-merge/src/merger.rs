@@ -135,6 +135,8 @@ pub fn merge_in_place(
     let mut changes: Vec<MergeChange> = Vec::new();
     let mut conflicts: Vec<EntryConflict> = Vec::new();
     let mut combined: Vec<Uuid> = Vec::new();
+    // Entries only one side changed, copied whole onto the other copy: (into local, into remote)
+    let (mut taken_local, mut taken_remote): (Vec<Uuid>, Vec<Uuid>) = (Vec::new(), Vec::new());
     // Before combine_entries and the structure merge copy one entry's location over the other's
     let locations = locations_of(local, remote);
     if let Some(base) = base {
@@ -155,6 +157,30 @@ pub fn merge_in_place(
             // The structure merge keeps the newer entry: right when only one side changed and it is strictly newer
             let needed =
                 (local_changed && remote_changed) || (local_changed && lt <= rt) || (remote_changed && rt <= lt);
+            if needed && local_changed != remote_changed && lt == rt {
+                // Only one side changed it (by content, against the base), in the same second as the
+                // other copy's time (an edit in the second of the last sync): that side's entry wins
+                // whole and the other copy becomes it. Combining would stamp both with `now` and push
+                // history on the unchanged side, so a pull with nothing changed here would upload. A
+                // changed side whose clock is behind (strictly older) is still combined, as the
+                // desktop's SyncEngine does (merge fixture 03).
+                let (from, into, taken) = if remote_changed {
+                    (&*remote, &mut *local, &mut taken_local)
+                } else {
+                    (&*local, &mut *remote, &mut taken_remote)
+                };
+                let (src, parent) = find_entry(&from.root, id).expect("the entry is on both sides");
+                changes.push(tree::entry_record(
+                    ChangeType::Modified,
+                    src,
+                    Some(&parent.name),
+                    "Took the version changed on the other device",
+                ));
+                let copy = tree::copy_entry(src, Some(from), into, true);
+                put_back(into, copy);
+                taken.push(id);
+                continue;
+            }
             if needed {
                 let c = combine_entries(local, remote, base, id, now);
                 let (entry, parent) = find_entry(&local.root, id).expect("combined entry is in local");
@@ -197,6 +223,7 @@ pub fn merge_in_place(
 
     let added = entry_ids(&to_local, |c| c == ChangeType::Added, &[]);
     let mut updated = combined.clone();
+    updated.extend(taken_local.iter().copied());
     let moved_here = entry_ids(&to_local, |c| matches!(c, ChangeType::Modified | ChangeType::Moved), &added);
     for id in moved_here.into_iter().chain(placed.moved_here.iter().copied()) {
         if !updated.contains(&id) && !added.contains(&id) {
@@ -204,8 +231,13 @@ pub fn merge_in_place(
         }
     }
     let deleted = entry_ids(&after, |c| c == ChangeType::Deleted, &[]);
-    let remote_changed = !combined.is_empty() || !after.is_empty() || !to_remote.is_empty() || placed.remote;
-    let local_changed = !combined.is_empty() || !after.is_empty() || !to_local.is_empty() || placed.local;
+    let remote_changed = !combined.is_empty()
+        || !taken_remote.is_empty()
+        || !after.is_empty()
+        || !to_remote.is_empty()
+        || placed.remote;
+    let local_changed =
+        !combined.is_empty() || !taken_local.is_empty() || !after.is_empty() || !to_local.is_empty() || placed.local;
     changes.extend(to_remote);
     changes.extend(to_local);
     changes.extend(placed.changes);

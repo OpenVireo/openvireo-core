@@ -1,6 +1,10 @@
 //! The sync loop (TS `syncKdbx`, from the desktop `SyncEngine` without the Qt parts): HEAD/GET with
 //! the ETag → open → three-way merge with the base copy → conditional PUT → on 412 download, merge
-//! and retry. The base copy is the server's bytes from the last successful sync.
+//! and retry. The base copy is the server's bytes from the last successful sync; a [`BaseCache`]
+//! keeps it opened between syncs.
+
+use std::borrow::Cow;
+use std::sync::Mutex;
 
 use ov_error::{OvError, OvErrorCode};
 use ov_host::{MaybeSend, MaybeSync};
@@ -83,6 +87,98 @@ where
     }
 }
 
+/// The base copy kept opened between syncs, so a sync doesn't decrypt and parse it again (about
+/// 90 ms of a 5k-entry sync before, W4-F), nor the server copy when that is still the base (no
+/// upload since this device's last sync). A session keeps one per database and passes it with
+/// [`SyncOptions::base_cache`]; each sync uses what it holds when those bytes come up, opened with
+/// one of the credentials, and leaves it holding the new base.
+///
+/// Entries are checked, not trusted: the cache holds the SHA-256 of the bytes it was opened from
+/// and the key that opened them, and anything else is a miss (the base is opened as before). A
+/// sync that fails keeps what the cache held; one whose future is dropped leaves it empty.
+#[derive(Default)]
+pub struct BaseCache(Mutex<Option<OpenedBase>>);
+
+impl std::fmt::Debug for BaseCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BaseCache").field("held", &self.lock().is_some()).finish()
+    }
+}
+
+impl BaseCache {
+    /// An empty cache.
+    pub fn new() -> Self {
+        BaseCache::default()
+    }
+
+    /// Drops what it holds (the vault was locked or closed).
+    pub fn clear(&self) {
+        *self.lock() = None;
+    }
+
+    /// Keeps `db`, opened with `key` from `data` (the state's new base), for the next sync.
+    pub fn keep(&self, data: &[u8], key: &CompositeKey, db: Database) {
+        *self.lock() = Some(OpenedBase::new(data, key, db));
+    }
+
+    /// A copy of what it holds when that is `data` opened (with any key), else `None`.
+    pub fn get(&self, data: &[u8]) -> Option<Database> {
+        let digest = ov_crypto::primitives::sha256(data);
+        self.lock().as_ref().filter(|b| b.digest == digest).map(|b| b.db.clone())
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<OpenedBase>> {
+        // A panic while held leaves nothing half-written: the value is replaced whole
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// A base copy opened: the database, the SHA-256 of the bytes and the key it was opened from.
+struct OpenedBase {
+    digest: [u8; 32],
+    key: CompositeKey,
+    db: Database,
+}
+
+impl OpenedBase {
+    fn new(data: &[u8], key: &CompositeKey, db: Database) -> Self {
+        OpenedBase { digest: ov_crypto::primitives::sha256(data), key: key.clone(), db }
+    }
+
+    /// `db` as reading `data` (`ov_kdbx::write(db)`) gives it back: the same, with the version the
+    /// write chose (a 4.0 file holding 4.1 elements is written as 4.1).
+    fn written(data: &[u8], key: &CompositeKey, db: &Database) -> Self {
+        let mut db = db.clone();
+        db.header.version = ov_kdbx::write_version(&db);
+        OpenedBase::new(data, key, db)
+    }
+}
+
+/// The base copy opened: from `keep` when it holds these bytes opened with one of `creds`, else
+/// opened now and kept there (a 412 retry merges against the same base). `None` when no
+/// credentials open it: a base under another key is no use, and the merge goes without one.
+fn open_base<'k>(data: &[u8], creds: &[CompositeKey], keep: &'k mut Option<OpenedBase>) -> Option<&'k Database> {
+    let digest = ov_crypto::primitives::sha256(data);
+    let hit = keep.as_ref().is_some_and(|k| k.digest == digest && creds.iter().any(|c| c.opens_same_as(&k.key)));
+    if !hit {
+        let (db, i) = open_with(data, creds).ok()?;
+        *keep = Some(OpenedBase { digest, key: creds[i].clone(), db });
+    }
+    keep.as_ref().map(|k| &k.db)
+}
+
+/// The server copy opened: a copy of the cached base when the server still has the bytes it was
+/// opened from (nothing was uploaded since), else read from `data` (as [`open_with`]). The index is
+/// the first credentials that open it either way: only a key with the same KDF input does.
+fn open_remote(data: &[u8], creds: &[CompositeKey], keep: &Option<OpenedBase>) -> Result<(Database, usize), OvError> {
+    if let Some(k) = keep.as_ref().filter(|k| k.digest == ov_crypto::primitives::sha256(data)) {
+        if let Some(i) = creds.iter().position(|c| c.opens_same_as(&k.key)) {
+            return Ok((k.db.clone(), i));
+        }
+    }
+    open_with(data, creds)
+}
+
 /// Progress callback.
 pub trait Progress: MaybeSend + MaybeSync {
     /// A step started.
@@ -122,6 +218,8 @@ pub struct SyncOptions<'a> {
     pub cancel: Option<&'a dyn Cancel>,
     /// Told about each step.
     pub progress: Option<&'a dyn Progress>,
+    /// Keeps the base opened between syncs (see [`BaseCache`]).
+    pub base_cache: Option<&'a BaseCache>,
 }
 
 impl<'a> SyncOptions<'a> {
@@ -138,6 +236,7 @@ impl<'a> SyncOptions<'a> {
             before_upload: None,
             cancel: None,
             progress: None,
+            base_cache: None,
         }
     }
 
@@ -186,6 +285,12 @@ impl<'a> SyncOptions<'a> {
     /// With a progress callback.
     pub fn progress(mut self, progress: &'a dyn Progress) -> Self {
         self.progress = Some(progress);
+        self
+    }
+
+    /// With a cache of the opened base.
+    pub fn base_cache(mut self, cache: &'a BaseCache) -> Self {
+        self.base_cache = Some(cache);
         self
     }
 }
@@ -315,6 +420,23 @@ impl Finish<'_> {
 /// - `vault_key_mismatch`: no credentials open the server copy.
 /// - `aborted`: [`SyncOptions::cancel`] said stop.
 pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>) -> Result<SyncResult, OvError> {
+    let mut keep = opts.base_cache.and_then(|c| c.lock().take());
+    let result = run(blob, local, opts, &mut keep).await;
+    if let Some(c) = opts.base_cache {
+        *c.lock() = keep;
+    }
+    result
+}
+
+/// [`sync_kdbx`], with the opened base in `keep`: read when it is the state's base, replaced by the
+/// new base when a sync succeeds with a [`BaseCache`].
+async fn run(
+    blob: &Blob,
+    local: &mut Database,
+    opts: &SyncOptions<'_>,
+    keep: &mut Option<OpenedBase>,
+) -> Result<SyncResult, OvError> {
+    let caching = opts.base_cache.is_some();
     let clock = blob.client().clock().clone();
     let prev = if opts.accept_server_state { None } else { opts.state };
     let progress = |s: SyncStep| {
@@ -403,6 +525,9 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
                 progress(SyncStep::Uploading);
                 match blob.put(&data, &PutCondition::Create).await {
                     Ok(put) => {
+                        if caching {
+                            *keep = Some(OpenedBase::written(&data, &key, local));
+                        }
                         return Ok(finish(blob).result(
                             SyncOutcome::Created,
                             local,
@@ -416,7 +541,7 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
                             0,
                             Vec::new(),
                             Vec::new(),
-                        ))
+                        ));
                     }
                     Err(e) if e.is(OvErrorCode::PreconditionFailed) && attempt < opts.max_attempts => continue,
                     Err(e) => return Err(e),
@@ -431,7 +556,10 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
 
         check_cancel()?;
         progress(SyncStep::Merging);
-        let (mut remote, index) = open_with(&data, opts.credentials)?;
+        let (mut remote, index) = open_remote(&data, opts.credentials, keep)?;
+        // The server copy as opened: the next sync's base when nothing is uploaded (the merge
+        // changes `remote`, if only its attachment pool)
+        let opened = caching.then(|| remote.clone());
         let remote_generation = sync_generation(&remote);
         if let Some(p) = prev.filter(|p| remote_generation < p.generation) {
             return Err(OvError::new(
@@ -450,10 +578,9 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
         let empty = Vec::new();
         let snapshot = prev.map_or(&empty, |p| &p.snapshot);
         let mut conflicts = find_conflicts(local, &remote, snapshot);
-        let base = match prev.and_then(|p| p.base.as_deref()) {
-            Some(_) if from_base => Some(remote.clone()),
-            // A base under another key is no use; merge without it
-            Some(b) if copies_differ(local, &remote) => open_with(b, opts.credentials).ok().map(|(db, _)| db),
+        let base: Option<Cow<'_, Database>> = match prev.and_then(|p| p.base.as_deref()) {
+            Some(_) if from_base => Some(opened.as_ref().map_or_else(|| Cow::Owned(remote.clone()), Cow::Borrowed)),
+            Some(b) if copies_differ(local, &remote) => open_base(b, opts.credentials, keep).map(Cow::Borrowed),
             _ => None,
         };
         if let Some(base) = &base {
@@ -479,7 +606,8 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
         }
 
         let now_s = clock.now_unix_ms().div_euclid(1000);
-        let merged = merge_in_place(local, &mut remote, base.as_ref(), now_s);
+        let merged = merge_in_place(local, &mut remote, base.as_deref(), now_s);
+        drop(base);
         let changes = merged.changes.clone();
 
         if !merged.remote_changed && opts.before_upload.is_none() {
@@ -492,6 +620,9 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
             }
             let outcome =
                 if !opts.local_changed && !merged.local_changed { SyncOutcome::Unchanged } else { SyncOutcome::Pulled };
+            if let Some(db) = opened {
+                *keep = Some(OpenedBase::new(&data, &opts.credentials[index], db));
+            }
             return Ok(finish(blob).result(
                 outcome,
                 local,
@@ -519,6 +650,9 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
         progress(SyncStep::Uploading);
         match blob.put(&upload, &PutCondition::IfMatch(version.etag.clone())).await {
             Ok(put) => {
+                if caching {
+                    *keep = Some(OpenedBase::written(&upload, &key, &remote));
+                }
                 return Ok(finish(blob).result(
                     SyncOutcome::Uploaded,
                     local,
@@ -532,7 +666,7 @@ pub async fn sync_kdbx(blob: &Blob, local: &mut Database, opts: &SyncOptions<'_>
                     remote_generation,
                     conflicts,
                     changes,
-                ))
+                ));
             }
             // Another device uploaded since our download: merge its version too and try again
             Err(e) if e.is(OvErrorCode::PreconditionFailed) => {

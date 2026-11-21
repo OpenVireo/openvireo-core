@@ -67,6 +67,7 @@ macro_rules! scenario {
         #[test]
         fn $name() {
             scenarios::$name(&E::new());
+            scenarios::with_base_cache(|| scenarios::$name(&E::new()));
         }
     )*};
 }

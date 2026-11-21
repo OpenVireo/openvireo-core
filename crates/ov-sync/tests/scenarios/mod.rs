@@ -7,14 +7,42 @@ use ov_error::OvErrorCode;
 use ov_kdbx::entries::{delete_entry, delete_group, empty_recycle_bin};
 use ov_kdbx::model::Database;
 use ov_kdbx::vault::vault_credentials;
-use ov_sync::{is_clock_skewed, sync_kdbx, SyncOptions, SyncOutcome, SyncResult, SyncState, CLOCK_SKEW_WARNING_MS};
+use ov_sync::{
+    is_clock_skewed, sync_kdbx, BaseCache, SyncOptions, SyncOutcome, SyncResult, SyncState, CLOCK_SKEW_WARNING_MS,
+};
 
 use crate::common::*;
+
+thread_local! {
+    /// One cache for every device of a scenario run by [`with_base_cache`]: a device finds the
+    /// others' bases there, which it must take for a miss.
+    static BASES: std::cell::Cell<Option<&'static BaseCache>> = const { std::cell::Cell::new(None) };
+}
+
+/// Runs `scenario` with a [`BaseCache`] on every sync.
+pub fn with_base_cache(scenario: impl FnOnce()) {
+    BASES.with(|b| b.set(Some(Box::leak(Box::new(BaseCache::new())))));
+    scenario();
+    BASES.with(|b| b.set(None));
+}
+
+/// `o`, with the scenario's cache when it runs with one.
+fn cached(o: SyncOptions<'_>) -> SyncOptions<'_> {
+    match BASES.with(|b| b.get()) {
+        Some(c) => o.base_cache(c),
+        None => o,
+    }
+}
 
 fn sync<W: World>(w: &W, db: &mut Database, state: Option<&SyncState>) -> SyncResult {
     let c = [creds()];
     let k = creds();
-    run(sync_kdbx(&w.blob("db"), db, &SyncOptions::new(&k, &c).state(state))).unwrap()
+    let r = run(sync_kdbx(&w.blob("db"), db, &cached(SyncOptions::new(&k, &c).state(state)))).unwrap();
+    if let (Some(cache), Some(base)) = (BASES.with(|b| b.get()), &r.state.base) {
+        // What the cache holds is what reading the new base gives
+        assert_eq!(cache.get(base), Some(ov_kdbx::read(base, &k).unwrap()), "{:?}", r.outcome);
+    }
+    r
 }
 
 fn setup() -> Copies {
@@ -134,7 +162,7 @@ pub fn uploads_against_a_fresh_base_without_a_download<W: World>(w: &W) {
     edit(&mut local, "A", &[("Password", "mine")], 200);
     let before = w.methods();
     let (c, k) = ([creds()], creds());
-    let opts = SyncOptions::new(&k, &c).state(Some(&first.state)).remote_is_base(true);
+    let opts = cached(SyncOptions::new(&k, &c).state(Some(&first.state)).remote_is_base(true));
     let r = run(sync_kdbx(&w.blob("db"), &mut local, &opts)).unwrap();
     let after = w.methods();
     assert_eq!(&after[before.len()..], ["PUT"]);
@@ -159,7 +187,7 @@ pub fn gives_up_after_max_attempts<W: World>(w: &W) {
     })));
     let c = [creds()];
     let k = creds();
-    let opts = SyncOptions::new(&k, &c).state(Some(&first.state)).max_attempts(3);
+    let opts = cached(SyncOptions::new(&k, &c).state(Some(&first.state)).max_attempts(3));
     let e = run(sync_kdbx(&w.blob("db"), &mut local, &opts)).unwrap_err();
     w.set_after_get(None);
     assert_eq!((e.code, e.status), (OvErrorCode::TooManyConflicts, Some(412)));
@@ -173,36 +201,44 @@ pub fn head_check_rollback_and_loss<W: World>(w: &W) {
     let c = [creds()];
     let k = creds();
     let blob = w.blob("db");
-    let again =
-        run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&first.state)).local_changed(false)))
-            .unwrap();
+    let again = run(sync_kdbx(
+        &blob,
+        &mut local,
+        &cached(SyncOptions::new(&k, &c).state(Some(&first.state)).local_changed(false)),
+    ))
+    .unwrap();
     assert_eq!(again.outcome, SyncOutcome::Unchanged);
     assert_eq!(again.attempts, 0);
     assert_eq!(w.methods().last().map(String::as_str), Some("HEAD"));
 
     let ahead = SyncState { revision: 7, ..first.state.clone() };
-    let e = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&ahead)))).unwrap_err();
+    let e = run(sync_kdbx(&blob, &mut local, &cached(SyncOptions::new(&k, &c).state(Some(&ahead))))).unwrap_err();
     assert_eq!(e.code, OvErrorCode::ServerRolledBack);
     // The HEAD path checks the revision too
-    let e = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&ahead)).local_changed(false)))
-        .unwrap_err();
+    let e =
+        run(sync_kdbx(&blob, &mut local, &cached(SyncOptions::new(&k, &c).state(Some(&ahead)).local_changed(false))))
+            .unwrap_err();
     assert_eq!(e.code, OvErrorCode::ServerRolledBack);
     // So does the sync generation
     let newer = SyncState { generation: 99, ..first.state.clone() };
-    let e = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&newer)))).unwrap_err();
+    let e = run(sync_kdbx(&blob, &mut local, &cached(SyncOptions::new(&k, &c).state(Some(&newer))))).unwrap_err();
     assert_eq!(e.code, OvErrorCode::ServerRolledBack);
     // Confirmed by the user: start over from the server
-    let r = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&ahead)).accept_server_state(true)))
-        .unwrap();
+    let r = run(sync_kdbx(
+        &blob,
+        &mut local,
+        &cached(SyncOptions::new(&k, &c).state(Some(&ahead)).accept_server_state(true)),
+    ))
+    .unwrap();
     assert_eq!(r.state.revision, 1);
 
     w.lose_all();
-    let e = run(sync_kdbx(&blob, &mut local, &SyncOptions::new(&k, &c).state(Some(&first.state)))).unwrap_err();
+    let e = run(sync_kdbx(&blob, &mut local, &cached(SyncOptions::new(&k, &c).state(Some(&first.state))))).unwrap_err();
     assert_eq!(e.code, OvErrorCode::ServerLostDatabase);
     let r = run(sync_kdbx(
         &blob,
         &mut local,
-        &SyncOptions::new(&k, &c).state(Some(&first.state)).accept_server_state(true),
+        &cached(SyncOptions::new(&k, &c).state(Some(&first.state)).accept_server_state(true)),
     ))
     .unwrap();
     assert_eq!(r.outcome, SyncOutcome::Created);
@@ -216,7 +252,7 @@ pub fn rekeys_before_upload<W: World>(w: &W) {
     let c = [vault_credentials(&new_key).unwrap(), creds()];
     let k = creds();
     let rekey = |db: &mut Database| Ok(Some(ov_kdbx::vault::rekey_to_vault_key(db, &new_key)?));
-    let r = run(sync_kdbx(&w.blob("db"), &mut local, &SyncOptions::new(&k, &c).before_upload(&rekey))).unwrap();
+    let r = run(sync_kdbx(&w.blob("db"), &mut local, &cached(SyncOptions::new(&k, &c).before_upload(&rekey)))).unwrap();
     assert_eq!(r.outcome, SyncOutcome::Uploaded);
     assert_eq!(r.credentials_index, Some(1));
     let data = w.latest("db").unwrap();
@@ -244,7 +280,7 @@ pub fn measures_clock_offset<W: World>(w: &W) {
     let second = run(sync_kdbx(
         &w.blob("db"),
         &mut db,
-        &SyncOptions::new(&k, &c).state(Some(&first.state)).local_changed(false),
+        &cached(SyncOptions::new(&k, &c).state(Some(&first.state)).local_changed(false)),
     ))
     .unwrap();
     w.set_server_ahead_ms(0);

@@ -84,6 +84,15 @@ impl CompositeKey {
         self.password.is_none() && self.key_file.is_none()
     }
 
+    /// Whether both keys open the same files: the same KDF input, compared in constant time. `false`
+    /// when either can't open anything (empty, or a malformed key file).
+    pub fn opens_same_as(&self, other: &CompositeKey) -> bool {
+        match (self.raw(), other.raw()) {
+            (Ok(a), Ok(b)) => a[..].ct_eq(&b[..]).into(),
+            _ => false,
+        }
+    }
+
     /// SHA-256(password component ‖ key file component), the KDF input.
     pub(crate) fn raw(&self) -> Result<Zeroizing<[u8; 32]>, OvError> {
         if self.is_empty() {
@@ -490,6 +499,16 @@ mod tests {
         assert_eq!(k(v2.as_bytes()), raw);
         let bad = v2.replace(&check, "00000000");
         assert!(key_file_component(bad.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn opens_same_as_compares_the_kdf_input() {
+        let a = CompositeKey::new().with_key_file(&[7; 32]);
+        assert!(a.opens_same_as(&a.clone()));
+        assert!(a.opens_same_as(&CompositeKey::new().with_key_file("07".repeat(32).as_bytes())));
+        assert!(!a.opens_same_as(&CompositeKey::new().with_key_file(&[8; 32])));
+        assert!(!a.opens_same_as(&a.clone().with_password("pw")));
+        assert!(!CompositeKey::new().opens_same_as(&CompositeKey::new()));
     }
 
     #[test]

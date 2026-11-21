@@ -354,6 +354,24 @@ impl InnerStream {
             InnerStream::Salsa20(c) => c.apply_keystream(data),
         }
     }
+
+    /// How many keystream bytes have been used.
+    pub(crate) fn position(&self) -> u64 {
+        use chacha20::cipher::StreamCipherSeek;
+        match self {
+            InnerStream::ChaCha20(c) => c.current_pos(),
+            InnerStream::Salsa20(c) => c.current_pos(),
+        }
+    }
+
+    /// Goes back (or forward) to `pos` keystream bytes, to read the values again.
+    pub(crate) fn seek(&mut self, pos: u64) {
+        use chacha20::cipher::StreamCipherSeek;
+        match self {
+            InnerStream::ChaCha20(c) => c.seek(pos),
+            InnerStream::Salsa20(c) => c.seek(pos),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------

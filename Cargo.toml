@@ -80,6 +80,8 @@ libfuzzer-sys = "=0.4.13"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
+# cargo fuzz builds with `--cfg fuzzing`: ov-kdbx then checks its fast XML path against quick-xml
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
 [profile.release]
 opt-level = "z"

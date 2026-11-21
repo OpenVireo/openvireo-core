@@ -270,8 +270,8 @@ mod tests {
     use super::super::tree::{parse, Node};
     use super::*;
 
-    fn last_child_name(n: &Node) -> &str {
-        n.children.last().map_or("", |c| c.name.as_str())
+    fn last_child_name<'a>(n: &Node<'a>) -> &'a str {
+        n.children.last().map_or("", |c| c.name)
     }
 
     #[test]

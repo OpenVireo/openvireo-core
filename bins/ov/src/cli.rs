@@ -659,6 +659,19 @@ fn pad_end(s: &str, width: usize) -> String {
     format!("{s}{}", " ".repeat(width - len))
 }
 
+/// How long `ov run` holds output that may be the start of a secret before releasing it: 100 ms,
+/// as in the TS CLI. Debug builds only: `OPENVIREO_TEST_MASK_HOLD_MS` overrides it, so the
+/// black-box masking test doesn't depend on how fast a CI runner starts `sleep` between two
+/// writes. Release builds always use 100 ms.
+fn mask_hold(env: &crate::session::Env) -> Duration {
+    #[cfg(debug_assertions)]
+    if let Some(ms) = env.get("OPENVIREO_TEST_MASK_HOLD_MS").and_then(|v| v.parse::<u64>().ok()) {
+        return Duration::from_millis(ms);
+    }
+    let _ = env;
+    Duration::from_millis(100)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -684,17 +697,4 @@ mod tests {
         let e = js::io_error(&std::io::Error::from(std::io::ErrorKind::NotFound), "open", "x.env");
         assert_eq!(e.message, "ENOENT: no such file or directory, open 'x.env'");
     }
-}
-
-/// How long `ov run` holds output that may be the start of a secret before releasing it: 100 ms,
-/// as in the TS CLI. Debug builds only: `OPENVIREO_TEST_MASK_HOLD_MS` overrides it, so the
-/// black-box masking test doesn't depend on how fast a CI runner starts `sleep` between two
-/// writes. Release builds always use 100 ms.
-fn mask_hold(env: &crate::session::Env) -> Duration {
-    #[cfg(debug_assertions)]
-    if let Some(ms) = env.get("OPENVIREO_TEST_MASK_HOLD_MS").and_then(|v| v.parse::<u64>().ok()) {
-        return Duration::from_millis(ms);
-    }
-    let _ = env;
-    Duration::from_millis(100)
 }

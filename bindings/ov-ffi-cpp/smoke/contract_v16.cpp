@@ -222,6 +222,20 @@ struct MapCache : ov::BlobCache {
     (void)issuer;
 }
 
+// contract-v1.8 calls that need an account or a service account: only compiled here.
+[[maybe_unused]] void compile_only_v18(const ov::Account &account, const ov::ServiceAccount &sa, const ov::CancelToken &token) {
+    ov::Grantee who{ov::GranteeKind::Email, "bob@example.com"};
+    ov::Profile profile = account.me(token);
+    ov::GrantResult granted = account.share_vault_with_keys("v", who, ov::VaultRole::Read, profile.public_keys, token);
+    ov::KdbxCredentials creds = sa.vault_kdbx_credentials("v", token);
+    ov::VaultKdbxSyncResult synced = sa.sync_vault_kdbx("v", {}, false, {}, ov::SyncOptions{true, false}, token);
+    ov::KdfParams kdf = profile.kdf;
+    (void)granted;
+    (void)creds;
+    (void)synced;
+    (void)kdf;
+}
+
 } // namespace
 
 int contract_v16() {
@@ -356,6 +370,25 @@ int contract_v16() {
     } catch (const ov::Error &e) {
         check(e.code() == "not_found", "v1.7: SelfHosted::sync_database_with reaches the transport");
     }
+
+    // ---- contract-v1.8: Recycle Bin restore through a saved file, the web app's export, download
+    auto rb = ov::call([&] { return c->create_local("Bin", pw("pw"), *token); });
+    const std::string work(ov::call([&] { return rb->add_group("", "Work"); }));
+    ov::EntryInput vpn = no_change();
+    vpn.fields.push_back(ov::FieldInput{"title", bytes("VPN"), false, false});
+    const std::string vpn_id(ov::call([&] { return rb->add_entry(work, std::move(vpn)); }));
+    ov::call([&] { return rb->delete_entry(vpn_id); });
+    auto rbytes = ov::call([&] { return rb->save_local(*token); });
+    auto rback = ov::call([&] { return ov::vault_open_local(std::move(rbytes), pw("pw"), *token); });
+    ov::call([&] { return rback->restore_from_recycle_bin(vpn_id); });
+    auto restored = ov::call([&] { return rback->entry(vpn_id); });
+    check(restored.group_path.size() == 1 && std::string(restored.group_path[0]) == "Work",
+          "v1.8: the Recycle Bin restores to the previous group after a save");
+    auto csv = ov::call([&] { return rback->export_plain(ov::ExportFormat::Csv, {}); });
+    check(std::string(csv.begin(), csv.end()) == "Folder,Title,Username,Password,URL,Notes\n\"Work\",\"VPN\",\"\",\"\",\"\",\"\"",
+          "v1.8: export_plain writes the web app's CSV");
+    auto missing = ov::call([&] { return sh->download("home", *token); });
+    check(!missing.has, "v1.8: SelfHosted::download is empty for a database the server doesn't have");
 
     // ---- the in-process test servers (feature test-server)
 #if OV_EXPECT_TEST_SERVER

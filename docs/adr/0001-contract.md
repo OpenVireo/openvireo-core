@@ -175,6 +175,35 @@ whole-second times missed same-second edits, so a service account's 412 retry ke
 whole); a service account downloads a vault with one GET and a write to an unopened vault uploads
 against that copy; merging history keeps every item of a second.
 
+## contract-v1.8 (2026-11-20, W3-A5)
+
+The core gaps the iOS migration (W3-II2b, W3-II3) and the desktop (W3-ID2c) found. Additive; the
+behaviour changes are listed and documented on the methods. New signatures:
+
+| # | Change |
+|---|---|
+| 1 | `Account::share_vault_with_keys(vault_id, grantee, role, PublicKeys)`: the grantee's keys are fetched and compared with the ones the user confirmed; different → `invalid_public_keys`, nothing sealed |
+| 2 | `SelfHosted::download(database_id) -> Option<Vec<u8>>`: `GET databases/<id>` without the key; `None` for 404 |
+| 3 | `ServiceAccount::vault_kdbx_credentials`, `ServiceAccount::sync_vault_kdbx` (as the `Account` ones; no offline cache, so the base is the caller's) |
+| 4 | `Profile.kdf: KdfParams`, `Profile.public_keys: PublicKeys` (signature checked; a change means the keyset was replaced by recovery). Source-level break for Rust struct literals of `Profile` only |
+
+Behaviour changes:
+
+| # | Change |
+|---|---|
+| 5 | Moves and deletes record `PreviousParentGroup` on every KDBX version (kdbxweb did on 4.1 only, and new vaults are 4.0, so Recycle Bin restores went to the root). `ov_kdbx::write_version` raises a 4.0 database to 4.1 when it holds a 4.1 element (`ov_kdbx::uses_kdbx41_elements`: `PreviousParentGroup`, group tags, `QualityCheck`, custom icon names/times, custom data times; not `SettingsChanged`, which kdbxweb writes into 4.0 files), as KeePassXC 2.7's `kdbxVersionRequired` does. KeePassXC 2.7+ and KeePass 2.48+ read every 4.1 element; KDBX 4 readers that check only the major version (KeePassXC 2.6, kdbxweb) open the file and drop them. The sync merge carries the moved-last copy's `PreviousParentGroup` |
+| 6 | `Vault::sync` merges edits made to the handle while it ran (three-way, base = the copy the round started from) and uploads them in up to two more rounds of the same call (against the copy just uploaded: no download); later edits, or a later round that can't reach the server, stay as unsynced edits. The report combines the rounds (outcome = the most a round did) |
+| 7 | `Vault::restore_entry` on an entry in the Recycle Bin moves it out (previous group, else `group_path`) and edits it, keeping its history (was: replaced by the version's copy) |
+| 8 | `Vault::export_plain` writes the web app's bytes: unquoted CSV header, no final newline, JSON keys `folder, title, username, passwordValue, url, notes`; `folder` is the group's own name (`Root` when empty), an empty title `(Untitled Entry)` (fixture `crates/ov-core/tests/fixtures/export_plain/`, written by the web code) |
+| 9 | A session that ends by accident (`token_reused`, `session_expired`: the refused refresh's `details.reason`) keeps each vault's `pending` and `autofill` parts of the offline cache (no state, base or meta records) for the same user's next sign-in, SPEC §20; every other end (`unauthorized`, deletion) and `sign_out` / `sign_out_parked` / `delete_account` wipe everything with `BlobCache::clear_user` |
+| 10 | `rotate_vault_key` / `revoke`: a pending rotation this account holds the key for is finished first (re-key, activate, name); one it doesn't is `conflict` 409 with `server_code` `rotation_pending` until it is activated or 24 hours old (then the server replaces it, as the auth server does) |
+| 11 | `SelfHosted::health`: a page that isn't a sync server's (non-JSON, no `status`, an error without `{error, code}`) is `invalid_request` with `server_code` `not_sync_server` and the page's status |
+| 12 | `details` for 409 `deletion_blocked` (`{"orgs": [...]}`) and 403 `account_pending_deletion` (`{"scheduledFor": ...}`) |
+| 13 | `create_vault` / `import_kdbx`: an org owner/admin whose keys don't verify is `invalid_public_keys` with `details` `{"principal", "email"}` |
+| 14 | `Meta/CustomData` merges three ways in sync (an item another device added was dropped); `import_kdbx` into a vault (merge) brings the source's items the vault lacks, never its remote settings or generated keys; a new vault keeps all of it minus the server remotes |
+| 15 | `open_vault` with nothing kept locally is one GET (was a download plus a sync that downloaded again); a rolled-back server is still detected against a cached state |
+| 16 | Merge: an entry only one side changed (by content), in the same second as the other copy, is taken whole instead of combined, so a pull with nothing changed locally doesn't upload (W3-IW3 smoke). A changed side whose clock is behind is still combined (merge fixture 03) |
+
 ## Consequences
 
 - Wave 1/2 agents build against these files and raise a CONTRACT-REQUEST for any change.

@@ -934,6 +934,23 @@ impl ServiceAccount {
         guard_async(self.0.write(reference, value, create, tok(&cancel))).await
     }
 
+    /// The credentials a granted vault's `.kdbx` is under (contract-v1.8). Wipe them.
+    pub async fn vault_kdbx_credentials(&self, vault_id: String, cancel: Arc<CancelToken>) -> R<core::KdbxCredentials> {
+        guard_async(self.0.vault_kdbx_credentials(vault_id, tok(&cancel))).await
+    }
+
+    /// Syncs a granted vault held as `.kdbx` bytes (contract-v1.8).
+    pub async fn sync_vault_kdbx(
+        &self,
+        vault_id: String,
+        kdbx: Vec<u8>,
+        base: Option<Vec<u8>>,
+        options: core::SyncOptions,
+        cancel: Arc<CancelToken>,
+    ) -> R<core::VaultKdbxSyncResult> {
+        guard_async(self.0.sync_vault_kdbx(vault_id, kdbx, base, options, tok(&cancel))).await
+    }
+
     /// Ends the session.
     pub fn close(&self) -> R<()> {
         guard_ok(|| self.0.close())
@@ -1014,6 +1031,12 @@ impl SelfHosted {
         cancel: Arc<CancelToken>,
     ) -> R<core::SelfHostedSyncResult> {
         guard_async(self.0.sync_database_with(database_id, kdbx, credentials, options, tok(&cancel))).await
+    }
+
+    /// Downloads a database as the server has it, without its key; `None` when there is none
+    /// (contract-v1.8).
+    pub async fn download(&self, database_id: String, cancel: Arc<CancelToken>) -> R<Option<Vec<u8>>> {
+        guard_async(self.0.download(database_id, tok(&cancel))).await
     }
 
     /// The versions the server keeps of a database (contract-v1.6).

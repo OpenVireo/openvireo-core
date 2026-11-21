@@ -146,3 +146,12 @@ the additions.
 `.vaultKeyMismatch` for a wrong local-file key (was `.kdbxError`), and `OvError.details`
 `{"reason":"keyset_unwrap_failed"}` / `{"reason":"opaque_refused"}` on sign-in failures.
 `SmokeTests/ContractV17Tests.swift` covers them.
+
+**contract-v1.8** (W3-A5, 2026-11-20): `Account.shareVaultWithKeys(vaultId:grantee:role:keys:cancel:)`,
+`SelfHosted.download(databaseId:cancel:)` (`Data?`), `ServiceAccount.vaultKdbxCredentials` /
+`syncVaultKdbx`, `Profile.kdf` / `publicKeys`; `serverCode` `rotation_pending` and `not_sync_server`;
+deletion `details`. Behaviour changes that let the app drop its workarounds: Recycle Bin restore to the
+previous group (KDBX 4.1 when needed), `Vault.sync` keeps edits made while it runs (no replay),
+`restoreEntry` on a binned entry keeps its history, `exportPlain` is the web app's format, and the core
+keeps unsynced edits itself after `token_reused` / `session_expired`, so `BlobCache.clearUser` should
+now remove everything. `SmokeTests/ContractV18Tests.swift` covers them.

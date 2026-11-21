@@ -56,6 +56,19 @@ impl Account {
         guard_async(self.0.share_vault(vault_id, grantee, role, tok(&cancel))).await
     }
 
+    /// Shares a vault to the keys the user confirmed; `invalid_public_keys` if they changed
+    /// (contract-v1.8).
+    pub async fn share_vault_with_keys(
+        &self,
+        vault_id: String,
+        grantee: core::Grantee,
+        role: core::VaultRole,
+        keys: core::PublicKeys,
+        cancel: Arc<CancelToken>,
+    ) -> R<core::GrantResult> {
+        guard_async(self.0.share_vault_with_keys(vault_id, grantee, role, keys, tok(&cancel))).await
+    }
+
     /// Changes a member's role.
     pub async fn change_role(
         &self,

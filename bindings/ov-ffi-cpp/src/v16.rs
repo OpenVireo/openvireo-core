@@ -196,7 +196,7 @@ pub(crate) fn sync_options_in(o: ffi::SyncOptions) -> core::SyncOptions {
     core::SyncOptions { local_changed: o.local_changed, accept_server_state: o.accept_server_state }
 }
 
-fn kdbx_credentials_out(c: core::KdbxCredentials) -> ffi::KdbxCredentials {
+pub(crate) fn kdbx_credentials_out(c: core::KdbxCredentials) -> ffi::KdbxCredentials {
     ffi::KdbxCredentials {
         has_password: c.password.is_some(),
         password: c.password.unwrap_or_default(),

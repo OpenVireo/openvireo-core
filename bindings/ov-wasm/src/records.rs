@@ -64,6 +64,7 @@ record!(EmergencyKit => EmergencyKit { email: email ": string", issuer: issuer "
 record!(Profile => Profile {
     id: id ": string", email: email ": string", name: name "?: string", totp_enabled: totpEnabled ": boolean",
     plan: plan "?: Plan", orgs: orgs ": OrgMembership[]", deletion_scheduled_for: deletionScheduledFor "?: Rfc3339",
+    kdf: kdf ": KdfParams", public_keys: publicKeys ": PublicKeys",
 });
 record!(Device => Device {
     id: id ": string", name: name ": string", platform: platform ": string", created_at: createdAt ": Rfc3339",

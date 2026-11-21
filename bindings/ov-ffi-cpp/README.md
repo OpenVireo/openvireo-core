@@ -226,7 +226,7 @@ In `SyncEngine::mergeAccountVault`, `changeType(change.change)` switches on `ov:
 
 ## Coverage
 
-**All bridged:** every public method and free function of `ov_core::api` (235 items since contract-v1.7, see
+**All bridged:** every public method and free function of `ov_core::api` (239 items since contract-v1.8, see
 `docs/api-coverage.md` for how they map to the TS SDK and iOS) has a C++ function, with one deliberate exclusion.
 `cargo xtask cpp --check-coverage` (also part of `cargo test -p ov-ffi-cpp`, so of `cargo xtask ci`) scans
 `crates/ov-core/src/api/*.rs` and the bridge in `src/lib.rs` and fails, naming each one, when a facade item has no
@@ -251,7 +251,8 @@ How facade names become C++ names:
 | `LoginStep` / `TotpChallenge` | `needs_totp`, `challenge`, `take_unlocked`; `attempt`, `last_error` |
 | `Vault` | everything: local files, state, reading, every edit (entries, groups, attachments, icons, Recycle Bin), version diff and restore, AutoFill, sync, `keep_edits`, `export_kdbx`, `export_plain`; contract-v1.6: `entry_records`, `add_entry_with_id`, `set_attachment_with`, `import_from` / `import_preview` / `import_targets`, `set_name`, `set_kdf`, `copy_without_remotes` (empty credentials keep the file's own), `meta_custom_data` / `set_meta_custom_data`, `export_kdbx_with`, `sync_with_options` (`accept_server_state`) |
 | `SelfHosted` (contract-v1.7) | `sync_database_with(database_id, kdbx, credentials, ov::SyncOptions)`: `local_changed = false` sends a HEAD first; `KdbxCredentials::has_password_hash` / `password_hash` everywhere credentials go |
-| `ServiceAccount` | everything (incl. `server_config`, `issuer`) |
+| `ServiceAccount` | everything (incl. `server_config`, `issuer`; contract-v1.8: `vault_kdbx_credentials`, `sync_vault_kdbx`) |
+| contract-v1.8 | `Account::share_vault_with_keys(vault_id, grantee, role, keys)`, `SelfHosted::download` (`OptionalBytes`), `Profile::kdf` / `public_keys`; the behaviour changes need no new functions |
 | `SelfHosted` | everything (incl. `history`, `open_version`); `restore` returns `RestoredSelfHosted` (`is_paired()`, then `take()`) |
 | `EventStream` | `next` (`kind == Closed` for the end), `reconnect`, `close` |
 | Host | all six traits |
@@ -284,6 +285,8 @@ Deliberately not bridged:
   write_smoke_fixtures`), whose merged copies it opens with `vault_open_local` and compares with the fixture's
   expected result. `contract_v16.cpp` checks the contract-v1.6 additions on local vaults (values, errors,
   the Host clock) and `SelfHosted::history` / `open_version` over a canned transport, then the contract-v1.7
-  ones (`password_hash`, `vault_key_mismatch`, `SelfHosted::sync_database_with`). The smoke builds with
+  ones (`password_hash`, `vault_key_mismatch`, `SelfHosted::sync_database_with`) and the contract-v1.8 ones
+  (Recycle Bin restore through a saved file, the web app's CSV, `SelfHosted::download`; the account and
+  service-account calls are compiled only). The smoke builds with
   `-Wall -Wextra -Werror`.
 - `example/`: the Corrosion build of the same core.

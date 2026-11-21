@@ -244,6 +244,22 @@ jobs:
               *) echo "::error::$f is not version $pep (the release is $VERSION)"; exit 1 ;;
             esac
           done
+      - name: Check the type stubs are packed
+        run: |
+          # Committed python-source files (bindings/python/scripts/gen_stubs.py), so in every wheel and the sdist
+          py=$(command -v python3 || command -v python)
+          for f in bindings/python/dist/*; do
+            "$py" - "$f" <<'EOF'
+          import sys, tarfile, zipfile
+          path = sys.argv[1]
+          names = zipfile.ZipFile(path).namelist() if path.endswith(".whl") else tarfile.open(path).getnames()
+          want = ["openvireo/py.typed", "openvireo/__init__.pyi", "openvireo/_core/ov_ffi.pyi"]
+          missing = [w for w in want if not any(n.endswith(w) for n in names)]
+          if missing:
+              sys.exit(f"::error::{path} lacks {missing}")
+          print(f"{path}: {', '.join(want)}")
+          EOF
+          done
       - uses: actions/upload-artifact@v4
         with:
           # Unsigned macOS and Windows wheels go to sign-macos / sign-windows; the rest are ready

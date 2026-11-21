@@ -7,7 +7,12 @@
 //! 2. Installs `bindings/python/requirements-dev.txt` (maturin, pytest, the httpx/keyring extras).
 //! 3. `maturin develop`: builds `bindings/ov-ffi` for the host, generates `openvireo._core` with the
 //!    crate's own uniffi-bindgen, and installs the package editable into the venv.
-//! 4. Runs `pytest` in `bindings/python`.
+//! 4. Checks the committed type stubs (`openvireo/__init__.pyi`, `openvireo/_core/ov_ffi.pyi`) match
+//!    the generated module: `scripts/gen_stubs.py --check`. They're committed rather than generated
+//!    per build because writing them imports the built module, and the release workflow's sdist job
+//!    and maturin-action wheel jobs (some in manylinux containers) only run maturin; committed, they
+//!    reach the sdist and every wheel as plain `python-source` files.
+//! 5. Runs `pytest` in `bindings/python`.
 //!
 //! Flags:
 //! - `--smoke`: builds with the crate's `test-server` feature, builds the testkit relay
@@ -16,6 +21,8 @@
 //!   it, the live tests are skipped.
 //! - `--wheel`: also builds a release wheel (never with `test-server`) into
 //!   `<target>/wheels/` and prints its size.
+//! - `--stubs`: rewrites the type stubs from the freshly built module instead of checking them (after
+//!   a change to the core's exported API).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,11 +33,13 @@ use crate::{cargo, root, run as step, target_root, Result};
 pub fn run(args: &[String]) -> Result {
     let mut smoke = false;
     let mut wheel = false;
+    let mut stubs = false;
     for a in args {
         match a.as_str() {
             "--smoke" => smoke = true,
             "--wheel" => wheel = true,
-            other => return Err(format!("python: unknown argument `{other}` (--smoke, --wheel)")),
+            "--stubs" => stubs = true,
+            other => return Err(format!("python: unknown argument `{other}` (--smoke, --wheel, --stubs)")),
         }
     }
     let dir = project();
@@ -51,6 +60,15 @@ pub fn run(args: &[String]) -> Result {
         &format!("python: maturin develop (feature test-server: {})", if smoke { "on" } else { "off" }),
         &mut develop,
     )?;
+
+    // Type stubs: the committed ones must match the module just built.
+    let mut gen = Command::new(&python);
+    gen.arg(dir.join("scripts").join("gen_stubs.py")).current_dir(&dir);
+    if stubs {
+        step("python: write the type stubs", &mut gen)?;
+    } else {
+        step("python: the type stubs are current (`--stubs` rewrites them)", gen.arg("--check"))?;
+    }
 
     // Tests.
     let mut pytest = Command::new(&python);

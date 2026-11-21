@@ -9,6 +9,7 @@ in-memory servers over a real loopback socket. The event stream test covers ``op
 from __future__ import annotations
 
 import asyncio
+import uuid
 
 import openvireo as ov
 import pytest
@@ -176,7 +177,7 @@ async def test_cancel_token_aborts() -> None:
 
 
 async def test_register_vault_sync_second_device(relay, new_device) -> None:  # type: ignore[no-untyped-def]
-    email = f"alice-{id(new_device)}@example.com"
+    email = f"alice-{uuid.uuid4().hex}@example.com"
     dev = new_device()
     a, kit = await register(dev, email, "correct horse ü", relay)
     assert kit.emergency_kit.email == email
@@ -221,7 +222,7 @@ async def test_register_vault_sync_second_device(relay, new_device) -> None:  # 
 
 
 async def test_error_codes_from_the_server(relay, new_device) -> None:  # type: ignore[no-untyped-def]
-    email = f"err-{id(new_device)}@example.com"
+    email = f"err-{uuid.uuid4().hex}@example.com"
     _, kit = await register(new_device(), email, "pw", relay)
     a2 = await new_device().client.connect(relay.issuer)
     with pytest.raises(ov.OvError) as e:
@@ -238,7 +239,7 @@ async def test_error_codes_from_the_server(relay, new_device) -> None:  # type: 
 
 
 async def test_share_link_open_without_an_account_then_revoke(relay, new_device) -> None:  # type: ignore[no-untyped-def]
-    a, _ = await register(new_device(), f"share-{id(new_device)}@example.com", "pw", relay)
+    a, _ = await register(new_device(), f"share-{uuid.uuid4().hex}@example.com", "pw", relay)
     api = a.server_config().api
     payload = ov.text_share_payload(b"the secret", "Note", None)
     created = await a.create_share(
@@ -262,7 +263,7 @@ async def test_share_link_open_without_an_account_then_revoke(relay, new_device)
 async def test_event_stream_reports_a_vault_change(relay, new_device) -> None:  # type: ignore[no-untyped-def]
     """Streaming: the core opens `GET {sync}/events` through the Python transport's open_stream and
     reads it with next_chunk while another device uploads."""
-    email = f"events-{id(new_device)}@example.com"
+    email = f"events-{uuid.uuid4().hex}@example.com"
     alice_dev = new_device()
     alice, kit = await register(alice_dev, email, "pw", relay)
     vault = await alice.create_vault("Infra", None)

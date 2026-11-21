@@ -32,7 +32,7 @@ Commands:
   cpp           build the C++ static libs + headers              (W1-BC)
   kotlin        build + test the Kotlin/JVM binding [--smoke]    (B2; `--android`: the AAR, B4)
   openapi       round-trip every OpenAPI example through ov-protocol (W1-P)
-  python        build the openvireo Python package + pytest      (B1; `--smoke`, `--wheel`)
+  python        build the openvireo Python package + pytest      (B1; `--smoke`, `--wheel`, `--stubs`)
   release       build every release artifact the host can build + SHA256SUMS (W4-R; `release --help`)
 
 Portable crates (built for wasm32 and iOS by `ci`) are every package under crates/ except

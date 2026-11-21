@@ -59,10 +59,10 @@
 //! (`ov version`), its libovcore archive (a CMake consumer built and run with ctest), the
 //! xcframework (checksum, and a SwiftPM package over it built and run, on macOS), the npm package
 //! (installed and both modules loaded in Node), the Python wheels (every wheel and the sdist carry
-//! the version; the one for this host is installed into a fresh venv and imported), the jar (its
-//! native slices, then a Java program built against it and run with Gradle) and the AAR (ABIs,
-//! classes, 16 KB pages). Outside `--dry-run`, `ov version` must print the release version and
-//! the jar must carry every slice.
+//! the version; the one for this host is installed into a fresh venv, imported and checked for the
+//! type stubs), the jar (its native slices, then a Java program built against it and run with
+//! Gradle) and the AAR (ABIs, classes, 16 KB pages). Outside `--dry-run`, `ov version` must print
+//! the release version and the jar must carry every slice.
 
 use std::env;
 use std::fs;
@@ -1156,11 +1156,17 @@ fn verify_wasm(tgz: &Path, work: &Path) -> Result {
 }
 
 const PYTHON_CHECK: &str = r#"import importlib.metadata as md
+import pathlib
 import sys
 import openvireo as ov
 version, digest, dist = ov.version(), ov.sha256(b"abc").hex(), md.version("openvireo")
 print(f"openvireo {dist} ({ov.__file__}): core {version}, sha256(abc) = {digest}")
-sys.exit(0 if (version, digest, dist) == ("@VERSION@", "@SHA256_ABC@", "@PEP440@") else 1)
+# The type stubs (bindings/python/scripts/gen_stubs.py) and the PEP 561 marker ship in the wheel.
+pkg = pathlib.Path(ov.__file__).parent
+missing = [f for f in ("py.typed", "__init__.pyi", "_core/ov_ffi.pyi") if not (pkg / f).is_file()]
+if missing:
+    print(f"the wheel lacks {missing}")
+sys.exit(0 if (version, digest, dist) == ("@VERSION@", "@SHA256_ABC@", "@PEP440@") and not missing else 1)
 "#;
 
 /// Installs the wheel for this host from `dir` (no index, no sdist build) into a fresh venv and

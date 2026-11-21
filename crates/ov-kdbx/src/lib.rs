@@ -113,8 +113,10 @@ fn bool_eq(a: &[u8], b: &[u8]) -> bool {
 
 /// Saves `db` as KDBX 4 with `key`.
 ///
-/// The version is [`Header::version`] when it is 4.x; a 3.1 database is written as 4.0, or 4.1
-/// when it uses a KDBX 4.1 feature ([`uses_kdbx41`]). The KDF parameters (salt included) come from
+/// The version is [`Header::version`] when it is 4.x; a 3.1 database is written as 4.0. Either is
+/// raised to 4.1 when the database uses a KDBX 4.1 feature ([`uses_kdbx41`] for a 3.1 database,
+/// [`uses_kdbx41_elements`] for a 4.0 one), as KeePassXC 2.7's `kdbxVersionRequired` does, so a 4.1
+/// element is never written into a 4.0 file. The KDF parameters (salt included) come from
 /// the model; the master seed, IV and inner stream key (ChaCha20) are fresh.
 pub fn write(db: &Database, key: &CompositeKey) -> Result<Vec<u8>, OvError> {
     let version = write_version(db);
@@ -154,19 +156,31 @@ pub fn peek_header(bytes: &[u8]) -> Result<Header, OvError> {
 
 /// The version [`write()`] uses for `db`.
 pub fn write_version(db: &Database) -> KdbxVersion {
+    const V40: KdbxVersion = KdbxVersion { major: 4, minor: 0 };
+    const V41: KdbxVersion = KdbxVersion { major: 4, minor: 1 };
+    if db.header.version.major < 4 {
+        return if uses_kdbx41(db) { V41 } else { V40 };
+    }
+    // A 4.0 file keeps its version unless it now holds a 4.1 element only (`SettingsChanged` doesn't
+    // count: kdbxweb writes it into 4.0 files and older readers ignore it)
     let v = db.header.version;
-    if v.major >= 4 {
-        v
-    } else if uses_kdbx41(db) {
-        KdbxVersion { major: 4, minor: 1 }
+    if v < V41 && uses_kdbx41_elements(db) {
+        V41
     } else {
-        KdbxVersion { major: 4, minor: 0 }
+        v
     }
 }
 
 /// Whether `db` holds anything only KDBX 4.1 stores: custom icon names or times, custom data
 /// times, group tags, `PreviousParentGroup`, `QualityCheck` or `SettingsChanged`.
 pub fn uses_kdbx41(db: &Database) -> bool {
+    db.meta.settings_changed.is_some() || uses_kdbx41_elements(db)
+}
+
+/// [`uses_kdbx41`] without `SettingsChanged`: whether `db` holds a 4.1 element a 4.0 file has no
+/// place for (custom icon names or times, custom data times, group tags, `PreviousParentGroup`,
+/// `QualityCheck`), which raises a 4.0 database to 4.1 when it is written.
+pub fn uses_kdbx41_elements(db: &Database) -> bool {
     fn cd(items: &[model::CustomDataItem]) -> bool {
         items.iter().any(|i| i.last_modification.is_some())
     }
@@ -184,8 +198,7 @@ pub fn uses_kdbx41(db: &Database) -> bool {
             || g.groups.iter().any(group)
     }
     let m = &db.meta;
-    m.settings_changed.is_some()
-        || cd(&m.custom_data)
+    cd(&m.custom_data)
         || m.custom_icons.iter().any(|i| i.name.is_some() || i.last_modification.is_some())
         || group(&db.root)
 }

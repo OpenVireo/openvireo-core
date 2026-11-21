@@ -320,9 +320,10 @@ async fn edits_a_local_database_and_saves_it() {
     assert!(!v.is_in_recycle_bin(e.clone()));
 
     let csv = String::from_utf8(v.export_plain(ExportFormat::Csv, None).unwrap()).unwrap();
-    assert!(csv.starts_with("\"Folder\",\"Title\""));
-    // KDBX 4.0 keeps no PreviousParentGroup, so the restored entry is back under the root.
-    assert!(csv.contains("\"Personal\",\"Mail\",\"me\",\"n3w\""), "{csv}");
+    assert!(csv.starts_with("Folder,Title,Username,Password,URL,Notes\n"));
+    // The restored entry is back in its group (contract-v1.8: PreviousParentGroup on every version).
+    assert_eq!(v.entry(e.clone()).unwrap().group_id, g);
+    assert!(csv.contains("\"Work\",\"Mail\",\"me\",\"n3w\""), "{csv}");
 
     let bytes = v.save_local(CancelToken::new()).await.unwrap();
     let back = Vault::open_local(bytes.clone(), creds(), CancelToken::new()).await.unwrap();

@@ -5,7 +5,7 @@
 
 use ov_error::{OvError, OvErrorCode};
 use ov_kdbx::entries::{find_entry, find_entry_mut, find_group, find_group_mut, parse_uuid_string, set_field};
-use ov_kdbx::model::{Binary, BinaryRef, CustomIcon, Database, Entry, Group, KdbxVersion, Timestamp, Uuid};
+use ov_kdbx::model::{Binary, BinaryRef, CustomIcon, Database, Entry, Group, Timestamp, Uuid};
 use zeroize::Zeroizing;
 
 use super::convert::uuid_hex;
@@ -424,22 +424,16 @@ fn detach_group(g: &mut Group, id: Uuid) -> Option<Group> {
     g.groups.iter_mut().find_map(|s| detach_group(s, id))
 }
 
-fn is_v41(db: &Database) -> bool {
-    db.header.version >= KdbxVersion { major: 4, minor: 1 }
-}
-
 pub(crate) fn move_entry_to(db: &mut Database, id: Uuid, to: Uuid, now: Timestamp) -> Result<(), OvError> {
     find_group(&db.root, to).ok_or_else(group_not_found)?;
     let from = entry_parent(&db.root, id).ok_or_else(entry_not_found)?;
     if from == to {
         return Ok(());
     }
-    let v41 = is_v41(db);
     let mut e = detach_entry(&mut db.root, id).ok_or_else(entry_not_found)?;
     e.times.location_changed = now;
-    if v41 {
-        e.previous_parent_group = Some(from);
-    }
+    // On every KDBX version: a 4.0 file that has one is saved as 4.1 (contract-v1.8)
+    e.previous_parent_group = Some(from);
     find_group_mut(&mut db.root, to).ok_or_else(group_not_found)?.entries.push(e);
     Ok(())
 }
@@ -457,12 +451,9 @@ pub(crate) fn move_group_to(db: &mut Database, id: Uuid, to: Uuid, now: Timestam
     if from == to {
         return Ok(());
     }
-    let v41 = is_v41(db);
     let mut g = detach_group(&mut db.root, id).ok_or_else(group_not_found)?;
     g.times.location_changed = now;
-    if v41 {
-        g.previous_parent_group = Some(from);
-    }
+    g.previous_parent_group = Some(from);
     find_group_mut(&mut db.root, to).ok_or_else(group_not_found)?.groups.push(g);
     Ok(())
 }
@@ -531,7 +522,7 @@ pub(crate) fn add_custom_icon(db: &mut Database, png: Vec<u8>, now: Timestamp) -
         return Ok(uuid_hex(&i.uuid));
     }
     let uuid = ov_kdbx::vault::new_uuid()?;
-    let v41 = is_v41(db);
+    let v41 = db.header.version >= ov_kdbx::model::KdbxVersion { major: 4, minor: 1 };
     db.meta.custom_icons.push(CustomIcon { uuid, data: png, name: None, last_modification: v41.then_some(now) });
     Ok(uuid_hex(&uuid))
 }
@@ -593,7 +584,19 @@ pub(crate) fn restore_entry(
     let mut old = find_entry(&version.root, uid).ok_or_else(entry_not_found)?.clone();
     old.history.clear();
     reintern(db, version, &mut old);
-    if find_entry(&db.root, uid).is_some() && !in_recycle_bin(db, uid) {
+    if find_entry(&db.root, uid).is_some() && in_recycle_bin(db, uid) {
+        // In the Recycle Bin: out of it first (to its previous group, else `group_path`), then edited
+        // like any other entry, so its history stays (contract-v1.8)
+        let previous = find_entry(&db.root, uid)
+            .and_then(|e| e.previous_parent_group)
+            .filter(|p| find_group(&db.root, *p).is_some() && !in_recycle_bin(db, *p));
+        let to = match previous {
+            Some(p) => p,
+            None => ensure_group(db, group_path, now)?,
+        };
+        move_entry_to(db, uid, to, now)?;
+    }
+    if find_entry(&db.root, uid).is_some() {
         edit_with_history(db, uid, now, |e| {
             e.strings = old.strings.clone();
             e.binaries = old.binaries.clone();
@@ -605,8 +608,7 @@ pub(crate) fn restore_entry(
             Ok(())
         })?;
     } else {
-        // Deleted since: drop any copy in the Recycle Bin and re-add it under its path.
-        detach_entry(&mut db.root, uid);
+        // Deleted for good since: re-add it under its path.
         db.deleted_objects.retain(|d| d.uuid != uid);
         let gid = ensure_group(db, group_path, now)?;
         old.times.last_modification = now;
@@ -679,49 +681,54 @@ fn csv_cell(s: &str) -> String {
     format!("\"{}\"", s.replace('"', "\"\""))
 }
 
+/// A JSON string literal as `JSON.stringify` writes it (serde_json escapes the same characters).
+fn json_string(s: &str) -> String {
+    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_owned())
+}
+
+/// The web app's `exportDatabaseSubset` (openvireo-web `KeePassContext.tsx`) byte for byte: the
+/// entries directly in the chosen groups, in tree order, with the values its entry list shows
+/// (`folder` = the group's own name or `Root`, an empty title `(Untitled Entry)`). Fixture:
+/// `tests/fixtures/export_plain/` (written by the web code itself).
 pub(crate) fn export_plain(
     db: &Database,
     format: ExportFormat,
     group_ids: Option<Vec<String>>,
 ) -> Result<SecretBytes, OvError> {
+    const KEYS: [&str; 6] = ["folder", "title", "username", "passwordValue", "url", "notes"];
     let sel = selected(db, group_ids)?;
-    let rows: Vec<(String, &Entry)> = all_entries(db)
+    let rows: Vec<[&str; 6]> = all_entries(db)
         .into_iter()
         .filter(|(_, g, _)| sel.contains(&g.uuid) && !in_recycle_bin(db, g.uuid))
-        .map(|(e, g, p)| (if p.is_empty() { g.name.clone() } else { p.join("/") }, e))
+        .map(|(e, g, _)| {
+            let title = e.title();
+            [
+                if g.name.is_empty() { "Root" } else { g.name.as_str() },
+                if title.is_empty() { "(Untitled Entry)" } else { title },
+                e.field_text("UserName"),
+                e.field_text("Password"),
+                e.field_text("URL"),
+                e.field_text("Notes"),
+            ]
+        })
         .collect();
     let out = match format {
         ExportFormat::Csv => {
-            let mut s = String::from("\"Folder\",\"Title\",\"Username\",\"Password\",\"URL\",\"Notes\"\n");
-            for (folder, e) in &rows {
-                let cells = [
-                    folder.as_str(),
-                    e.title(),
-                    e.field_text("UserName"),
-                    e.field_text("Password"),
-                    e.field_text("URL"),
-                    e.field_text("Notes"),
-                ];
-                s.push_str(&cells.iter().map(|c| csv_cell(c)).collect::<Vec<_>>().join(","));
-                s.push('\n');
-            }
-            s
+            let mut lines = vec!["Folder,Title,Username,Password,URL,Notes".to_owned()];
+            lines.extend(rows.iter().map(|r| r.iter().map(|c| csv_cell(c)).collect::<Vec<_>>().join(",")));
+            lines.join("\n")
         }
+        ExportFormat::Json if rows.is_empty() => "[]".to_owned(),
         ExportFormat::Json => {
-            let items: Vec<serde_json::Value> = rows
+            let objects: Vec<String> = rows
                 .iter()
-                .map(|(folder, e)| {
-                    serde_json::json!({
-                        "folder": folder,
-                        "title": e.title(),
-                        "username": e.field_text("UserName"),
-                        "passwordValue": e.field_text("Password"),
-                        "url": e.field_text("URL"),
-                        "notes": e.field_text("Notes"),
-                    })
+                .map(|r| {
+                    let pairs: Vec<String> =
+                        KEYS.iter().zip(r).map(|(k, v)| format!("    \"{k}\": {}", json_string(v))).collect();
+                    format!("  {{\n{}\n  }}", pairs.join(",\n"))
                 })
                 .collect();
-            serde_json::to_string_pretty(&items).unwrap_or_default()
+            format!("[\n{}\n]", objects.join(",\n"))
         }
     };
     Ok(out.into_bytes())

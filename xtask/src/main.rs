@@ -8,6 +8,7 @@ use std::process::{Command, ExitCode};
 
 // One module per task-owned command (W1-BW wasm, W1-BS xcframework, W1-BC cpp, W1-P openapi, W4-R release).
 mod cpp;
+mod kotlin;
 mod openapi;
 mod release;
 mod wasm;
@@ -27,6 +28,7 @@ Commands:
   wasm          build the @openvireo/core-wasm package          (W1-BW)
   xcframework   build OpenVireoCore.xcframework                  (W1-BS)
   cpp           build the C++ static libs + headers              (W1-BC)
+  kotlin        build + test the Kotlin/JVM binding [--smoke]    (B2)
   openapi       round-trip every OpenAPI example through ov-protocol (W1-P)
   release       build every release artifact the host can build + SHA256SUMS (W4-R; `release --help`)
 
@@ -46,6 +48,7 @@ fn main() -> ExitCode {
         Some("wasm") => wasm::run(&args[1..]),
         Some("xcframework") => xcframework::run(&args[1..]),
         Some("cpp") => cpp::run(&args[1..]),
+        Some("kotlin") => kotlin::run(&args[1..]),
         Some("openapi") => openapi::run(&args[1..]),
         Some("release") => release::run(&args[1..]),
         None | Some("help" | "-h" | "--help") => {

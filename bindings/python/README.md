@@ -9,6 +9,8 @@ adds ready-made platform parts (HTTP, secret store, offline cache, clock, loggin
   because the library is loaded through ctypes rather than the CPython ABI.
 - Every network or storage call is a coroutine (asyncio), with an optional `cancel=` token as its
   last argument (see [Cancelling](#cancelling)).
+- Typed: the wheel ships `py.typed` and stubs, so mypy and pyright check calls against the
+  signatures as they run (the optional `cancel` included).
 
 ## Install
 
@@ -83,8 +85,10 @@ except ov.OvError as e:
 The generated module (`openvireo._core`) has the token as a required argument, because UniFFI
 can't default an object argument; `openvireo` rewraps every such method at import time
 (`openvireo/_compat.py`) and `tests/test_optional_cancel.py` checks none is missed. Passing the
-token positionally still works. Type checkers read the generated signatures, so under mypy a call
-without `cancel` is reported as missing an argument until the package ships stubs.
+token positionally still works. Type checkers see the same signatures: the package ships stubs
+(`openvireo/__init__.pyi`, `openvireo/_core/ov_ffi.pyi`) in which every one of those calls has
+`cancel: CancelToken | None = None`, so mypy and pyright accept a call without it. Only the
+`...Protocol` classes keep the token required, as in the generated module.
 
 ## Hosts
 
@@ -104,7 +108,15 @@ Python can't wipe; the core zeroizes its own copies.
 cargo xtask python            # venv (uv if installed), maturin develop, pytest
 cargo xtask python --smoke    # + test-server feature and the live tests against the testkit relay
 cargo xtask python --wheel    # + a release wheel in <target>/wheels
+cargo xtask python --stubs    # rewrite the type stubs (after a change to the exported API)
 ```
+
+The stubs are generated from the built module by `scripts/gen_stubs.py`: it imports `openvireo` (so
+`_compat` has run) and writes each class, record, enum, error, Host interface and function with its
+runtime signature. They're committed, so the sdist and every release wheel carry them as plain
+`python-source` files; `cargo xtask python` fails when they no longer match the module (run it with
+`--stubs` and commit the result). `tests/test_stubs.py` checks them against `_compat` and runs
+mypy --strict and pyright (through `uvx`, when it's on `PATH`) on `tests/typecheck_sample.py`.
 
 The live tests run the real `UrllibTransport` and `HttpxTransport` against the in-memory auth and
 sync servers (`crates/ov-testkit/examples/http_relay.rs`) over loopback HTTP: register, log in,

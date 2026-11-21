@@ -6,4 +6,6 @@ __pycache__/
 .ruff_cache/
 dist/
 # maturin develop writes the generated module and the library here
-python/openvireo/_core/
+python/openvireo/_core/*
+# …except the committed type stub (scripts/gen_stubs.py)
+!python/openvireo/_core/ov_ffi.pyi

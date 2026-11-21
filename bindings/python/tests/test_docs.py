@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
 
 import openvireo as ov
 import pytest
@@ -80,7 +81,7 @@ def device_with_store(relay, store: ov.SecureStore, tmp_path) -> ov.OvClient:  #
 
 
 async def test_sign_in_and_stored_session(relay, new_device, tmp_path) -> None:  # type: ignore[no-untyped-def]
-    email = f"docs-signin-{id(new_device)}@example.com"
+    email = f"docs-signin-{uuid.uuid4().hex}@example.com"
     _, secret_key = await register(new_device(), relay, email)
 
     # A new device: the first login has no Secret Key, the second one does.
@@ -100,7 +101,7 @@ async def test_sign_in_and_stored_session(relay, new_device, tmp_path) -> None: 
 
 
 async def test_sign_in_with_two_step(relay, new_device) -> None:  # type: ignore[no-untyped-def]
-    email = f"docs-totp-{id(new_device)}@example.com"
+    email = f"docs-totp-{uuid.uuid4().hex}@example.com"
     a, secret_key = await register(new_device(), relay, email)
     setup = await a.start_two_step()
     params = ov.parse_totp_uri(setup.uri)
@@ -117,7 +118,7 @@ async def test_sign_in_with_two_step(relay, new_device) -> None:  # type: ignore
 
 
 async def test_vaults_entries_sync_share(relay, new_device) -> None:  # type: ignore[no-untyped-def]
-    email = f"docs-vaults-{id(new_device)}@example.com"
+    email = f"docs-vaults-{uuid.uuid4().hex}@example.com"
     dev = new_device()
     account, _ = await register(dev, relay, email)
     await account.create_vault("Personal", None)
@@ -174,7 +175,7 @@ async def test_vaults_entries_sync_share(relay, new_device) -> None:  # type: ig
 
 
 async def test_errors(relay, new_device) -> None:  # type: ignore[no-untyped-def]
-    email = f"docs-errors-{id(new_device)}@example.com"
+    email = f"docs-errors-{uuid.uuid4().hex}@example.com"
     _, secret_key = await register(new_device(), relay, email)
 
     async def why(password: str, key: bytes) -> str:
@@ -197,7 +198,7 @@ async def test_errors(relay, new_device) -> None:  # type: ignore[no-untyped-def
 
 
 async def test_cancellation(relay, new_device) -> None:  # type: ignore[no-untyped-def]
-    account, _ = await register(new_device(), relay, f"docs-cancel-{id(new_device)}@example.com")
+    account, _ = await register(new_device(), relay, f"docs-cancel-{uuid.uuid4().hex}@example.com")
     vault = await account.create_vault("V", None)
 
     token = ov.CancelToken()

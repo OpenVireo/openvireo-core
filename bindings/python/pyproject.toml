@@ -50,7 +50,8 @@ asyncio_default_fixture_loop_scope = "function"
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-extend-exclude = ["python/openvireo/_core"]
+# generated: the UniFFI module and the stubs (scripts/gen_stubs.py)
+extend-exclude = ["python/openvireo/_core", "python/openvireo/__init__.pyi"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "RUF"]
@@ -58,5 +59,15 @@ select = ["E", "F", "W", "I", "B", "UP", "RUF"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["python/openvireo/hosts.py", "python/openvireo/__init__.py", "python/openvireo/_compat.py"]
+# __init__.py is checked on its own (`mypy python/openvireo/__init__.py`, tests/test_stubs.py): with its
+# stub in the same run mypy reports a duplicate module.
+files = [
+    "python/openvireo/hosts.py",
+    "python/openvireo/_compat.py",
+    "python/openvireo/__init__.pyi",
+    "python/openvireo/_core/ov_ffi.pyi",
+    "scripts/gen_stubs.py",
+    "tests/test_stubs.py",
+    "tests/typecheck_sample.py",
+]
 ignore_missing_imports = true

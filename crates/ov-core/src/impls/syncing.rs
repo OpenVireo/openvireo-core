@@ -125,6 +125,27 @@ async fn vault_keys(v: &Vault) -> Result<(String, Vec<KeyVersion>), OvError> {
     }
 }
 
+/// The keys of the vault behind a handle fetched again from the server, after its copy didn't open
+/// with the keys held: another device rotated the vault key since they were fetched. The account's
+/// keyring (or the service account's list) and the handle's record follow.
+async fn refetch_keys(v: &Vault, cancel: &CancelToken) -> Result<Vec<KeyVersion>, OvError> {
+    match &v.inner.source {
+        VaultSource::Account { account, info } => {
+            let id = lock(info).id.clone();
+            let e = account.refetch_entry(&id, cancel).await?;
+            *lock(info) = e.info.clone();
+            Ok(e.keys().to_vec())
+        }
+        VaultSource::ServiceAccount { sa, info } => {
+            let sa = sa.upgrade().ok_or_else(|| super::util::signed_out("service account closed"))?;
+            let sa = ServiceAccount { inner: sa };
+            sa.entries(true, cancel).await?;
+            Ok(sa.entry(&info.id, cancel).await?.keys().to_vec())
+        }
+        _ => Err(OvError::new(OvErrorCode::InvalidRequest, "this vault has no server")),
+    }
+}
+
 /// Syncs an account or SA vault (conditional PUT, merge and retry on 412), re-keying to `rekey_to`
 /// before the upload (rotation). The working copy, etag, conflicts and the account's clock offset
 /// follow the result. Offline, the working copy goes to the cache's pending edits.
@@ -153,7 +174,7 @@ pub(crate) async fn sync_vault_with(
 ) -> Result<SyncReport, OvError> {
     const ROUNDS: usize = 3;
     cancel.check()?;
-    let (id, keys) = vault_keys(v).await?;
+    let (id, mut keys) = vault_keys(v).await?;
     let client = match &v.inner.source {
         VaultSource::Account { account, .. } => account.sync_client(),
         VaultSource::ServiceAccount { sa, .. } => {
@@ -185,7 +206,13 @@ pub(crate) async fn sync_vault_with(
             remote_is_base: !first || remote_is_base,
             cancel: Some(&cw),
         };
-        let result = session.sync(&blob, &keys, opts).await;
+        let mut result = session.sync(&blob, &keys, opts).await;
+        if first && matches!(&result, Err(e) if e.is(OvErrorCode::VaultKeyMismatch)) {
+            // Another device rotated the vault key since this device fetched its keys: once more
+            // with the keys the server holds for this principal now
+            keys = refetch_keys(v, cancel).await?;
+            result = session.sync(&blob, &keys, opts).await;
+        }
         v.inner.offline.store(session.offline, std::sync::atomic::Ordering::SeqCst);
         if let VaultSource::Account { account, .. } = &v.inner.source {
             account.note_clock(blob.clock_offset_ms());
@@ -287,11 +314,17 @@ pub(crate) async fn open_session(
     let cw = CancelWrap(cancel.clone());
     let mut session = v.inner.session.lock().await;
     let opts = SessionSyncOptions { cancel: Some(&cw), ..Default::default() };
-    let mut first = session.sync(&blob, e.keys(), opts).await;
+    let mut keys = e.keys().to_vec();
+    let mut first = session.sync(&blob, &keys, opts).await;
     if matches!(&first, Err(err) if err.is(OvErrorCode::Forbidden)) {
         // A vault shared since the token was issued isn't in its `vlt` claim yet: refresh once.
         account.refresh_token(cancel).await?;
-        first = session.sync(&blob, e.keys(), opts).await;
+        first = session.sync(&blob, &keys, opts).await;
+    }
+    if matches!(&first, Err(err) if err.is(OvErrorCode::VaultKeyMismatch)) {
+        // Another device rotated the vault key since this device fetched its keys: fetch them again
+        keys = refetch_keys(&v, cancel).await?;
+        first = session.sync(&blob, &keys, opts).await;
     }
     match first {
         Ok(r) => {
@@ -307,7 +340,7 @@ pub(crate) async fn open_session(
             if !(account.keeps_offline_data() && err.is_unreachable()) {
                 return Err(err);
             }
-            session.open_local_copy(e.keys(), &e.info.name, &err).await?;
+            session.open_local_copy(&keys, &e.info.name, &err).await?;
             account.set_offline(true);
         }
     }
@@ -337,7 +370,14 @@ pub(crate) async fn open_sa_session(
     let cw = CancelWrap(cancel.clone());
     let mut session = v.inner.session.lock().await;
     // One GET: the downloaded copy is the working copy and the base (TS `ServiceAccount.download`)
-    let r = session.download(&blob, e.keys(), Some(&cw)).await?;
+    let r = match session.download(&blob, e.keys(), Some(&cw)).await {
+        Err(err) if err.is(OvErrorCode::VaultKeyMismatch) => {
+            // The vault key was rotated since the list was fetched: fetch it again, once
+            let keys = refetch_keys(&v, cancel).await?;
+            session.download(&blob, &keys, Some(&cw)).await?
+        }
+        r => r?,
+    };
     *lock(&v.inner.etag) = Some(r.state.etag.clone());
     if let Some(db) = &session.db {
         *v.db() = db.clone();

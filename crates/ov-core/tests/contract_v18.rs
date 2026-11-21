@@ -502,6 +502,39 @@ async fn a_rotation_left_pending_by_this_account_is_finished_first() {
     assert_eq!(titles(&opened), ["Mail"]);
 }
 
+/// W3-X 6b: a device signed in (and holding the vault's keys) before another device rotates the
+/// vault key fetches the keys again when the server copy doesn't open with them, on an open handle's
+/// sync and on `open_vault`, instead of failing with `vault_key_mismatch` until `vaults()`.
+#[tokio::test]
+async fn a_device_signed_in_before_a_rotation_fetches_the_new_key() {
+    let s = servers();
+    let (a, kit, v, _) = account_with_vault(&s, false).await;
+    let b = second_device(&s, &kit).await;
+    let on_b = b.open_vault(v.id(), nc()).await.unwrap();
+    assert_eq!(titles(&on_b), ["Mail"]);
+
+    a.rotate_vault_key(v.id(), vec![], nc()).await.unwrap();
+    add_entry(&v, "Bank", "b1");
+    v.sync(SyncOptions::default(), nc()).await.unwrap();
+
+    // The open handle: the copy under key 2 opens after one GET /vaults/{id}, and b's edit goes up
+    add_entry(&on_b, "Shop", "s1");
+    let r = on_b.sync(SyncOptions::default(), nc()).await.unwrap();
+    assert_eq!(r.outcome, SyncOutcome::Uploaded);
+    assert_eq!(titles(&on_b), ["Bank", "Mail", "Shop"]);
+    let info = b.vaults(nc()).await.unwrap().into_iter().find(|i| i.id == v.id()).unwrap();
+    assert_eq!(info.current_key_version, 2);
+    v.sync(SyncOptions::default(), nc()).await.unwrap();
+    assert_eq!(titles(&v), ["Bank", "Mail", "Shop"]);
+
+    // A new handle on a device whose keyring is stale opens too
+    let c = second_device(&s, &kit).await;
+    c.vaults(nc()).await.unwrap();
+    a.rotate_vault_key(v.id(), vec![], nc()).await.unwrap();
+    let on_c = c.open_vault(v.id(), nc()).await.unwrap();
+    assert_eq!(titles(&on_c), ["Bank", "Mail", "Shop"]);
+}
+
 #[tokio::test]
 async fn another_members_pending_rotation_is_rotation_pending_until_24_hours_pass() {
     let s = servers();

@@ -515,12 +515,8 @@ impl Account {
         if let Some(e) = lock(&self.inner.inner).vaults.get(vault_id) {
             return Ok(VaultEntry::of(e));
         }
-        self.with_keyset(|_| ())?;
-        match self.call(cancel, |a, t| a.build_get_vault(t, vault_id), ov_protocol::auth::parse_vault).await {
-            Ok(v) => {
-                self.cache_vault(&v).await?;
-                self.ingest(&v)
-            }
+        match self.refetch_entry(vault_id, cancel).await {
+            Ok(e) => Ok(e),
             Err(e) => {
                 if e.is_unreachable() {
                     if let Some(v) =
@@ -533,6 +529,16 @@ impl Account {
                 Err(e)
             }
         }
+    }
+
+    /// `GET /vaults/{id}`: the vault's entry fetched again, replacing the one in the keyring (and
+    /// the cached list). Used when the server copy doesn't open with the keys held: another device
+    /// rotated the vault key since they were fetched.
+    pub(crate) async fn refetch_entry(&self, vault_id: &str, cancel: &CancelToken) -> Result<VaultEntry, OvError> {
+        self.with_keyset(|_| ())?;
+        let v = self.call(cancel, |a, t| a.build_get_vault(t, vault_id), ov_protocol::auth::parse_vault).await?;
+        self.cache_vault(&v).await?;
+        self.ingest(&v)
     }
 
     /// The keyring entry from memory or the cached list, without the network.

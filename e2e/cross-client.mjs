@@ -24,7 +24,7 @@ const KDBX_CLI = process.env.OV_E2E_KDBX_CLI || "";
 const ONLY = (process.env.OV_E2E_ONLY || "").split(",").filter(Boolean);
 // Failures already reported to their owners: shown as "fail (known)" and left out of the exit status unless
 // OV_E2E_STRICT=1. Remove an entry once its fix is in.
-const KNOWN = new Map([["6b", "core: stale keyring after another device's key rotation (W3-X report)"]]);
+const KNOWN = new Map();
 const STRICT = process.env.OV_E2E_STRICT === "1";
 if (!OV_BIN || !SDK_DIR) {
   console.error("set OV_BIN and OV_E2E_SDK_DIR (e2e/run.sh does)");

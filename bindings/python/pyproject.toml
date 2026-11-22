@@ -40,7 +40,11 @@ python-source = "python"
 # with `maturin develop --features test-server` (`cargo xtask python --smoke`).
 features = []
 locked = true
-strip = true
+# uniffi-bindgen reads the binding's metadata from the library's symbol table, which a stripped ELF
+# (Linux) no longer has: maturin generates the module from the library it ships. So nothing strips
+# the symbols, and the release profile drops only the debug info for these builds.
+strip = false
+config = ['profile.release.strip="debuginfo"']
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

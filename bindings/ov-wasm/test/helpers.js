@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import pkg from "../pkg/package.json" with { type: "json" };
 
 export const hex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 export const bytes = (s) => new TextEncoder().encode(s);
@@ -26,3 +27,6 @@ export async function errorOf(fn) {
   }
   throw new Error("expected an error");
 }
+
+// The version the package was built with (xtask fills it in from the workspace version).
+export const PKG_VERSION = pkg.version;

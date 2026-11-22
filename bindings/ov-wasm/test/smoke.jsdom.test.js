@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { loadCore, OvError } from "../pkg/index.js";
 import { loadLite } from "../pkg/lite.js";
 import { loadLiteSync } from "../pkg/lite-sync.js";
-import { SHA256_ABC, hex } from "./helpers.js";
+import { PKG_VERSION, SHA256_ABC, hex } from "./helpers.js";
 
 describe("@openvireo/core-wasm in a browser-like environment (jsdom)", () => {
   it("runs in a DOM environment", () => {
@@ -13,7 +13,7 @@ describe("@openvireo/core-wasm in a browser-like environment (jsdom)", () => {
 
   it("loads and reports the version", async () => {
     const core = await loadCore();
-    expect(core.version()).toBe("0.0.0");
+    expect(core.version()).toBe(PKG_VERSION);
   });
 
   it("runs a primitive: sha256 and randomBytes (crypto.getRandomValues)", async () => {
@@ -28,7 +28,7 @@ describe("@openvireo/core-wasm in a browser-like environment (jsdom)", () => {
   it("loads the lite module, async and sync", async () => {
     const lite = await loadLite();
     expect(lite).toBe(loadLiteSync());
-    expect(lite.version()).toBe("0.0.0");
+    expect(lite.version()).toBe(PKG_VERSION);
     expect(hex(lite.sha256(new Uint8Array([0x61, 0x62, 0x63])))).toBe(SHA256_ABC);
     expect(lite.randomBytes(8).length).toBe(8);
   });

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { loadCore, OvError } from "../pkg/index.js";
 import { consoleLog, memoryCache, memoryStore, systemClock } from "../pkg/host/index.js";
-import { bytes, fromHex, hex, SHA256_ABC } from "./helpers.js";
+import { bytes, fromHex, hex, PKG_VERSION, SHA256_ABC } from "./helpers.js";
 
 const config = { device: { name: "vitest", platform: "web" }, offline: false };
 const host = () => ({
@@ -17,7 +17,7 @@ const host = () => ({
 describe("@openvireo/core-wasm in Node", () => {
   it("loads from the embedded base64 and reports the version", async () => {
     const core = await loadCore();
-    expect(core.version()).toBe("0.0.0");
+    expect(core.version()).toBe(PKG_VERSION);
     expect(await loadCore()).toBe(core);
   });
 
@@ -61,7 +61,7 @@ describe("@openvireo/core-wasm in Node", () => {
   it("loads from .wasm bytes as well", async () => {
     const wasm = await readFile(new URL("../pkg/gen/ov_wasm_bg.wasm", import.meta.url));
     const core = await loadCore({ wasm, fresh: true });
-    expect(core.version()).toBe("0.0.0");
+    expect(core.version()).toBe(PKG_VERSION);
   });
 });
 
@@ -99,7 +99,7 @@ describe("panics become OvError { code: internal }", () => {
     expect(core.poisoned).toBe(true);
     expect(() => core.version()).toThrow(/unusable after an earlier panic/);
     // A fresh instance works again.
-    expect((await loadCore({ fresh: true })).version()).toBe("0.0.0");
+    expect((await loadCore({ fresh: true })).version()).toBe(PKG_VERSION);
   });
 
   it("asynchronous: a panic inside a future rejects the pending promise with internal", async () => {

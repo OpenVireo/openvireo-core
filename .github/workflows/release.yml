@@ -231,6 +231,10 @@ jobs:
           working-directory: bindings/python
           command: sdist
           args: --out dist
+      - name: Prune the sdist's Cargo.lock to the packed crates
+        if: ${{ matrix.sdist }}
+        # maturin copies the whole workspace's lock; `locked = true` builds from the sdist need it pruned
+        run: python3 .github/scripts/sdist_lock.py bindings/python/dist/openvireo-*.tar.gz
       - name: Check the version in the file names
         env:
           VERSION: ${{ needs.version.outputs.version }}

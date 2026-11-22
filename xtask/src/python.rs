@@ -160,7 +160,15 @@ pub(crate) fn release_build(out: &Path, sdist: bool) -> Result<Vec<PathBuf>> {
     }
     // Files maturin wrote or replaced in this run (the dir may hold older wheels).
     let after = listing(out)?;
-    Ok(after.into_iter().filter(|f| !before.contains(f)).map(|(p, _)| p).collect())
+    let written: Vec<PathBuf> = after.into_iter().filter(|f| !before.contains(f)).map(|(p, _)| p).collect();
+    // maturin packs the whole workspace's Cargo.lock; prune it to the packed crates so the sdist
+    // builds with `locked = true` (.github/scripts/sdist_lock.py, as in the release workflow).
+    for tarball in written.iter().filter(|p| p.to_string_lossy().ends_with(".tar.gz")) {
+        let mut prune = Command::new(bin(&venv, "python"));
+        prune.arg(root().join(".github").join("scripts").join("sdist_lock.py")).arg(tarball);
+        step("python: prune the sdist's Cargo.lock", &mut prune)?;
+    }
+    Ok(written)
 }
 
 /// (path, modified time) of every file in `dir`.

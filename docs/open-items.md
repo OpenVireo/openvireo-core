@@ -30,10 +30,9 @@ Known bugs, gaps and follow-ups on `develop` at `f9af5be` (2026-11-21, after eve
 
 ## Build, release and tooling
 
-- **No release yet.** The release pipeline is in progress. Until it ships, `@openvireo/core-wasm` is
-  vendored as a tarball by the SDK and the web app, the SDK's own 1.0.0 can't be released, iOS and the
-  desktop build the core from a pinned commit, and `bins/ov` still prints version `0.11.0` (hard-coded in
-  `bins/ov/src/lib.rs`).
+- **First release is 1.0.0.** Everything carries the workspace version, `ov version` included. The web
+  app still vendors `@openvireo/core-wasm` as a tarball (switching it to the published package is
+  optional), and iOS and the desktop build the core from a pinned commit.
 - `deny.toml` ignores RUSTSEC-2026-0387 (crypto-bigint via opaque-ke 4.0.1). `cargo xtask unlinked` proves
   none of that code is linked into the wasm modules. The real fix needs opaque-ke 5 (only a pre-release
   exists).

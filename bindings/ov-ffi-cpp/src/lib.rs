@@ -37,10 +37,10 @@ pub use handles::{
 };
 
 pub use more::{
-    default_share_fields, deletion_expired, entry_totp_uri, item_share_payload, parse_totp_uri, plan_has,
-    plan_has_billing, plan_limit, platform_as_str, self_hosted_connect, self_hosted_pair, self_hosted_restore,
-    service_account_from_token, shareable_fields, text_share_payload, totp_code, RestoredSelfHosted, SelfHosted,
-    ServiceAccount,
+    default_share_fields, deletion_expired, entry_totp_uri, item_share_payload, parse_share_link, parse_totp_uri,
+    plan_has, plan_has_billing, plan_limit, platform_as_str, self_hosted_connect, self_hosted_pair,
+    self_hosted_restore, service_account_from_token, shareable_fields, text_share_payload, totp_code,
+    RestoredSelfHosted, SelfHosted, ServiceAccount,
 };
 
 use crypto::{
@@ -1341,6 +1341,17 @@ pub mod ffi {
         remaining: u32,
     }
 
+    /// A parsed share link, `<base>/<id>#<key>`. `key` is the secret link key: wipe it (ov::wipe).
+    #[derive(Clone)]
+    struct ShareLinkParts {
+        /// Everything before `/<id>`.
+        base: String,
+        /// The share id (22 characters), for `Client::share_info`.
+        id: String,
+        /// The link key `K` (32 bytes).
+        key: Vec<u8>,
+    }
+
     // ------------------------------------------------ below the facade (crypto, OPAQUE, merge)
     //
     // The pieces of the core the desktop's account code calls directly (README.md, "Desktop swap").
@@ -1590,6 +1601,7 @@ pub mod ffi {
         fn text_share_payload(text: Vec<u8>, title: &str, shared_by: &str) -> Result<SharePayload>;
         fn parse_totp_uri(uri: Vec<u8>) -> Result<TotpParams>;
         fn totp_code(params: TotpParams, now_ms: i64) -> Result<TotpCode>;
+        fn parse_share_link(link: &str) -> Result<ShareLinkParts>;
         fn entry_totp_uri(fields: Vec<FieldRecord>, label: &str) -> Result<OptionalBytes>;
 
         // ---- CancelToken (more)

@@ -29,6 +29,7 @@ ov-kdbx = { path = "../../crates/ov-kdbx" }
 ov-merge = { path = "../../crates/ov-merge" }
 # No `legacy-c-abi`: its `ov_*` C symbols would end up in libovcore.
 ov-opaque = { path = "../../crates/ov-opaque", default-features = false }
+ov-share = { path = "../../crates/ov-share" }
 rand_core = { workspace = true, features = ["getrandom"] }
 rand_chacha = { workspace = true, optional = true }
 # W2-E's in-process auth + sync servers for the desktop's tests (`ov::test_servers_start`).

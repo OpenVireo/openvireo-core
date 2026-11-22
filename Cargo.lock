@@ -1615,6 +1615,7 @@ dependencies = [
  "ov-kdbx",
  "ov-merge",
  "ov-opaque",
+ "ov-share",
  "ov-testkit",
  "rand_chacha",
  "rand_core 0.6.4",

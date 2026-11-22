@@ -324,6 +324,21 @@ int main() {
     ov::wipe(code.code);
     check(!ov::call([&] { return ov::entry_totp_uri({}, "label"); }).has, "entry_totp_uri of no fields is none");
 
+    // ---- share links
+    ov::ShareLinkParts parts = ov::call([] {
+        return ov::parse_share_link("https://share.openvireo.com/AAAAAAAAAAAAAAAAAAAAAA#BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
+    });
+    check(std::string(parts.base) == "https://share.openvireo.com" && std::string(parts.id) == "AAAAAAAAAAAAAAAAAAAAAA" &&
+              parts.key.size() == 32,
+          "parse_share_link splits base, id and key");
+    ov::wipe(parts.key);
+    try {
+        ov::call([] { return ov::parse_share_link("https://share.openvireo.com/abc"); });
+        check(false, "parse_share_link rejects an incomplete link");
+    } catch (const ov::Error &e) {
+        check(e.code() == "invalid_link", "parse_share_link rejects an incomplete link with invalid_link");
+    }
+
     // ---- share payload helpers, deletion
     check(ov::call([] { return ov::default_share_fields(); }).size() == 3, "default_share_fields has 3 fields");
     check(std::string(ov::call([&] { return ov::text_share_payload(vec("hi"), "", ""); }).kind) == "text",

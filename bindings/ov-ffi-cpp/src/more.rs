@@ -483,6 +483,15 @@ pub fn totp_code(params: ffi::TotpParams, now_ms: i64) -> R<ffi::TotpCode> {
     edge(|| Ok(rec::totp_code(core::totp_code(rec::totp_params_in(params)?, now_ms))))
 }
 
+/// `ov::parse_share_link()`: splits `<base>/<id>#<key>` (the same parser as the other bindings'
+/// `parse_share_link`); `invalid_link` when it isn't a complete link. The caller wipes `key`.
+pub fn parse_share_link(link: &str) -> R<ffi::ShareLinkParts> {
+    edge(|| {
+        let p = ov_share::parse_share_link(link)?;
+        Ok(ffi::ShareLinkParts { base: p.base.clone(), id: p.id.clone(), key: p.key.to_vec() })
+    })
+}
+
 /// `ov::entry_totp_uri()`: [`core::entry_totp_uri`].
 pub fn entry_totp_uri(fields: Vec<ffi::FieldRecord>, label: &str) -> R<ffi::OptionalBytes> {
     edge(|| {
@@ -513,6 +522,20 @@ mod tests {
         assert_eq!(platform_as_str(ffi::Platform::QtWindows).unwrap(), "qt-windows");
         assert_eq!(platform_as_str(ffi::Platform::Android).unwrap(), "android");
         assert_eq!(platform_as_str(ffi::Platform { repr: 99 }).unwrap_err().0.code, OvErrorCode::InvalidRequest);
+        let _ = crate::edge::take_last_error();
+    }
+
+    #[test]
+    fn parse_share_link_splits_a_link() {
+        let id = "AAAAAAAAAAAAAAAAAAAAAA";
+        let key = "B".repeat(43);
+        let p = parse_share_link(&format!("https://share.openvireo.com/{id}#{key}")).unwrap();
+        assert_eq!(p.base, "https://share.openvireo.com");
+        assert_eq!(p.id, id);
+        assert_eq!(p.key.len(), 32);
+        // No Debug on the parts (they hold the key), so no unwrap_err
+        let Err(e) = parse_share_link("https://share.openvireo.com/abc") else { panic!("an incomplete link parsed") };
+        assert_eq!(e.0.code, OvErrorCode::InvalidLink);
         let _ = crate::edge::take_last_error();
     }
 

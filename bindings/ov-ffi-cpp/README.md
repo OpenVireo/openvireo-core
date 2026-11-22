@@ -244,7 +244,7 @@ How facade names become C++ names:
 
 | Area | Bridged |
 |---|---|
-| Free | `version`, `take_last_error`, the crypto primitives, the functions [below the facade](#below-the-facade); `deletion_expired`, `default_share_fields`, `shareable_fields`, `item_share_payload`, `text_share_payload`, `parse_totp_uri`, `totp_code`, `entry_totp_uri`; record helpers `plan_limit`, `plan_has`, `plan_has_billing`, `platform_as_str` |
+| Free | `version`, `take_last_error`, the crypto primitives, the functions [below the facade](#below-the-facade); `deletion_expired`, `default_share_fields`, `shareable_fields`, `item_share_payload`, `text_share_payload`, `parse_totp_uri`, `totp_code`, `entry_totp_uri`, `parse_share_link`; record helpers `plan_limit`, `plan_has`, `plan_has_billing`, `platform_as_str` |
 | `CancelToken` | `new_cancel_token`, `clone`, `cancel`, `is_cancelled`, `check` |
 | `ov::Client` | everything: discovery, `connect`, `config`, local files on the Host clock (`open_local`, `create_local`), remembered accounts (`remembered_accounts`, `remember_account`, `set_remembered_deletion`, `mark_remembered_checked`, `forget_remembered`), `session_state`, `has_pending_edits`, signed-out share links (`share_info`, `open_share`) |
 | `Account` | everything (contract-v1.6: `vault_kdbx_credentials`, `sync_vault_kdbx` with `ov::SyncOptions`, `access_token`): state and sessions (incl. `signed_out`, `verify_session`, parked sessions, `sign_out_on_unload`, `unlocked_keyset_secret` / `resume_unlocked`), register / login / TOTP / unlock, vaults and import, history, AutoFill edits, settings and two-step, devices, recovery, deletion, plans and In-App Purchase, vault sharing, orgs, audit log, service-account admin, share links |

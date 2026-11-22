@@ -537,7 +537,7 @@ fn ov_readme() -> String {
          ov help\n\
          ov version\n\
          ```\n\n\
-         Documentation: https://openvireo.com/docs/sdk/cli/\n\
+         Documentation: https://developer.openvireo.com/cli/\n\
          Source: https://github.com/OpenVireo/openvireo-core (`bins/ov`)\n\n\
          Licensed under either of MIT (LICENSE-MIT) or Apache-2.0 (LICENSE-APACHE), at your option.\n"
     )

@@ -7,7 +7,7 @@ binding interoperates with the apps.
 
 | Language | Use it for | Binding | Get it | Docs |
 |---|---|---|---|---|
-| TypeScript / JavaScript | Web apps, Node, Bun, CLIs | wasm (`bindings/ov-wasm`), wrapped by `@openvireo/sdk` | npm: `@openvireo/sdk` | [SDK docs](https://openvireo.com/docs/sdk/) |
+| TypeScript / JavaScript | Web apps, Node, Bun, CLIs | wasm (`bindings/ov-wasm`), wrapped by `@openvireo/sdk` | npm: `@openvireo/sdk` | [SDK docs](https://developer.openvireo.com/sdk/) |
 | Swift | iOS and macOS apps | UniFFI (`bindings/ov-ffi`), module `OpenVireoRustCore` | `cargo xtask xcframework` (the iOS app vendors it) | [`bindings/ov-ffi`](../../bindings/ov-ffi/README.md) |
 | C++ | Qt and other native desktop code | cxx (`bindings/ov-ffi-cpp`), `<ovcore.h>` | CMake / Corrosion at a pinned commit | [`bindings/ov-ffi-cpp`](../../bindings/ov-ffi-cpp/README.md) |
 | Python | Scripts, automation, backends | UniFFI (`bindings/ov-ffi`), package `openvireo` | wheels on the GitHub release | [Python](python.md) |

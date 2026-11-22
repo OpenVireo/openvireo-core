@@ -16,7 +16,7 @@ Pick one:
   `aarch64-unknown-linux-gnu`. Each one needs `rustup target add <triple>` and a C++ compiler for that target.
 
   ```cmake
-  find_package(OpenVireoCore 0.0 REQUIRED)        # -DOpenVireoCore_DIR=<pkg>/lib/cmake/OpenVireoCore
+  find_package(OpenVireoCore 1.0 REQUIRED)        # -DOpenVireoCore_DIR=<pkg>/lib/cmake/OpenVireoCore
   target_link_libraries(app PRIVATE OpenVireoCore::ovcore)
   ```
 

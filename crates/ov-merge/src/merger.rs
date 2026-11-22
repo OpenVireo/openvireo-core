@@ -14,6 +14,16 @@ use crate::{pool, ChangeSubject, ChangeType, EntryConflict, MergeChange, MergeRe
 /// The sync generation kept in the database's custom data.
 pub const SYNC_GENERATION_KEY: &str = "KPXC_SYNC_GENERATION";
 
+/// Database custom data each copy keeps for itself, never merged or compared: the sync generation
+/// (the merge sets it) and the stamps KeePassXC rewrites on every save (`_LAST_MODIFIED`,
+/// `KPXC_RANDOM_SLUG`). Merged as data, a freshly saved copy would always look newer than the other
+/// one, and two copies would keep syncing each other.
+const OWN_KEYS: [&str; 3] = [SYNC_GENERATION_KEY, "_LAST_MODIFIED", "KPXC_RANDOM_SLUG"];
+
+fn is_own_key(key: &str) -> bool {
+    OWN_KEYS.contains(&key)
+}
+
 /// The database's sync generation (0 when unset or unreadable).
 pub fn sync_generation(db: &Database) -> u64 {
     db.meta.custom_data_value(SYNC_GENERATION_KEY).and_then(|v| v.trim().parse().ok()).unwrap_or(0)
@@ -264,8 +274,8 @@ pub fn merge_in_place(
 
 /// The three-way merge of database custom data (contract-v1.8): per key, the value both sides
 /// agree on; else the side that changed it since `base` (a removal included); changed on both, the
-/// item with the newer `LastModificationTime` (local on a tie). The sync generation is left out:
-/// the merge sets it. Local's order first, then the items only remote has.
+/// item with the newer `LastModificationTime` (local on a tie). Each copy's own keys
+/// ([`OWN_KEYS`]) are left out. Local's order first, then the items only remote has.
 fn merge_custom_data(
     local: &[CustomDataItem],
     remote: &[CustomDataItem],
@@ -274,7 +284,7 @@ fn merge_custom_data(
     let get = |items: &[CustomDataItem], k: &str| items.iter().find(|i| i.key == k).cloned();
     let mut keys: Vec<&str> = Vec::new();
     for i in local.iter().chain(remote) {
-        if i.key != SYNC_GENERATION_KEY && !keys.contains(&i.key.as_str()) {
+        if !is_own_key(&i.key) && !keys.contains(&i.key.as_str()) {
             keys.push(&i.key);
         }
     }
@@ -300,12 +310,12 @@ fn merge_custom_data(
     out
 }
 
-/// Makes `items` hold `merged` (keeping its own sync generation item); returns a change per item
+/// Makes `items` hold `merged` (keeping its own [`OWN_KEYS`] items); returns a change per item
 /// added, changed or removed.
 fn apply_custom_data(items: &mut Vec<CustomDataItem>, merged: &[CustomDataItem]) -> Vec<MergeChange> {
     let mut changes = Vec::new();
     for i in items.iter() {
-        if i.key != SYNC_GENERATION_KEY && !merged.iter().any(|m| m.key == i.key) {
+        if !is_own_key(&i.key) && !merged.iter().any(|m| m.key == i.key) {
             changes.push(tree::db_record(ChangeType::Metadata, format!("Removed custom data {} [{}]", i.key, i.value)));
         }
     }
@@ -317,9 +327,9 @@ fn apply_custom_data(items: &mut Vec<CustomDataItem>, merged: &[CustomDataItem])
     if changes.is_empty() {
         return changes;
     }
-    let generation = items.iter().find(|i| i.key == SYNC_GENERATION_KEY).cloned();
+    let own: Vec<CustomDataItem> = items.iter().filter(|i| is_own_key(&i.key)).cloned().collect();
     *items = merged.to_vec();
-    items.extend(generation);
+    items.extend(own);
     changes
 }
 
@@ -671,14 +681,14 @@ pub fn needs_common_base(local: &Database, remote: &Database, snapshot: &[(Uuid,
 /// as the last sync looks unchanged to it, and the newer copy would then win whole (its other
 /// side's edit going to history) where the base keeps both, field by field.
 ///
-/// Different database custom data (sync generation aside) counts too: it merges against the base.
+/// Different database custom data (each copy's own keys aside) counts too: it merges against the base.
 pub fn copies_differ(local: &Database, remote: &Database) -> bool {
     fn custom(db: &Database) -> Vec<(&str, &str)> {
         let mut v: Vec<(&str, &str)> = db
             .meta
             .custom_data
             .iter()
-            .filter(|i| i.key != SYNC_GENERATION_KEY)
+            .filter(|i| !is_own_key(&i.key))
             .map(|i| (i.key.as_str(), i.value.as_str()))
             .collect();
         v.sort_unstable();

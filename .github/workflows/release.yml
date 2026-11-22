@@ -871,7 +871,7 @@ jobs:
           fi
           args=()
           if [[ "$VERSION" == *-* ]]; then args+=(--tag next); fi # a prerelease never becomes `latest`
-          npm publish "release/openvireo-core-wasm-$VERSION.tgz" "${args[@]}"
+          npm publish "./release/openvireo-core-wasm-$VERSION.tgz" "${args[@]}"
 
   npmjs:
     needs: [version, verify]
@@ -900,7 +900,7 @@ jobs:
           fi
           args=(--provenance --access public)
           if [[ "$VERSION" == *-* ]]; then args+=(--tag next); fi
-          npm publish "release/openvireo-core-wasm-$VERSION.tgz" "${args[@]}"
+          npm publish "./release/openvireo-core-wasm-$VERSION.tgz" "${args[@]}"
 
   # com.openvireo:openvireo-core-jvm and openvireo-core-android to GitHub Packages (Maven), with
   # `./gradlew publish` through `cargo xtask release publish-maven`: it rebuilds both from the same signed

@@ -300,3 +300,51 @@ fn copies_left_apart_by_the_old_merge_come_together() {
     let again = merge_in_place(&mut local, &mut remote, None, T0 + 200);
     assert!(again.changes.is_empty() && !again.local_changed && !again.remote_changed);
 }
+
+fn item(key: &str, value: &str) -> CustomDataItem {
+    CustomDataItem { key: key.into(), value: value.into(), last_modification: None }
+}
+
+fn custom(db: &Database) -> Vec<(&str, &str)> {
+    let mut v: Vec<(&str, &str)> = db.meta.custom_data.iter().map(|i| (i.key.as_str(), i.value.as_str())).collect();
+    v.sort_unstable();
+    v
+}
+
+#[test]
+fn keepassxc_save_stamps_are_not_merged() {
+    // KeePassXC restamps `_LAST_MODIFIED` and `KPXC_RANDOM_SLUG` on every save. Merged as data, a
+    // freshly saved copy always looked newer than the other, and the two kept syncing each other.
+    let mut base = empty_db(ROOT, T0);
+    base.root.entries.push(entry(1, "A", T0));
+    base.meta.custom_data.push(item("Shared", "1"));
+    let mut local = base.clone();
+    local.meta.custom_data.push(item("_LAST_MODIFIED", "Sat Nov 21 19:36:53 2026 GMT"));
+    local.meta.custom_data.push(item("KPXC_RANDOM_SLUG", "ab12"));
+    let mut remote = base.clone();
+    remote.meta.custom_data.push(item("_LAST_MODIFIED", "Fri Nov 20 10:00:00 2026 GMT"));
+
+    assert!(!ov_merge::copies_differ(&local, &remote));
+    let (mut l, mut r) = (local.clone(), remote.clone());
+    let report = merge_in_place(&mut l, &mut r, Some(&base), T0 + 100);
+    assert!(!report.local_changed, "{:?}", report.changes);
+    assert!(!report.remote_changed, "{:?}", report.changes);
+    // Each copy keeps its own stamps
+    assert_eq!(custom(&l), custom(&local));
+    assert_eq!(custom(&r), custom(&remote));
+
+    // A real change still merges, and the stamps still stay with their copy
+    remote.meta.custom_data.retain(|i| i.key != "Shared");
+    remote.meta.custom_data.push(item("Shared", "2"));
+    assert!(ov_merge::copies_differ(&local, &remote));
+    let (mut l, mut r) = (local.clone(), remote.clone());
+    let report = merge_in_place(&mut l, &mut r, Some(&base), T0 + 100);
+    assert!(report.local_changed && !report.remote_changed, "{:?}", report.changes);
+    let shared = |db: &Database| db.meta.custom_data.iter().find(|i| i.key == "Shared").map(|i| i.value.clone());
+    assert_eq!(shared(&l).as_deref(), Some("2"));
+    let stamp = |db: &Database| db.meta.custom_data.iter().find(|i| i.key == "_LAST_MODIFIED").map(|i| i.value.clone());
+    assert_eq!(stamp(&l), stamp(&local));
+    assert_eq!(stamp(&r), stamp(&remote));
+    assert!(l.meta.custom_data.iter().any(|i| i.key == "KPXC_RANDOM_SLUG"));
+    assert!(!r.meta.custom_data.iter().any(|i| i.key == "KPXC_RANDOM_SLUG"));
+}

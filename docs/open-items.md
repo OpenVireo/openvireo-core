@@ -30,7 +30,7 @@ Known bugs, gaps and follow-ups on `develop` at `f9af5be` (2026-11-21, after eve
 
 ## Build, release and tooling
 
-- **First release is 1.0.0.** Everything carries the workspace version, `ov version` included. The web
+- **Releases:** 1.0.0 was the first, 1.1.0 the second. Everything carries the workspace version, `ov version` included. The web
   app still vendors `@openvireo/core-wasm` as a tarball (switching it to the published package is
   optional), and iOS and the desktop build the core from a pinned commit.
 - `deny.toml` ignores RUSTSEC-2026-0387 (crypto-bigint via opaque-ke 4.0.1). `cargo xtask unlinked` proves

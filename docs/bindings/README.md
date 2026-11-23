@@ -36,5 +36,5 @@ transport: it must not follow redirects, and it must not send or store cookies.
 
 ## Versions
 
-Every binding is built from the same commit and has the core's version. Until `1.0.0` the API can
-change between releases. Pin an exact version.
+Every binding is built from the same commit and has the core's version, which follows SemVer:
+minor releases add API, and only a major release removes or changes it. Pin an exact version.

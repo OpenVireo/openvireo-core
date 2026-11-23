@@ -115,12 +115,13 @@ architecture. To build the desktop against a local core checkout, configure with
 
 ## Releases
 
-No core release has been cut yet. The release pipeline (`.github/workflows/release.yml`, `cargo xtask
-release`) is being built: on a version tag it is to publish `@openvireo/core-wasm` to GitHub Packages,
-`OpenVireoCore.xcframework.zip` with its checksum and per-OS `libovcore` archives to a GitHub release,
-and signed `ov` binaries the same way the SDK publishes its `ov` today (Apple notarization, Azure
-signing, a GPG-signed `SHA256SUMS`). Until then each client builds or vendors the core at a pinned
-commit, as above.
+A release is a version tag. Set the workspace version in `Cargo.toml` (`cargo update -w` updates
+`Cargo.lock`), merge it to `develop`, and push the tag `v<version>`: the tag must match the version.
+The release pipeline (`.github/workflows/release.yml`, `cargo xtask release`) then publishes
+`@openvireo/core-wasm` to GitHub Packages, `OpenVireoCore.xcframework.zip` with its checksum and the
+Swift source, per-OS `libovcore` archives and signed `ov` binaries (Apple notarization, Azure signing, a
+GPG-signed `SHA256SUMS`) to a GitHub release. Run it by hand on `develop` with `publish` off for a dry
+run. iOS and the desktop still build the core at a pinned commit, as above.
 
 The bindings are part of the same release:
 

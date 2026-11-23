@@ -17,7 +17,8 @@
 //!   Packages; npmjs.com too once the SDK goes there).
 //! - `xcframework` (macOS only): `OpenVireoCore.xcframework.zip`, its SwiftPM checksum in
 //!   `OpenVireoCore.xcframework.zip.checksum`, and `OpenVireoRustCore.swift`, the UniFFI Swift
-//!   source that goes with it.
+//!   source that goes with it, with the hand-written `OvError+Fields.swift` (`error.code`, ...)
+//!   appended so a consumer adds one file.
 //! - `cpp`: `libovcore-<v>-<platform>.tar.gz` (`.zip` on Windows), the `cargo xtask cpp` CMake
 //!   package (headers, static library, `OpenVireoCoreConfig.cmake`) plus the licences.
 //! - `ov`: `ov-<v>-<platform>.tar.gz` (`.zip` on Windows) holding `ov-<v>-<platform>/ov` (`ov.exe`),
@@ -80,6 +81,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) const MACOS_DEPLOYMENT_TARGET: &str = "11.0";
 const XCFRAMEWORK: &str = "OpenVireoCore.xcframework";
 const SWIFT_SOURCE: &str = "OpenVireoRustCore.swift";
+/// Hand-written next to the generated source; the release appends it to `SWIFT_SOURCE`.
+const SWIFT_EXTENSIONS: [&str; 1] = ["OvError+Fields.swift"];
 const SUMS: &str = "SHA256SUMS";
 const LICENCES: [&str; 2] = ["LICENSE-MIT", "LICENSE-APACHE"];
 /// SHA-256 of "abc", which every smoke check computes through the core.
@@ -455,7 +458,24 @@ fn xcframework(out: &Path, work: &Path) -> Result {
     }
     fs::write(out.join(format!("{XCFRAMEWORK}.zip.checksum")), format!("{checksum}\n")).map_err(|e| e.to_string())?;
     println!("SwiftPM checksum: {checksum}");
-    copy(&swift.join("Sources").join("OpenVireoRustCore").join(SWIFT_SOURCE), &out.join(SWIFT_SOURCE))
+    let sources = swift.join("Sources").join("OpenVireoRustCore");
+    fs::write(out.join(SWIFT_SOURCE), swift_source(&sources)?).map_err(|e| e.to_string())
+}
+
+/// The generated UniFFI source with the hand-written extensions appended (their `import` lines
+/// dropped: the generated file already imports Foundation).
+fn swift_source(sources: &Path) -> Result<String> {
+    let read = |name: &str| fs::read_to_string(sources.join(name)).map_err(|e| format!("{name}: {e}"));
+    let mut text = read(SWIFT_SOURCE)?;
+    for name in SWIFT_EXTENSIONS {
+        let ext = read(name)?;
+        text.push_str(&format!("\n// ---- {name} (hand-written, appended by `cargo xtask release`) ----\n\n"));
+        for line in ext.lines().filter(|l| !l.starts_with("import ")) {
+            text.push_str(line);
+            text.push('\n');
+        }
+    }
+    Ok(text)
 }
 
 fn swift_checksum(zip: &Path, cwd: &Path) -> Result<String> {
@@ -1089,7 +1109,9 @@ import OpenVireoRustCore
 
 let digest = try sha256(data: Data("abc".utf8)).map { String(format: "%02x", $0) }.joined()
 print("openvireo-core \(version()), sha256(\"abc\") = \(digest)")
-exit(digest == "@SHA256_ABC@" && version() == "@VERSION@" ? 0 : 1)
+// OvError+Fields.swift is appended to the source: error.code works
+let fields = OvError(code: .networkError, message: "check").code == .networkError
+exit(digest == "@SHA256_ABC@" && version() == "@VERSION@" && fields ? 0 : 1)
 "#;
 
 /// The checksum file matches, and a SwiftPM package over the zip's xcframework and the Swift

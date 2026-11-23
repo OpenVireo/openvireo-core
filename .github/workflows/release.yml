@@ -1026,8 +1026,8 @@ jobs:
             \`\`\`
           - **WebAssembly**: \`@openvireo/core-wasm\` $VERSION on GitHub Packages (full and lite modules), also
             attached as \`openvireo-core-wasm-$VERSION.tgz\`.
-          - **Swift**: \`OpenVireoCore.xcframework.zip\` (iOS, iOS simulator, macOS) with the UniFFI source
-            \`OpenVireoRustCore.swift\`:
+          - **Swift**: \`OpenVireoCore.xcframework.zip\` (iOS, iOS simulator, macOS) with the Swift source
+            \`OpenVireoRustCore.swift\` (the UniFFI bindings plus the \`OvError\` field extension):
 
             \`\`\`swift
             .binaryTarget(name: "OpenVireoRustCoreFFI", url: "$base/OpenVireoCore.xcframework.zip",

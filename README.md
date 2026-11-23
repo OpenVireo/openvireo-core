@@ -16,8 +16,9 @@ client:
 The core does no I/O. Each platform passes in a small `Host` (HTTP transport, secure store, offline
 cache, clock, log sink), so TLS, proxies and the Keychain stay with the platform.
 
-> **Status:** every client runs on the core (`contract-v1.8`). No release has been cut yet, and until
-> `1.0.0` the API can change; each client pins an exact commit.
+> **Status:** every client runs on the core (`contract-v1.8`). Releases follow SemVer from `1.0.0`
+> ([releases](https://github.com/openvireo/openvireo-core/releases)); iOS and the desktop build the core from
+> a pinned commit.
 
 ## Layout
 

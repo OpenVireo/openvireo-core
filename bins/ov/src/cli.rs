@@ -509,10 +509,7 @@ async fn dispatch(argv: &[String], io: &mut Io) -> Result<i32, CliError> {
             Ok(0)
         }
 
-        "connect" => {
-            let mut stderr = std::io::stderr();
-            Ok(connect::connect(rest, &mut stderr))
-        }
+        "connect" => connect::main(rest, io, None).await,
 
         other => Err(usage(format!("unknown command \"{other}\" (see ov help)"))),
     }

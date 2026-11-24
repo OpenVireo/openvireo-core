@@ -22,8 +22,13 @@ pub struct ReqwestTransport {
 impl ReqwestTransport {
     /// A transport with the CLI's `User-Agent`.
     pub fn new() -> Result<Self, TransportError> {
+        Self::with_user_agent(&format!("openvireo/{VERSION}"))
+    }
+
+    /// A transport with another `User-Agent` (`ov connect` sends `openvireo-connect/<version>`).
+    pub fn with_user_agent(user_agent: &str) -> Result<Self, TransportError> {
         let client = reqwest::Client::builder()
-            .user_agent(format!("openvireo/{VERSION}"))
+            .user_agent(user_agent)
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| TransportError::Other(format!("can't start the HTTP client: {e}")))?;
@@ -232,6 +237,15 @@ mod tests {
         assert!(got.starts_with("post /x http/1.1"), "{got}");
         assert!(got.contains("x-test: 1"));
         assert!(got.contains(&format!("user-agent: openvireo/{VERSION}")));
+    }
+
+    #[tokio::test]
+    async fn ov_connect_sends_its_own_user_agent() {
+        let (url, server) = serve_once("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
+        let t = ReqwestTransport::with_user_agent(&crate::connect::user_agent()).unwrap();
+        assert_eq!(t.send(req(Method::Get, url)).await.unwrap().status, 204);
+        let got = server.join().unwrap().to_lowercase();
+        assert!(got.contains(&format!("user-agent: openvireo-connect/{VERSION}\r\n")), "{got}");
     }
 
     #[tokio::test]

@@ -24,8 +24,8 @@ cargo build --release --locked -p ov      # target/release/ov
 Native dependencies: none beyond the Rust toolchain. TLS is rustls with the operating system's trust
 store (`rustls-tls-native-roots`; webpki-roots is avoided for its CDLA licence).
 
-`ov connect` runs a separate `openvireo-connect` binary from `PATH` (it stays on the TypeScript SDK), so
-it isn't part of this build.
+`ov connect` (the REST server for vault items) is part of `ov`: hyper with rustls on ring for the
+optional HTTPS, no separate binary.
 
 ## WebAssembly: `@openvireo/core-wasm`
 

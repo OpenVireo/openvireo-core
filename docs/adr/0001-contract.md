@@ -231,6 +231,18 @@ wire enum keeps unknown values as `Other`. Rollout: the auth server must accept 
 (`PLATFORMS` in `openvireo/blueprints/api/models.py`) before any client sends it; until then a
 login with `android` is refused as an invalid request.
 
+## contract-v1.10: HTTP server crates for `ov connect` (2026-11-24)
+
+User decision 2026-11-24 (`openvireo-dev-guide/plans/connect-rust.md`, D1 and D3): `ov connect`
+becomes a real subcommand of `bins/ov` instead of handing over to the TypeScript `openvireo-connect`.
+No facade, Host, error or binding change.
+
+| # | Change |
+|---|---|
+| 1 | Workspace deps for `bins/ov` only: `hyper` 1.12.0 (`server`, `http1`), `hyper-util` 0.1.21 (`server`, `http1`, `tokio`), `http-body-util` 0.1.5, `tokio-rustls` 0.26.6 (`ring`), `rustls-pki-types` 1.16.0 (`std`, PEM parsing). All were already in the lock through reqwest, at these versions |
+| 2 | `bins/ov` normal deps gain tokio `net` (was dev-only) |
+| 3 | One new crate in the lock: `httpdate` 1.0.3 (MIT OR Apache-2.0), which hyper's `server` feature needs for the `Date` header |
+
 ## Consequences
 
 - Wave 1/2 agents build against these files and raise a CONTRACT-REQUEST for any change.

@@ -57,6 +57,8 @@ literal (the bindings and tests), which is why each addition lands in every bind
 | `contract-v1.6` | `ca2f211` | 2026-11-19 | What iOS and the desktop needed to move onto the facade: entry usage and colours, field order, `add_entry_with_id`, attachment protected flag, `entry_records`, import between vaults, local-file metadata and KDF, self-hosted history, `OvClient::open_local` / `create_local`, `Account::sync_vault_kdbx`, `access_token`, `SyncOptions::accept_server_state`; `windows-sys` for `bins/ov` |
 | `contract-v1.7` | `80ae01b` | 2026-11-20 | `KdbxCredentials.password_hash`, `SelfHosted::sync_database_with`; a wrong local-file key is `vault_key_mismatch` (was `kdbx_error`); sign-in `details.reason` |
 | `contract-v1.8` | `966606d` | 2026-11-20 | `share_vault_with_keys`, `SelfHosted::download`, service-account `vault_kdbx_credentials` / `sync_vault_kdbx`, `Profile.kdf` + `public_keys`, `not_sync_server`, `rotation_pending`; behaviour fixes (Recycle Bin restore location, edits made during `Vault::sync` kept, plain export = the web app's bytes) |
+| `contract-v1.9` | `de11502` | 2026-11-21 | `Platform::Android` (wire `android`) in the facade, every binding and `ov-protocol` |
+| `contract-v1.10` | (tagged) | 2026-11-24 | `hyper`, `hyper-util`, `http-body-util`, `tokio-rustls`, `rustls-pki-types` for `bins/ov` (`ov connect`); tokio `net` in `ov`; `httpdate` new in the lock |
 
 Tags 1.1 to 1.5 also cover the dependency allow-list (the root `Cargo.toml`, `[workspace.dependencies]`),
 which is managed the same way. Details of 1.6 to 1.8 are in ADR 0001.

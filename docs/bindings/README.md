@@ -13,9 +13,9 @@ binding interoperates with the apps.
 | Python | Scripts, automation, backends | UniFFI (`bindings/ov-ffi`), package `openvireo` | wheels on the GitHub release | [Python](python.md) |
 | Kotlin / Java | JVM services and tools, Android apps | UniFFI (`bindings/ov-ffi`), package `com.openvireo.core` | GitHub Packages (Maven) | [Kotlin and Java](kotlin-java.md) |
 
-Pick the TypeScript SDK if you work in JavaScript. It adds a higher-level API, the `ov` CLI, `ov connect`
-and the GitHub Action on top of the core. Use the wasm package (`@openvireo/core-wasm`) directly only for
-the low-level calls.
+Pick the TypeScript SDK if you work in JavaScript. It adds a higher-level API, the `ov` CLI and the
+GitHub Action on top of the core (`ov connect`, the REST server, is in the native Rust `ov`, `bins/ov`).
+Use the wasm package (`@openvireo/core-wasm`) directly only for the low-level calls.
 
 ## How they differ
 

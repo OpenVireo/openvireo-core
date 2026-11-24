@@ -24,8 +24,10 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: openvireo-connect
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["ov"]
+          args: ["connect", "serve"]
           env:
             - { name: OPENVIREO_CONNECT_HOST, value: "0.0.0.0" }
             - { name: OPENVIREO_CONNECT_PORT, value: "8080" }

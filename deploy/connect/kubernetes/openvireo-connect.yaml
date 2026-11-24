@@ -19,9 +19,11 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: openvireo-connect
-          # Build it with packages/connect/Dockerfile and push it to your registry
-          image: ghcr.io/openvireo/openvireo-connect:0.1.0
+          # Published by every openvireo-core release; the tag is the core version
+          image: ghcr.io/openvireo/openvireo-connect:1.1.0
           imagePullPolicy: IfNotPresent
+          command: ["ov"]
+          args: ["connect", "serve"]
           env:
             - { name: OPENVIREO_CONNECT_HOST, value: "0.0.0.0" }
             - { name: OPENVIREO_CONNECT_PORT, value: "8080" }

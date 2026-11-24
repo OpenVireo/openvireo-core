@@ -24,8 +24,8 @@ cargo build --release --locked -p ov      # target/release/ov
 Native dependencies: none beyond the Rust toolchain. TLS is rustls with the operating system's trust
 store (`rustls-tls-native-roots`; webpki-roots is avoided for its CDLA licence).
 
-`ov connect` runs a separate `openvireo-connect` binary from `PATH` (it stays on the TypeScript SDK), so
-it isn't part of this build.
+`ov connect` (the REST server for service accounts) is part of `ov`. Its container image and the
+Kubernetes manifests are in [deploy/connect](../deploy/connect/README.md).
 
 ## WebAssembly: `@openvireo/core-wasm`
 
@@ -120,7 +120,7 @@ A release is a version tag. Set the workspace version in `Cargo.toml` (`cargo up
 The release pipeline (`.github/workflows/release.yml`, `cargo xtask release`) then publishes
 `@openvireo/core-wasm` to GitHub Packages, `OpenVireoCore.xcframework.zip` with its checksum and the
 Swift source, per-OS `libovcore` archives and signed `ov` binaries (Apple notarization, Azure signing, a
-GPG-signed `SHA256SUMS`) to a GitHub release. Run it by hand on `develop` with `publish` off for a dry
+GPG-signed `SHA256SUMS`) to a GitHub release, and the `ov connect` container image to ghcr.io. Run it by hand on `develop` with `publish` off for a dry
 run. iOS and the desktop still build the core at a pinned commit, as above.
 
 The bindings are part of the same release:
@@ -146,5 +146,29 @@ The bindings are part of the same release:
 
 Locally, `cargo xtask release --dry-run --only python,jvm` builds the host's wheel, the sdist and a jar
 with only the host's slice, and `cargo xtask release verify <dir> --dry-run` checks them.
+
+### Release: container image
+
+The `container` job publishes `ghcr.io/openvireo/openvireo-connect:<version>` (and `:latest` for a
+version without a `-` suffix) for linux/amd64 and linux/arm64: `deploy/connect/Dockerfile` copies the
+verified static `ov` binaries of the same run (`ov-ready-linux-x64`, `ov-ready-linux-arm64`) onto
+`gcr.io/distroless/static-debian12:nonroot`, entrypoint `ov`, command `connect serve`. It runs the amd64
+image (`ov version`, `ov connect token`) before pushing; a dry run builds both platforms and pushes
+nothing, and a version already on ghcr is skipped. The GitHub release waits for it.
+
+The Helm chart's `appVersion` (`deploy/connect/helm/openvireo-connect/Chart.yaml`) and the image tag in
+`deploy/connect/kubernetes/openvireo-connect.yaml` must equal the workspace version; bump them with it
+(CI's `deploy` job checks).
+
+One-time setup on GitHub, before the first release that publishes the image:
+
+- The job pushes with `GITHUB_TOKEN` and asks for `packages: write` itself, so the repository's default
+  workflow permissions (read-only) can stay. The organization must allow packages to be created
+  (organization Settings → Packages → Package creation: allow **Public**).
+- After the first push, open the package (github.com/orgs/openvireo/packages/container/openvireo-connect
+  → Package settings): change its visibility to **public**, and check under "Manage Actions access" that
+  `openvireo-core` has **write** (it is linked through the image's `org.opencontainers.image.source`
+  label, so this is normally already set). A private package makes `docker pull` and the Helm chart need
+  an `imagePullSecret`.
 
 The crates set `publish = false`; nothing goes to crates.io.

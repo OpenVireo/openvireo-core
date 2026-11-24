@@ -4,6 +4,8 @@
 #   npmjs.com too when the repository variable NPMJS_PUBLISH is "true" (as in openvireo-sdk);
 # - `com.openvireo:openvireo-core-jvm` (jar with natives for 5 platforms) and `openvireo-core-android` (AAR)
 #   to GitHub Packages (Maven);
+# - `ghcr.io/openvireo/openvireo-connect:<version>` (and `:latest`), the static `ov` on distroless running
+#   `ov connect serve` (deploy/connect), for linux/amd64 and linux/arm64;
 # - a GitHub release with OpenVireoCore.xcframework.zip, its SwiftPM checksum and the UniFFI Swift source,
 #   libovcore-<v>-<platform> CMake packages, signed ov-<v>-<platform> binaries (the SDK's asset names),
 #   the npm tarball, the `openvireo` Python wheels (macOS arm64/x86_64, manylinux_2_28 x86_64/aarch64,
@@ -39,7 +41,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish (npm and Maven packages, the GitHub release); needs a vX.Y.Z tag ref. Off = dry run.
+        description: Publish (npm and Maven packages, the container image, the GitHub release); needs a vX.Y.Z tag ref. Off = dry run.
         type: boolean
         default: false
       sign:
@@ -956,8 +958,96 @@ jobs:
           cargo xtask release publish-maven "$RUNNER_TEMP/release" --natives "$RUNNER_TEMP/natives" \
             --jni-libs "$RUNNER_TEMP/jniLibs" "${args[@]}"
 
-  github-release:
+  # ghcr.io/openvireo/openvireo-connect (deploy/connect/Dockerfile): the verified static Linux `ov` binaries
+  # (`ov-ready-linux-*`, the same files `pack` archived) on distroless, for linux/amd64 and linux/arm64,
+  # running `ov connect serve`. Nothing is compiled, so no QEMU. A dry run builds both platforms and runs
+  # the amd64 image but pushes nothing; publishing pushes :<version>, and :latest for a stable version.
+  # A version already on ghcr is skipped, so a re-run doesn't replace an image someone may have pinned.
+  container:
     needs: [version, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/openvireo/openvireo-connect
+      VERSION: ${{ needs.version.outputs.version }}
+      PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/connect
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ov-ready-linux-*
+          path: ${{ runner.temp }}/ov
+          merge-multiple: true
+      # The build context: linux-<TARGETARCH>/ov
+      - name: Lay out the binaries
+        run: |
+          ctx="$RUNNER_TEMP/image"
+          for p in x64:amd64 arm64:arm64; do
+            src="$RUNNER_TEMP/ov/ov-$VERSION-linux-${p%%:*}/ov"
+            [ -f "$src" ] || { echo "::error::no $src"; exit 1; }
+            mkdir -p "$ctx/linux-${p##*:}"
+            install -m 0755 "$src" "$ctx/linux-${p##*:}/ov"
+          done
+          file "$ctx"/linux-*/ov
+          echo "CONTEXT=$ctx" >> "$GITHUB_ENV"
+      - name: Tags
+        id: tags
+        run: |
+          tags="$IMAGE:$VERSION"
+          if [[ "$VERSION" != *-* ]]; then tags="$tags,$IMAGE:latest"; fi # a prerelease never becomes `latest`
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "$tags"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and run the amd64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.CONTEXT }}
+          file: deploy/connect/Dockerfile
+          platforms: linux/amd64
+          build-args: VERSION=${{ env.VERSION }}
+          tags: openvireo-connect:test
+          load: true
+      - name: Check the image
+        run: |
+          out=$(docker run --rm openvireo-connect:test version)
+          echo "$out"
+          [ "$out" = "ov $VERSION" ] || { echo "::error::the image's ov says '$out', not 'ov $VERSION'"; exit 1; }
+          # `ov connect token` needs no server: a fresh ov_ct_ token on stdout
+          token=$(docker run --rm openvireo-connect:test connect token --name ci 2>/dev/null)
+          [[ "$token" == ov_ct_* ]] || { echo "::error::ov connect token failed in the image"; exit 1; }
+          docker image inspect openvireo-connect:test --format '{{.Config.User}} {{json .Config.Entrypoint}} {{json .Config.Cmd}}'
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check whether the version is already on ghcr
+        id: exists
+        if: env.PUBLISH == 'true'
+        run: |
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then
+            echo "$IMAGE:$VERSION is already on ghcr"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build (and push) linux/amd64 + linux/arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.CONTEXT }}
+          file: deploy/connect/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ env.VERSION }}
+          tags: ${{ steps.tags.outputs.tags }}
+          push: ${{ env.PUBLISH == 'true' && steps.exists.outputs.skip != 'true' }}
+
+  github-release:
+    needs: [version, verify, container]
     if: github.event_name == 'push' || inputs.publish
     runs-on: ubuntu-24.04
     environment: signing
@@ -1023,6 +1113,13 @@ jobs:
             gpg --verify SHA256SUMS.asc SHA256SUMS
             sha256sum --ignore-missing -c SHA256SUMS
             tar -xzf ov-$VERSION-linux-x64.tar.gz && sudo install ov-$VERSION-linux-x64/ov /usr/local/bin/
+            \`\`\`
+          - **Container image**: \`ghcr.io/openvireo/openvireo-connect:$VERSION\` (linux/amd64, linux/arm64), the
+            static \`ov\` above on distroless running \`ov connect serve\`. Helm chart and kustomize manifests for it
+            and the External Secrets Operator: [\`deploy/connect\`](https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME/deploy/connect).
+
+            \`\`\`sh
+            docker run --rm ghcr.io/openvireo/openvireo-connect:$VERSION connect token --name app
             \`\`\`
           - **WebAssembly**: \`@openvireo/core-wasm\` $VERSION on GitHub Packages (full and lite modules), also
             attached as \`openvireo-core-wasm-$VERSION.tgz\`.

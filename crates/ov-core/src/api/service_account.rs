@@ -1,5 +1,5 @@
 //! [`ServiceAccount`]: machine access with an `ov_sa_` token (SPEC §9, §15), for the CLI,
-//! `openvireo-connect` and the GitHub Action.
+//! `ov connect` and the GitHub Action.
 
 use std::sync::Arc;
 

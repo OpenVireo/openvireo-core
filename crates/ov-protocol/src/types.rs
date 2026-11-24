@@ -110,7 +110,7 @@ wire_enum! {
         Web => "web",
         /// `ov` CLI.
         Cli => "cli",
-        /// `openvireo-connect`.
+        /// `ov connect`.
         Connect => "connect",
         /// iOS app.
         Ios => "ios",

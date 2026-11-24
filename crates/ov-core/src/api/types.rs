@@ -71,7 +71,7 @@ pub enum Platform {
     Web,
     /// The `ov` CLI.
     Cli,
-    /// `openvireo-connect` / the GitHub Action.
+    /// `ov connect` / the GitHub Action.
     Connect,
     /// The iOS app.
     Ios,

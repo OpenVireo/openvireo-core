@@ -1,0 +1,1962 @@
+[
+  {
+    "name": "ready before any other request",
+    "request": {
+      "method": "GET",
+      "path": "/ready",
+      "headers": {}
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "status": "ready"
+      },
+      "log": [
+        "<time> GET /ready 200 token=-"
+      ]
+    }
+  },
+  {
+    "name": "health",
+    "request": {
+      "method": "GET",
+      "path": "/health",
+      "headers": {}
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "status": "ok"
+      },
+      "log": [
+        "<time> GET /health 200 token=-"
+      ]
+    }
+  },
+  {
+    "name": "health with a bearer token is still public",
+    "request": {
+      "method": "GET",
+      "path": "/health",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "status": "ok"
+      },
+      "log": [
+        "<time> GET /health 200 token=-"
+      ]
+    }
+  },
+  {
+    "name": "health with POST (no method check)",
+    "request": {
+      "method": "POST",
+      "path": "/health",
+      "headers": {}
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "status": "ok"
+      },
+      "log": [
+        "<time> POST /health 200 token=-"
+      ]
+    }
+  },
+  {
+    "name": "health with a trailing slash is an unknown route",
+    "request": {
+      "method": "GET",
+      "path": "/health/",
+      "headers": {}
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "no such route",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /health/ 404 token=-"
+      ]
+    }
+  },
+  {
+    "name": "vaults without a bearer token",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults",
+      "headers": {}
+    },
+    "response": {
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "www-authenticate": "Bearer"
+      },
+      "body": {
+        "error": "missing or unknown bearer token",
+        "code": "unauthorized"
+      },
+      "log": [
+        "<time> GET /v1/vaults 401 token=-"
+      ]
+    }
+  },
+  {
+    "name": "vaults with an unknown bearer token",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults",
+      "headers": {
+        "authorization": "Bearer ov_ct_nope"
+      }
+    },
+    "response": {
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "www-authenticate": "Bearer"
+      },
+      "body": {
+        "error": "missing or unknown bearer token",
+        "code": "unauthorized"
+      },
+      "log": [
+        "<time> GET /v1/vaults 401 token=-"
+      ]
+    }
+  },
+  {
+    "name": "vaults with an empty bearer",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults",
+      "headers": {
+        "authorization": "Bearer "
+      }
+    },
+    "response": {
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "www-authenticate": "Bearer"
+      },
+      "body": {
+        "error": "missing or unknown bearer token",
+        "code": "unauthorized"
+      },
+      "log": [
+        "<time> GET /v1/vaults 401 token=-"
+      ]
+    }
+  },
+  {
+    "name": "vaults with a Basic authorization",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults",
+      "headers": {
+        "authorization": "Basic ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 401,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "www-authenticate": "Bearer"
+      },
+      "body": {
+        "error": "missing or unknown bearer token",
+        "code": "unauthorized"
+      },
+      "log": [
+        "<time> GET /v1/vaults 401 token=-"
+      ]
+    }
+  },
+  {
+    "name": "bearer scheme is case-insensitive",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults",
+      "headers": {
+        "authorization": "bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "vaults": [
+          {
+            "id": "<uuid:Team Infra>",
+            "name": "Team Infra",
+            "role": "write"
+          },
+          {
+            "id": "<uuid:Other>",
+            "name": "Other",
+            "role": "read"
+          }
+        ]
+      },
+      "log": [
+        "<time> GET /v1/vaults 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "unknown route is 404 before auth",
+    "request": {
+      "method": "GET",
+      "path": "/v2/vaults",
+      "headers": {}
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "no such route",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v2/vaults 404 token=-"
+      ]
+    }
+  },
+  {
+    "name": "unknown route with a token",
+    "request": {
+      "method": "GET",
+      "path": "/v2/x",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "no such route",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v2/x 404 token=-"
+      ]
+    }
+  },
+  {
+    "name": "bad percent-encoding is 400 before auth",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/%zz",
+      "headers": {}
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "bad percent-encoding in the path",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> GET /v1/vaults/%zz 400 token=-"
+      ]
+    }
+  },
+  {
+    "name": "vaults for app (one vault, write grant)",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "vaults": [
+          {
+            "id": "<uuid:Team Infra>",
+            "name": "Team Infra",
+            "role": "write"
+          }
+        ]
+      },
+      "log": [
+        "<time> GET /v1/vaults 200 token=app"
+      ]
+    }
+  },
+  {
+    "name": "vaults for ro (every vault the SA can open)",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "vaults": [
+          {
+            "id": "<uuid:Team Infra>",
+            "name": "Team Infra",
+            "role": "write"
+          },
+          {
+            "id": "<uuid:Other>",
+            "name": "Other",
+            "role": "read"
+          }
+        ]
+      },
+      "log": [
+        "<time> GET /v1/vaults 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "vaults for other",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_other"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "vaults": [
+          {
+            "id": "<uuid:Other>",
+            "name": "Other",
+            "role": "read"
+          }
+        ]
+      },
+      "log": [
+        "<time> GET /v1/vaults 200 token=other"
+      ]
+    }
+  },
+  {
+    "name": "vaults with a trailing slash",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "vaults": [
+          {
+            "id": "<uuid:Team Infra>",
+            "name": "Team Infra",
+            "role": "write"
+          },
+          {
+            "id": "<uuid:Other>",
+            "name": "Other",
+            "role": "read"
+          }
+        ]
+      },
+      "log": [
+        "<time> GET /v1/vaults/ 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "vault by name",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:Team Infra>",
+        "name": "Team Infra",
+        "role": "write"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra 200 token=app"
+      ]
+    }
+  },
+  {
+    "name": "vault by id",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/<uuid:Team Infra>",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:Team Infra>",
+        "name": "Team Infra",
+        "role": "write"
+      },
+      "log": [
+        "<time> GET /v1/vaults/<uuid:Team Infra> 200 token=app"
+      ]
+    }
+  },
+  {
+    "name": "vault outside the token's scope is 404",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Other",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "vault \"Other\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Other 404 token=app"
+      ]
+    }
+  },
+  {
+    "name": "vault outside the token's scope by id is 404",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/<uuid:Other>/items",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "vault \"<uuid:Other>\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/<uuid:Other>/items 404 token=app"
+      ]
+    }
+  },
+  {
+    "name": "vault not granted to the SA is 404",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Private",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "vault \"Private\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Private 404 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "vault not granted to the SA by id is 404",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/<uuid:Private>",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "vault \"<uuid:Private>\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/<uuid:Private> 404 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "unknown vault",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Nope",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "vault \"Nope\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Nope 404 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "unknown sub-route of a vault",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/secrets",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "no such route",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/secrets 404 token=app"
+      ]
+    }
+  },
+  {
+    "name": "items list without values",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "items": [
+          {
+            "id": "<uuid:GitHub>",
+            "title": "GitHub",
+            "group": [],
+            "fields": {},
+            "protected": [
+              "Password"
+            ],
+            "tags": [],
+            "updatedAt": "<time>"
+          },
+          {
+            "id": "<uuid:Database>",
+            "title": "Database",
+            "group": [
+              "Deploy"
+            ],
+            "fields": {},
+            "protected": [
+              "Password",
+              "api key"
+            ],
+            "tags": [],
+            "updatedAt": "<time>"
+          },
+          {
+            "id": "<uuid:Service>",
+            "title": "Service",
+            "group": [
+              "Apps",
+              "Prod"
+            ],
+            "fields": {},
+            "protected": [
+              "Password"
+            ],
+            "tags": [],
+            "updatedAt": "<time>"
+          }
+        ]
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "items list of the read-grant vault",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Other/items",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_other"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "items": [
+          {
+            "id": "<uuid:Token>",
+            "title": "Token",
+            "group": [],
+            "fields": {},
+            "protected": [
+              "Password"
+            ],
+            "tags": [],
+            "updatedAt": "<time>"
+          }
+        ]
+      },
+      "log": [
+        "<time> GET /v1/vaults/Other/items 200 token=other"
+      ]
+    }
+  },
+  {
+    "name": "item at the root by title",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/GitHub",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:GitHub>",
+        "title": "GitHub",
+        "group": [],
+        "fields": {
+          "Title": "GitHub",
+          "UserName": "ci",
+          "Password": "s3cret",
+          "URL": "https://github.com",
+          "Notes": ""
+        },
+        "protected": [
+          "Password"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/GitHub 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "item by UUID",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/<uuid:GitHub>",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:GitHub>",
+        "title": "GitHub",
+        "group": [],
+        "fields": {
+          "Title": "GitHub",
+          "UserName": "ci",
+          "Password": "s3cret",
+          "URL": "https://github.com",
+          "Notes": ""
+        },
+        "protected": [
+          "Password"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/<uuid:GitHub> 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "item in a group",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy/Database",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:Database>",
+        "title": "Database",
+        "group": [
+          "Deploy"
+        ],
+        "fields": {
+          "Title": "Database",
+          "UserName": "app",
+          "Password": "pg-pa$$word",
+          "URL": "postgres://db.internal:5432/app",
+          "Notes": "multi\nline",
+          "api key": "ak-12345"
+        },
+        "protected": [
+          "Password",
+          "api key"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Deploy/Database 200 token=app"
+      ]
+    }
+  },
+  {
+    "name": "item two groups deep",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Apps/Prod/Service",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:Service>",
+        "title": "Service",
+        "group": [
+          "Apps",
+          "Prod"
+        ],
+        "fields": {
+          "Title": "Service",
+          "UserName": "svc",
+          "Password": "svc-pass",
+          "URL": "",
+          "Notes": ""
+        },
+        "protected": [
+          "Password"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Apps/Prod/Service 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "item with the wrong group path",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Apps/Service",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:Service>",
+        "title": "Service",
+        "group": [
+          "Apps",
+          "Prod"
+        ],
+        "fields": {
+          "Title": "Service",
+          "UserName": "svc",
+          "Password": "svc-pass",
+          "URL": "",
+          "Notes": ""
+        },
+        "protected": [
+          "Password"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Apps/Service 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "nested item by title alone",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Service",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:Service>",
+        "title": "Service",
+        "group": [
+          "Apps",
+          "Prod"
+        ],
+        "fields": {
+          "Title": "Service",
+          "UserName": "svc",
+          "Password": "svc-pass",
+          "URL": "",
+          "Notes": ""
+        },
+        "protected": [
+          "Password"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Service 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "root item under a group it isn't in",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy/GitHub",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "entry \"GitHub\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Deploy/GitHub 404 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "encoded slash is part of the title",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy%2FDatabase",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "entry \"Deploy/Database\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Deploy%2FDatabase 404 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "unknown item",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Nope",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "entry \"Nope\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Nope 404 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "bad percent-encoding in an item path",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/%zz",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "bad percent-encoding in the path",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/%zz 400 token=-"
+      ]
+    }
+  },
+  {
+    "name": "field by alias (password)",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy/Database?field=password",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "value": "pg-pa$$word"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Deploy/Database 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "custom field with a space",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy/Database?field=api%20key",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "value": "ak-12345"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Deploy/Database 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "field as text/plain",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy/Database?field=notes",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro",
+        "accept": "text/plain"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store"
+      },
+      "body": "multi\nline",
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Deploy/Database 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "field with Accept text/plain and json gets JSON",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy/Database?field=username",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro",
+        "accept": "text/plain, application/json"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "value": "app"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Deploy/Database 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "unknown field",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy/Database?field=nope",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "field \"nope\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Deploy/Database 404 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "POST on the items list is 405",
+    "request": {
+      "method": "POST",
+      "path": "/v1/vaults/Team%20Infra/items",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 405,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "allow": "GET"
+      },
+      "body": {
+        "error": "method not allowed",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> POST /v1/vaults/Team%20Infra/items 405 token=app"
+      ]
+    }
+  },
+  {
+    "name": "DELETE on an item is 405",
+    "request": {
+      "method": "DELETE",
+      "path": "/v1/vaults/Team%20Infra/items/GitHub",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 405,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "allow": "GET, PUT"
+      },
+      "body": {
+        "error": "method not allowed",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> DELETE /v1/vaults/Team%20Infra/items/GitHub 405 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PATCH on an item is 405",
+    "request": {
+      "method": "PATCH",
+      "path": "/v1/vaults/Team%20Infra/items/GitHub",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 405,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "allow": "GET, PUT"
+      },
+      "body": {
+        "error": "method not allowed",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> PATCH /v1/vaults/Team%20Infra/items/GitHub 405 token=app"
+      ]
+    }
+  },
+  {
+    "name": "DELETE on a vault",
+    "request": {
+      "method": "DELETE",
+      "path": "/v1/vaults/Team%20Infra",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "no such route",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> DELETE /v1/vaults/Team%20Infra 404 token=app"
+      ]
+    }
+  },
+  {
+    "name": "POST on the vault list",
+    "request": {
+      "method": "POST",
+      "path": "/v1/vaults",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 405,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+        "allow": "GET"
+      },
+      "body": {
+        "error": "method not allowed",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> POST /v1/vaults 405 token=app"
+      ]
+    },
+    "divergesFromTs": "TS answers 500 server_error (it calls vault(undefined))"
+  },
+  {
+    "name": "PUT from a read-only token",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/GitHub",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro",
+        "content-type": "application/json",
+        "content-length": "27"
+      },
+      "body": "{\"fields\":{\"password\":\"x\"}}"
+    },
+    "response": {
+      "status": 403,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "token \"ro\" is read-only",
+        "code": "forbidden"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/GitHub 403 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "PUT from a read-only token with a bad body is still 403",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/GitHub",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro",
+        "content-type": "application/json",
+        "content-length": "8"
+      },
+      "body": "not json"
+    },
+    "response": {
+      "status": 403,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "token \"ro\" is read-only",
+        "code": "forbidden"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/GitHub 403 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "PUT to a vault the SA can only read",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Other/items/Token",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_other",
+        "content-type": "application/json",
+        "content-length": "27"
+      },
+      "body": "{\"fields\":{\"password\":\"x\"}}"
+    },
+    "response": {
+      "status": 403,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "this service account can only read vault \"Other\"",
+        "code": "forbidden"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Other/items/Token 403 token=other"
+      ]
+    }
+  },
+  {
+    "name": "PUT outside the token's scope",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Other/items/Token",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "27"
+      },
+      "body": "{\"fields\":{\"password\":\"x\"}}"
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "vault \"Other\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Other/items/Token 404 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT body not JSON",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/X",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "8"
+      },
+      "body": "{fields:"
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "request body is not JSON",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/X 400 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT body without fields",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/X",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "2"
+      },
+      "body": "{}"
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "body must be {\"fields\": {\"<name>\": \"<value>\", …}}",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/X 400 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT fields not an object",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/X",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "16"
+      },
+      "body": "{\"fields\":[\"a\"]}"
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "body must be {\"fields\": {\"<name>\": \"<value>\", …}}",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/X 400 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT field value not a string",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/X",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "18"
+      },
+      "body": "{\"fields\":{\"a\":1}}"
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "body must be {\"fields\": {\"<name>\": \"<value>\", …}}",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/X 400 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT protected not bools",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/X",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "44"
+      },
+      "body": "{\"fields\":{\"a\":\"1\"},\"protected\":{\"a\":\"yes\"}}"
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "\"protected\" must be {\"<name>\": true|false, …}",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/X 400 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT protected an array",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/X",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "38"
+      },
+      "body": "{\"fields\":{\"a\":\"1\"},\"protected\":[\"a\"]}"
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "\"protected\" must be {\"<name>\": true|false, …}",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/X 400 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT body over 1 MiB (Content-Length)",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/X",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "1048595"
+      },
+      "body": {
+        "prefix": "{\"fields\":{\"a\":\"",
+        "repeat": "a",
+        "count": 1048576,
+        "suffix": "\"}}"
+      }
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "request body too large",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/X 400 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT body over 1 MiB (chunked, no Content-Length)",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/X",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json"
+      },
+      "body": {
+        "prefix": "{\"fields\":{\"a\":\"",
+        "repeat": "a",
+        "count": 1048576,
+        "suffix": "\"}}"
+      }
+    },
+    "response": {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "request body too large",
+        "code": "invalid_request"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/X 400 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT ?create=false on a missing entry",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/Missing?create=false",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "20"
+      },
+      "body": "{\"fields\":{\"a\":\"1\"}}"
+    },
+    "response": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "error": "entry \"Missing\" not found",
+        "code": "not_found"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/Missing 404 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT creates an entry in a new group",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/Apps/Api",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "73"
+      },
+      "body": "{\"fields\":{\"username\":\"svc\",\"token\":\"t-1\"},\"protected\":{\"username\":true}}"
+    },
+    "response": {
+      "status": 201,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:Api>",
+        "title": "Api",
+        "group": [
+          "Apps"
+        ],
+        "fields": {
+          "Title": "Api",
+          "URL": "",
+          "Notes": ""
+        },
+        "protected": [
+          "UserName",
+          "Password",
+          "token"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/Apps/Api 201 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT updates an entry",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/GitHub",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "68"
+      },
+      "body": "{\"fields\":{\"password\":\"via-connect\",\"URL\":\"https://github.example\"}}"
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:GitHub>",
+        "title": "GitHub",
+        "group": [],
+        "fields": {
+          "Title": "GitHub",
+          "UserName": "ci",
+          "URL": "https://github.example",
+          "Notes": ""
+        },
+        "protected": [
+          "Password"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/GitHub 200 token=app"
+      ]
+    }
+  },
+  {
+    "name": "PUT ?create=false updates an existing entry",
+    "request": {
+      "method": "PUT",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy/Database?create=false",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app",
+        "content-type": "application/json",
+        "content-length": "33"
+      },
+      "body": "{\"fields\":{\"api key\":\"ak-67890\"}}"
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:Database>",
+        "title": "Database",
+        "group": [
+          "Deploy"
+        ],
+        "fields": {
+          "Title": "Database",
+          "UserName": "app",
+          "URL": "postgres://db.internal:5432/app",
+          "Notes": "multi\nline"
+        },
+        "protected": [
+          "Password",
+          "api key"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> PUT /v1/vaults/Team%20Infra/items/Deploy/Database 200 token=app"
+      ]
+    }
+  },
+  {
+    "name": "GET shows the update",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/GitHub",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:GitHub>",
+        "title": "GitHub",
+        "group": [],
+        "fields": {
+          "Title": "GitHub",
+          "UserName": "ci",
+          "Password": "via-connect",
+          "URL": "https://github.example",
+          "Notes": ""
+        },
+        "protected": [
+          "Password"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/GitHub 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "GET shows the created entry",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Apps/Api",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "id": "<uuid:Api>",
+        "title": "Api",
+        "group": [
+          "Apps"
+        ],
+        "fields": {
+          "Title": "Api",
+          "UserName": "svc",
+          "Password": "",
+          "URL": "",
+          "Notes": "",
+          "token": "t-1"
+        },
+        "protected": [
+          "UserName",
+          "Password",
+          "token"
+        ],
+        "tags": [],
+        "updatedAt": "<time>"
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Apps/Api 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "GET shows the ?create=false update",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items/Deploy/Database?field=api%20key",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_ro",
+        "accept": "text/plain"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store"
+      },
+      "body": "ak-67890",
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items/Deploy/Database 200 token=ro"
+      ]
+    }
+  },
+  {
+    "name": "items list after the writes",
+    "request": {
+      "method": "GET",
+      "path": "/v1/vaults/Team%20Infra/items",
+      "headers": {
+        "authorization": "Bearer ov_ct_golden_app"
+      }
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "cache-control": "no-store"
+      },
+      "body": {
+        "items": [
+          {
+            "id": "<uuid:GitHub>",
+            "title": "GitHub",
+            "group": [],
+            "fields": {},
+            "protected": [
+              "Password"
+            ],
+            "tags": [],
+            "updatedAt": "<time>"
+          },
+          {
+            "id": "<uuid:Database>",
+            "title": "Database",
+            "group": [
+              "Deploy"
+            ],
+            "fields": {},
+            "protected": [
+              "Password",
+              "api key"
+            ],
+            "tags": [],
+            "updatedAt": "<time>"
+          },
+          {
+            "id": "<uuid:Api>",
+            "title": "Api",
+            "group": [
+              "Apps"
+            ],
+            "fields": {},
+            "protected": [
+              "UserName",
+              "Password",
+              "token"
+            ],
+            "tags": [],
+            "updatedAt": "<time>"
+          },
+          {
+            "id": "<uuid:Service>",
+            "title": "Service",
+            "group": [
+              "Apps",
+              "Prod"
+            ],
+            "fields": {},
+            "protected": [
+              "Password"
+            ],
+            "tags": [],
+            "updatedAt": "<time>"
+          }
+        ]
+      },
+      "log": [
+        "<time> GET /v1/vaults/Team%20Infra/items 200 token=app"
+      ]
+    }
+  }
+]

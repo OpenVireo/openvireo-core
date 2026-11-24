@@ -103,3 +103,25 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       - run: cargo xtask kotlin --android
+
+  # deploy/connect: the Helm chart lints and renders, and the kustomize manifests build (helm and
+  # kubectl are on the runner image)
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: helm lint, helm template, kubectl kustomize
+        run: |
+          chart=deploy/connect/helm/openvireo-connect
+          sha=$(printf 'a%.0s' {1..64})
+          helm lint --strict "$chart" --set serviceAccountToken=x \
+            --set 'connectTokens[0].name=a' --set "connectTokens[0].sha256=$sha"
+          helm lint --strict "$chart" --set existingSecret=openvireo-connect
+          helm template t "$chart" --set existingSecret=openvireo-connect > /dev/null
+          kubectl kustomize deploy/connect/kubernetes > /dev/null
+          # The chart runs the image of its own core version
+          app=$(sed -n 's/^appVersion: "\(.*\)"$/\1/p' "$chart/Chart.yaml")
+          core=$(sed -n '/^\[workspace\.package\]/,/^\[/ s/^version = "\(.*\)"$/\1/p' Cargo.toml)
+          [ "$app" = "$core" ] || { echo "::error::$chart appVersion $app is not the core version $core"; exit 1; }
+          grep -q "image: ghcr.io/openvireo/openvireo-connect:$core$" deploy/connect/kubernetes/openvireo-connect.yaml \
+            || { echo "::error::deploy/connect/kubernetes/openvireo-connect.yaml doesn't run openvireo-connect:$core"; exit 1; }

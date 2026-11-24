@@ -1,0 +1,34 @@
+image:
+  # Published by every openvireo-core release (multi-arch: linux/amd64, linux/arm64)
+  repository: ghcr.io/openvireo/openvireo-connect
+  tag: ""                        # default: the chart's appVersion (the openvireo-core version)
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+replicaCount: 1
+cacheTtlSeconds: 5
+
+# Either name an existing Secret with keys `sa-token` and `tokens.json`, or let the chart create one
+existingSecret: ""
+serviceAccountToken: ""          # ov_sa_… (prefer existingSecret or --set-file in CI)
+connectTokens: []                # entries printed by `ov connect token`: {name, sha256, vaults, access}
+
+service:
+  port: 8080
+
+resources:
+  requests: { cpu: 50m, memory: 96Mi }
+  limits: { memory: 256Mi }
+
+networkPolicy:
+  enabled: true
+  # namespace of the ESO controller (and anything else allowed to call ov connect)
+  allowedNamespaces: [external-secrets]
+
+externalSecrets:
+  # Creates ClusterSecretStores "<storeName>" (one field) and "<storeName>-items" (whole items)
+  enabled: true
+  storeName: openvireo
+  # Secret holding the plain connect token ESO presents (key `token`); created when `token` is set
+  tokenSecret: openvireo-connect-eso
+  token: ""

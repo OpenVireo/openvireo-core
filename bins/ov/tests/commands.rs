@@ -585,5 +585,5 @@ async fn prints_usage_and_versions() {
     assert_eq!(cli.ov(&[], &[]).await.code, 2);
     assert_eq!(cli.ov(&["version"], &[]).await.stdout, format!("ov {}\n", env!("CARGO_PKG_VERSION")));
     assert_eq!(cli.ov(&["frobnicate"], &[]).await.stderr, "ov: unknown command \"frobnicate\" (see ov help)\n");
-    // `ov connect` hands over to openvireo-connect (W1-L); its own tests cover `token` and `--help`.
+    // `ov connect` has its own tests (tests/connect.rs).
 }

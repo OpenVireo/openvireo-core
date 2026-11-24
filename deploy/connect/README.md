@@ -34,21 +34,21 @@ user 65532, listening on `0.0.0.0:8080`. The manifests run it with `command: ["o
 `args: ["connect", "serve"]`.
 
 ```sh
-docker run --rm ghcr.io/openvireo/openvireo-connect:1.1.0 version
-docker run --rm ghcr.io/openvireo/openvireo-connect:1.1.0 connect token --name eso
+docker run --rm ghcr.io/openvireo/openvireo-connect:1.2.0 version
+docker run --rm ghcr.io/openvireo/openvireo-connect:1.2.0 connect token --name eso
 ```
 
 The chart's `appVersion` and the tag in `kubernetes/openvireo-connect.yaml` are the core version
-(1.1.0 now). The release bumps them together with `version` in the workspace `Cargo.toml`.
+(1.2.0 now). The release bumps them together with `version` in the workspace `Cargo.toml`.
 
 To build the image yourself, put a static Linux `ov` per architecture in a context directory as
 `linux-<arch>/ov` (`amd64`, `arm64`; from the release archives or `cargo xtask release --only ov` on
 Linux) and run, from the repository root:
 
 ```sh
-mkdir -p ctx/linux-amd64 && cp ov-1.1.0-linux-x64/ov ctx/linux-amd64/
+mkdir -p ctx/linux-amd64 && cp ov-1.2.0-linux-x64/ov ctx/linux-amd64/
 docker buildx build -f deploy/connect/Dockerfile --platform linux/amd64 \
-  --build-arg VERSION=1.1.0 -t openvireo-connect:dev --load ctx
+  --build-arg VERSION=1.2.0 -t openvireo-connect:dev --load ctx
 ```
 
 ## Install with Helm and ESO

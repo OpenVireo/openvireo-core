@@ -20,7 +20,7 @@ spec:
       containers:
         - name: openvireo-connect
           # Published by every openvireo-core release; the tag is the core version
-          image: ghcr.io/openvireo/openvireo-connect:1.1.0
+          image: ghcr.io/openvireo/openvireo-connect:1.2.0
           imagePullPolicy: IfNotPresent
           command: ["ov"]
           args: ["connect", "serve"]

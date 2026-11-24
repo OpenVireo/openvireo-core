@@ -1281,19 +1281,21 @@
       }
     },
     "response": {
-      "status": 500,
+      "status": 405,
       "headers": {
         "content-type": "application/json",
-        "cache-control": "no-store"
+        "cache-control": "no-store",
+        "allow": "GET"
       },
       "body": {
-        "error": "internal error",
-        "code": "server_error"
+        "error": "method not allowed",
+        "code": "invalid_request"
       },
       "log": [
-        "<time> POST /v1/vaults 500 token=app"
+        "<time> POST /v1/vaults 405 token=app"
       ]
-    }
+    },
+    "divergesFromTs": "TS answers 500 server_error (it calls vault(undefined))"
   },
   {
     "name": "PUT from a read-only token",

@@ -137,6 +137,16 @@ These are what the TS server actually does; some differ from a reading of plan Â
 - The log line is `<METHOD> <path> <status> token=<name|->` where `<path>` is the **raw, still
   percent-encoded** URL path **without the query string**.
 
+## Deliberate divergences
+
+`record.ts` rewrites these cases after recording, because the Rust server fixes the TS behaviour. Each
+carries a `divergesFromTs` note.
+
+- **POST on the vault list**: TS answers 500 `server_error` (it calls `vault(undefined)`); Rust answers
+  405 `invalid_request` with `Allow: GET`.
+- Not a fixture, but also fixed: the body limit counts bytes, also for chunked bodies (TS counts UTF-16
+  code units there).
+
 ## Re-recording
 
 From a clean openvireo-sdk checkout with dependencies installed (`npm ci`; nothing is written to the

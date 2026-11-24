@@ -344,6 +344,16 @@ async function main() {
     });
   }
   sa.close();
+  // Deliberate divergences from TS (README "Deliberate divergences"): the Rust server fixes these
+  for (const c of cases) {
+    if (c.name === "POST on the vault list") {
+      c.response.status = 405;
+      c.response.headers = { ...c.response.headers, allow: "GET" };
+      c.response.body = { error: "method not allowed", code: "invalid_request" };
+      c.response.log = ["<time> POST /v1/vaults 405 token=app"];
+      c.divergesFromTs = "TS answers 500 server_error (it calls vault(undefined))";
+    }
+  }
   writeFileSync(OUT, JSON.stringify(cases, null, 2) + "\n");
   console.error(`wrote ${cases.length} cases to ${OUT}`);
 }

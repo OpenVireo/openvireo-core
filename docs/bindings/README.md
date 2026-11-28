@@ -7,12 +7,12 @@ binding interoperates with the apps.
 
 | Language | Use it for | Binding | Get it | Docs |
 |---|---|---|---|---|
-| Rust | Rust programs, services and tools | none: the `ov-core` crate itself | Cargo git dependency on a release tag | [Rust](rust.md) |
+| Rust | Rust programs, services and tools | none: the `openvireo-core` crate itself (`ov_core`) | Cargo git dependency on a release tag | [Rust](rust.md) |
 | TypeScript / JavaScript | Web apps, Node, Bun, CLIs | wasm (`bindings/ov-wasm`), wrapped by `@openvireo/sdk` | npm: `@openvireo/sdk` | [SDK docs](https://developer.openvireo.com/sdk/) |
 | Swift | iOS and macOS apps | UniFFI (`bindings/ov-ffi`), module `OpenVireoRustCore` | Swift Package Manager: [openvireo-swift](https://github.com/openvireo/openvireo-swift) | [Swift](swift.md) |
 | C++ | Qt and other native desktop code | cxx (`bindings/ov-ffi-cpp`), `<ovcore.h>` | CMake / Corrosion at a pinned commit | [`bindings/ov-ffi-cpp`](../../bindings/ov-ffi-cpp/README.md) |
-| Python | Scripts, automation, backends | UniFFI (`bindings/ov-ffi`), package `openvireo` | wheels on the GitHub release | [Python](python.md) |
-| Kotlin / Java | JVM services and tools, Android apps | UniFFI (`bindings/ov-ffi`), package `com.openvireo.core` | GitHub Packages (Maven) | [Kotlin and Java](kotlin-java.md) |
+| Python | Scripts, automation, backends | UniFFI (`bindings/ov-ffi`), package `openvireo` | PyPI: `openvireo` | [Python](python.md) |
+| Kotlin / Java | JVM services and tools, Android apps | UniFFI (`bindings/ov-ffi`), package `com.openvireo.core` | Maven Central: `com.openvireo:openvireo-core-jvm`, `-android` | [Kotlin and Java](kotlin-java.md) |
 
 Pick the TypeScript SDK if you work in JavaScript. It adds a higher-level API, the `ov` CLI and the
 GitHub Action on top of the core (`ov connect`, the REST server, is in the native Rust `ov`, `bins/ov`).

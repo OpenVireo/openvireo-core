@@ -19,29 +19,13 @@ developer notes are in [`bindings/kotlin`](../../bindings/kotlin/README.md).
 
 ## Install
 
-The artifacts are on GitHub Packages. GitHub Packages asks for a token even for public packages, so
-every consumer needs a GitHub personal access token (classic) with the `read:packages` scope. This
-goes away once the artifacts are on Maven Central.
+The artifacts are on Maven Central, so no extra repository or token is needed.
 
-Keep the token out of the build file. Put it in `~/.gradle/gradle.properties`:
-
-```properties
-gpr.user=your-github-login
-gpr.key=ghp_...
-```
-
-**Gradle** (`settings.gradle.kts` or `build.gradle.kts`):
+**Gradle** (`build.gradle.kts`):
 
 ```kotlin
 repositories {
     mavenCentral()
-    maven {
-        url = uri("https://maven.pkg.github.com/openvireo/openvireo-core")
-        credentials {
-            username = providers.gradleProperty("gpr.user").orElse(providers.environmentVariable("GITHUB_ACTOR")).get()
-            password = providers.gradleProperty("gpr.key").orElse(providers.environmentVariable("GITHUB_TOKEN")).get()
-        }
-    }
 }
 
 dependencies {
@@ -49,33 +33,9 @@ dependencies {
 }
 ```
 
-In GitHub Actions, give the job `permissions: packages: read`. If `GITHUB_TOKEN` is still refused
-(401 or 403), use a PAT stored as a secret instead.
-
-**Maven**: add the token to `~/.m2/settings.xml`:
+**Maven** (`pom.xml`):
 
 ```xml
-<settings>
-  <servers>
-    <server>
-      <id>openvireo</id>
-      <username>your-github-login</username>
-      <password>ghp_...</password>
-    </server>
-  </servers>
-</settings>
-```
-
-and the repository and dependency to `pom.xml`. The `<id>` must match:
-
-```xml
-<repositories>
-  <repository>
-    <id>openvireo</id>
-    <url>https://maven.pkg.github.com/openvireo/openvireo-core</url>
-  </repository>
-</repositories>
-
 <dependencies>
   <dependency>
     <groupId>com.openvireo</groupId>
@@ -84,6 +44,10 @@ and the repository and dependency to `pom.xml`. The `<id>` must match:
   </dependency>
 </dependencies>
 ```
+
+Releases before 1.2.1 are only on GitHub Packages
+(`https://maven.pkg.github.com/openvireo/openvireo-core`), which asks for a GitHub token with the
+`read:packages` scope even for public packages.
 
 ## Kotlin
 

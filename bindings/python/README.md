@@ -14,13 +14,12 @@ adds ready-made platform parts (HTTP, secret store, offline cache, clock, loggin
 
 ## Install
 
-Until the package is on PyPI, wheels are attached to the core's GitHub releases:
+From [PyPI](https://pypi.org/project/openvireo/):
 
 ```sh
-# Not on PyPI yet: always pin the version and pass --find-links (the release's asset list).
-pip install "openvireo==X.Y.Z" --find-links https://github.com/openvireo/openvireo-core/releases/expanded_assets/vX.Y.Z
-# Optional extras, same flags: "openvireo[httpx]==X.Y.Z" (async HTTP on httpx, otherwise urllib in
-# a thread), "openvireo[keyring]==X.Y.Z" (keep sessions in the OS keychain).
+pip install "openvireo==X.Y.Z"
+# Optional extras: "openvireo[httpx]==X.Y.Z" (async HTTP on httpx, otherwise urllib in a thread),
+# "openvireo[keyring]==X.Y.Z" (keep sessions in the OS keychain).
 ```
 
 ## Quickstart

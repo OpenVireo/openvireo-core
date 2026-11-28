@@ -16,25 +16,26 @@ The API reference is at [developer.openvireo.com/reference/rust](https://develop
 
 ## Install
 
-The core is on crates.io as `openvireo-core` (the library is `ov_core`):
+From 1.2.2 the crates are named `openvireo-*`, and each keeps its `ov_*` library name, so code says
+`use ov_core::...` whatever the package is called. Depend on a release tag of this repository:
 
 ```toml
 [dependencies]
-openvireo-core = "1"
+openvireo-core = { git = "https://github.com/openvireo/openvireo-core", tag = "vX.Y.Z" }
 ```
 
-Add `openvireo-share` the same way if you need `parse_share_link` or the share-link primitives. The
-other domain crates (`openvireo-crypto`, `openvireo-kdbx`, `openvireo-merge`, ...) are published too, but
-only `openvireo-core` keeps a stable API between minor releases. Each crate keeps its `ov_*` library
-name, so code says `use ov_core::...` whatever the package is called.
-
-Releases up to 1.2.1 aren't on crates.io; their packages were still called `ov-core`, `ov-share`, ...
-Depend on a release tag of this repository for one of those:
+Cargo finds the crate inside the workspace, and `Cargo.lock` records the commit, so every build uses the
+same code. Add `openvireo-share` the same way if you need `parse_share_link` or the share-link
+primitives. The other domain crates (`openvireo-crypto`, `openvireo-kdbx`, `openvireo-merge`, ...) are
+there too, but only `openvireo-core` keeps a stable API between minor releases. Before 1.2.2 the
+packages were called `ov-core`, `ov-share`, ...:
 
 ```toml
 [dependencies]
 ov-core = { git = "https://github.com/openvireo/openvireo-core", tag = "v1.2.1" }
 ```
+
+The crates aren't on crates.io yet. Once they are, `openvireo-core = "1"` will do.
 
 Check the install:
 

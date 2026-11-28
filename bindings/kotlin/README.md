@@ -7,17 +7,11 @@ Host parts so a program needs no glue.
 
 ## Install
 
-From GitHub Packages (a token with `read:packages` is needed even for public packages):
+From Maven Central:
 
 ```kotlin
 repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/openvireo/openvireo-core")
-        credentials {
-            username = providers.environmentVariable("GITHUB_ACTOR").get()
-            password = providers.environmentVariable("GITHUB_TOKEN").get()
-        }
-    }
+    mavenCentral()
 }
 dependencies {
     implementation("com.openvireo:openvireo-core-jvm:<core version>")

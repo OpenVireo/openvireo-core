@@ -10,8 +10,8 @@ three-way merge. Every client calls it:
 | iOS app and its AutoFill extension | openvireo-ios | `bindings/ov-ffi` (UniFFI) | `scripts/build-vendor.sh` runs `cargo xtask xcframework` at a pinned commit and links the static libraries |
 | Desktop (Qt) | openvireo | `bindings/ov-ffi-cpp` (cxx) | Corrosion builds a wrapper crate that pins `ov-ffi-cpp` to a git commit |
 | `ov` CLI | this repo | none (native Rust) | `bins/ov` |
-| Python programs | any | `bindings/ov-ffi` (UniFFI) + `bindings/python` | wheels on the GitHub release ([guide](bindings/python.md)) |
-| JVM and Android programs | any | `bindings/ov-ffi` (UniFFI) + `bindings/kotlin` | GitHub Packages Maven ([guide](bindings/kotlin-java.md)) |
+| Python programs | any | `bindings/ov-ffi` (UniFFI) + `bindings/python` | PyPI ([guide](bindings/python.md)) |
+| JVM and Android programs | any | `bindings/ov-ffi` (UniFFI) + `bindings/kotlin` | Maven Central ([guide](bindings/kotlin-java.md)) |
 
 All three apps pin the same commit today: `966606d` (tag `contract-v1.8`).
 

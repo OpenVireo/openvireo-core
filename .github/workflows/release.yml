@@ -37,6 +37,8 @@
 # - MAVEN_CENTRAL_PUBLISH=true: the jar and the AAR to Maven Central through the Central Portal, every
 #   file signed with the release key (MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD, a Portal user
 #   token, in the `signing` environment).
+# - SWIFT_PUBLISH=true: the Swift package github.com/openvireo/openvireo-swift, updated and tagged after
+#   the GitHub release (SWIFT_DEPLOY_KEY, a write deploy key of that repository, in `signing`).
 #
 # A workflow_dispatch is a dry run unless `publish` is set: it uploads every file as the run's `release`
 # artifact and publishes nothing. Publishing needs a tag ref (`gh workflow run release.yml --ref vX.Y.Z
@@ -1308,3 +1310,54 @@ jobs:
             attached as \`openvireo-core-jvm-$VERSION.jar\` and \`openvireo-core-android-$VERSION.aar\`.
           EOF
           gh release create "$GITHUB_REF_NAME" "${args[@]}" --notes-file notes.md release/*
+
+  # The Swift package (github.com/openvireo/openvireo-swift): Package.swift's binary target points at this
+  # release's OpenVireoCore.xcframework.zip, so it's updated once the release exists. Writes the version,
+  # the checksum and OpenVireoRustCore.swift, runs the package's smoke tests on macOS and builds it for
+  # iOS against the published zip, then commits and tags the version without a `v` (SwiftPM's form). A
+  # prerelease is only tagged; main stays on the latest stable version. A version already tagged is skipped.
+  swift-package:
+    needs: [version, github-release]
+    if: (github.event_name == 'push' || inputs.publish) && vars.SWIFT_PUBLISH == 'true'
+    runs-on: macos-15
+    environment: signing
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+      - uses: actions/checkout@v5
+        with:
+          repository: openvireo/openvireo-swift
+          ssh-key: ${{ secrets.SWIFT_DEPLOY_KEY }}
+          fetch-depth: 0
+          path: swift
+      - name: Update, test and tag
+        working-directory: swift
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "openvireo-swift already has $VERSION"; exit 0
+          fi
+          checksum="$(cat "$RUNNER_TEMP/release/OpenVireoCore.xcframework.zip.checksum")"
+          sed -i '' -E "s/^let coreVersion = \".*\"$/let coreVersion = \"$VERSION\"/; s/^let coreChecksum = \".*\"$/let coreChecksum = \"$checksum\"/" Package.swift
+          if ! grep -q "^let coreVersion = \"$VERSION\"$" Package.swift || ! grep -q "^let coreChecksum = \"$checksum\"$" Package.swift; then
+            echo "::error::Package.swift has no coreVersion / coreChecksum line to update"; exit 1
+          fi
+          cp "$RUNNER_TEMP/release/OpenVireoRustCore.swift" Sources/OpenVireoRustCore/OpenVireoRustCore.swift
+          sed -i '' -E "s/from: \"[0-9][^\"]*\"/from: \"$VERSION\"/; s/so \`[0-9][^\`]*\` here is openvireo-core \`v[^\`]*\`/so \`$VERSION\` here is openvireo-core \`v$VERSION\`/" README.md
+          swift test
+          xcodebuild build -scheme OpenVireoRustCore -destination 'generic/platform=iOS' -quiet
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "openvireo-core $VERSION" -m "https://github.com/$GITHUB_REPOSITORY/releases/tag/v$VERSION"
+          git tag -a "$VERSION" -m "openvireo-core $VERSION"
+          if [[ "$VERSION" == *-* ]]; then
+            git push origin "refs/tags/$VERSION"
+          else
+            git push origin HEAD:main "refs/tags/$VERSION"
+          fi

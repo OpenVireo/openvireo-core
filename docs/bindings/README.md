@@ -9,7 +9,7 @@ binding interoperates with the apps.
 |---|---|---|---|---|
 | Rust | Rust programs, services and tools | none: the `ov-core` crate itself | Cargo git dependency on a release tag | [Rust](rust.md) |
 | TypeScript / JavaScript | Web apps, Node, Bun, CLIs | wasm (`bindings/ov-wasm`), wrapped by `@openvireo/sdk` | npm: `@openvireo/sdk` | [SDK docs](https://developer.openvireo.com/sdk/) |
-| Swift | iOS and macOS apps | UniFFI (`bindings/ov-ffi`), module `OpenVireoRustCore` | `cargo xtask xcframework` (the iOS app vendors it) | [`bindings/ov-ffi`](../../bindings/ov-ffi/README.md) |
+| Swift | iOS and macOS apps | UniFFI (`bindings/ov-ffi`), module `OpenVireoRustCore` | Swift Package Manager: [openvireo-swift](https://github.com/openvireo/openvireo-swift) | [Swift](swift.md) |
 | C++ | Qt and other native desktop code | cxx (`bindings/ov-ffi-cpp`), `<ovcore.h>` | CMake / Corrosion at a pinned commit | [`bindings/ov-ffi-cpp`](../../bindings/ov-ffi-cpp/README.md) |
 | Python | Scripts, automation, backends | UniFFI (`bindings/ov-ffi`), package `openvireo` | wheels on the GitHub release | [Python](python.md) |
 | Kotlin / Java | JVM services and tools, Android apps | UniFFI (`bindings/ov-ffi`), package `com.openvireo.core` | GitHub Packages (Maven) | [Kotlin and Java](kotlin-java.md) |

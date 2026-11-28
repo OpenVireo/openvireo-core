@@ -5,7 +5,7 @@ type: application
 version: 0.2.0
 # The openvireo-core version whose image (ghcr.io/openvireo/openvireo-connect:<appVersion>) the chart runs;
 # a core release bumps it together with [workspace.package] version in Cargo.toml
-appVersion: "1.2.0"
+appVersion: "1.2.1"
 home: https://developer.openvireo.com/cli/connect/
 sources:
   - https://github.com/openvireo/openvireo-core/tree/develop/deploy/connect

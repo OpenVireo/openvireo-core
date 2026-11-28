@@ -1500,7 +1500,7 @@ checksum = "7e036b411754132fd6b74e94b74e9a13c5cf606fa93d1885c35860d3060820b1"
 
 [[package]]
 name = "ov"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1526,7 +1526,7 @@ dependencies = [
 
 [[package]]
 name = "ov-benches"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "criterion",
  "futures",
@@ -1540,7 +1540,7 @@ dependencies = [
 
 [[package]]
 name = "ov-core"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1566,7 +1566,7 @@ dependencies = [
 
 [[package]]
 name = "ov-crypto"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -1589,11 +1589,11 @@ dependencies = [
 
 [[package]]
 name = "ov-error"
-version = "1.2.0"
+version = "1.2.1"
 
 [[package]]
 name = "ov-ffi"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "futures",
@@ -1613,7 +1613,7 @@ dependencies = [
 
 [[package]]
 name = "ov-ffi-cpp"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1637,7 +1637,7 @@ dependencies = [
 
 [[package]]
 name = "ov-host"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "ov-error",
@@ -1647,11 +1647,11 @@ dependencies = [
 
 [[package]]
 name = "ov-http"
-version = "1.2.0"
+version = "1.2.1"
 
 [[package]]
 name = "ov-kdbx"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "aes",
  "argon2",
@@ -1674,7 +1674,7 @@ dependencies = [
 
 [[package]]
 name = "ov-merge"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "base64 0.22.1",
  "ov-error",
@@ -1703,7 +1703,7 @@ dependencies = [
 
 [[package]]
 name = "ov-protocol"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "hex",
  "ov-error",
@@ -1715,7 +1715,7 @@ dependencies = [
 
 [[package]]
 name = "ov-share"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "base64 0.22.1",
  "hex",
@@ -1733,7 +1733,7 @@ dependencies = [
 
 [[package]]
 name = "ov-sync"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1752,7 +1752,7 @@ dependencies = [
 
 [[package]]
 name = "ov-testkit"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1773,7 +1773,7 @@ dependencies = [
 
 [[package]]
 name = "ov-vault"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "ov-crypto",
  "ov-error",
@@ -1786,7 +1786,7 @@ dependencies = [
 
 [[package]]
 name = "ov-wasm"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "js-sys",
@@ -1808,7 +1808,7 @@ dependencies = [
 
 [[package]]
 name = "ov-wasm-lite"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "js-sys",
  "ov-crypto",
@@ -3309,7 +3309,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "flate2",
  "hex",

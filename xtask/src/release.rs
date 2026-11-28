@@ -8,7 +8,8 @@
 //! cargo xtask release pack <dir>
 //! cargo xtask release verify <dir> [--dry-run]
 //! cargo xtask release jvm-native <rust target> <dir>
-//! cargo xtask release publish-maven <release dir> --natives <dir> --jni-libs <dir> [--skip jvm|android]...
+//! cargo xtask release publish-maven <release dir> --natives <dir> --jni-libs <dir> [--to github|central]
+//!                                    [--skip jvm|android]...
 //! ```
 //!
 //! Kinds (`--only wasm,cpp`; default: every kind the host can build):
@@ -44,6 +45,10 @@
 //! `GITHUB_TOKEN`): it rebuilds both from the same natives, fails unless they are byte for byte
 //! the jar and AAR in `<release dir>` (the verified release assets), then publishes those files.
 //! `--skip jvm` / `--skip android` leaves out an artifact that is already published.
+//! `--to central` instead writes both to the local Maven repository
+//! `bindings/kotlin/build/central-staging` (POMs, Gradle module metadata, sources and javadoc jars and
+//! checksums) and uploads nothing: the workflow signs every file there with the release key, zips it and
+//! uploads the bundle to the Maven Central Portal.
 //!
 //! Platforms: a macOS host builds darwin-arm64 and darwin-x64, Linux and Windows their own arch
 //! (linux-x64, linux-arm64, windows-x64). On Linux, `ov` is a static musl executable (any distro),
@@ -141,7 +146,8 @@ usage: cargo xtask release [--dry-run] [--out <dir>] [--only <kinds>] [--unpacke
        cargo xtask release pack <dir>
        cargo xtask release verify <dir> [--dry-run]
        cargo xtask release jvm-native <rust target> <dir>
-       cargo xtask release publish-maven <release dir> --natives <dir> --jni-libs <dir> [--skip jvm|android]...
+       cargo xtask release publish-maven <release dir> --natives <dir> --jni-libs <dir> [--to github|central]
+                                         [--skip jvm|android]...
 kinds: wasm, xcframework (macOS), cpp, ov, python, jvm (comma-separated; default: all the host can build)";
 
 pub fn run(args: &[String]) -> Result {
@@ -735,17 +741,23 @@ fn maven_build(
     Ok((jar, aar))
 }
 
-/// `publish-maven <release dir> --natives <dir> --jni-libs <dir> [--skip jvm|android]...`
+/// `publish-maven <release dir> --natives <dir> --jni-libs <dir> [--to github|central] [--skip jvm|android]...`
 fn publish_maven(args: &[String]) -> Result {
     let mut release = None;
     let mut natives = None;
     let mut jni_libs = None;
     let mut skip = Vec::new();
+    let mut central = false;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--natives" => natives = Some(absolute(it.next().ok_or("--natives needs a directory")?)?),
             "--jni-libs" => jni_libs = Some(absolute(it.next().ok_or("--jni-libs needs a directory")?)?),
+            "--to" => match it.next().map(String::as_str) {
+                Some("github") => central = false,
+                Some("central") => central = true,
+                _ => return Err("--to takes github or central".into()),
+            },
             "--skip" => match it.next().map(String::as_str) {
                 Some(s @ ("jvm" | "android")) => skip.push(s.to_string()),
                 _ => return Err("--skip takes jvm or android".into()),
@@ -758,7 +770,8 @@ fn publish_maven(args: &[String]) -> Result {
         return Err(USAGE.into());
     };
     println!(
-        "==> release {VERSION}: publish-maven (skipping: {})",
+        "==> release {VERSION}: publish-maven to {} (skipping: {})",
+        if central { "the Central staging directory" } else { "GitHub Packages" },
         if skip.is_empty() { "none".into() } else { skip.join(", ") }
     );
     check_release_tree()?;
@@ -775,20 +788,26 @@ fn publish_maven(args: &[String]) -> Result {
         }
         println!("{name}: rebuilt byte for byte ({have})");
     }
-    let mut tasks = Vec::new();
-    if !skip.iter().any(|s| s == "jvm") {
-        tasks.push(":core-jvm:publish");
-    }
-    if !skip.iter().any(|s| s == "android") {
-        tasks.push(":core-android:publish");
-    }
+    // The repository names in bindings/kotlin/core-{jvm,android}/build.gradle.kts
+    let repo = if central { "CentralStaging" } else { "GitHubPackages" };
+    let tasks: Vec<String> = ["jvm", "android"]
+        .into_iter()
+        .filter(|a| !skip.iter().any(|s| s == a))
+        .map(|a| format!(":core-{a}:publishAllPublicationsTo{repo}Repository"))
+        .collect();
     if tasks.is_empty() {
         println!("nothing to publish");
         return Ok(());
     }
-    if env::var_os("GITHUB_TOKEN").is_none() || env::var_os("GITHUB_ACTOR").is_none() {
+    if central {
+        let staging = root().join("bindings").join("kotlin").join("build").join("central-staging");
+        if staging.exists() {
+            fs::remove_dir_all(&staging).map_err(|e| format!("{}: {e}", staging.display()))?;
+        }
+    } else if env::var_os("GITHUB_TOKEN").is_none() || env::var_os("GITHUB_ACTOR").is_none() {
         return Err("publishing to GitHub Packages needs GITHUB_ACTOR and GITHUB_TOKEN".into());
     }
+    let tasks: Vec<&str> = tasks.iter().map(String::as_str).collect();
     // Same arguments, so Gradle reuses the jar and AAR it just built (and compared) and uploads them.
     maven_build(&natives, "all", Some(&jni_libs), &tasks)?;
     Ok(())

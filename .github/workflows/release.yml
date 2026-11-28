@@ -30,6 +30,14 @@
 # `signing` environment. Signing is required on a release tag and when asked for (`sign`); otherwise it's
 # skipped with a warning, so a dispatch from a branch or a fork still builds and verifies everything.
 #
+# Public registries, each switched on by a repository variable once its one-time setup is done
+# (05-release-and-ops/releases.md in openvireo-dev-guide):
+# - NPMJS_PUBLISH=true: `@openvireo/core-wasm` to npmjs.com (NPM_TOKEN first, then trusted publishing);
+# - PYPI_PUBLISH=true: the `openvireo` wheels and sdist to PyPI by trusted publishing (environment `pypi`);
+# - MAVEN_CENTRAL_PUBLISH=true: the jar and the AAR to Maven Central through the Central Portal, every
+#   file signed with the release key (MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD, a Portal user
+#   token, in the `signing` environment).
+#
 # A workflow_dispatch is a dry run unless `publish` is set: it uploads every file as the run's `release`
 # artifact and publishes nothing. Publishing needs a tag ref (`gh workflow run release.yml --ref vX.Y.Z
 # -f publish=true` re-publishes a tag); versions already published are skipped, so a run can be re-run.
@@ -904,6 +912,35 @@ jobs:
           if [[ "$VERSION" == *-* ]]; then args+=(--tag next); fi
           npm publish "./release/openvireo-core-wasm-$VERSION.tgz" "${args[@]}"
 
+  # The `openvireo` wheels and sdist (the verified, signed release files) to PyPI by trusted publishing:
+  # pypi.org trusts this repository's release.yml in the `pypi` environment, so there's no token.
+  # Files already on PyPI are skipped, so a run can be re-run.
+  pypi:
+    needs: [version, verify]
+    if: (github.event_name == 'push' || inputs.publish) && vars.PYPI_PUBLISH == 'true'
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/openvireo/
+    permissions:
+      contents: read
+      id-token: write # trusted publishing (and PEP 740 attestations)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: Pick the Python files
+        run: |
+          mkdir dist
+          # openvireo-<pep440>-py3-none-*.whl and openvireo-<pep440>.tar.gz; not openvireo-core-*
+          cp release/openvireo-[0-9]*.whl release/openvireo-[0-9]*.tar.gz dist/
+          ls -l dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true
+
   # com.openvireo:openvireo-core-jvm and openvireo-core-android to GitHub Packages (Maven), with
   # `./gradlew publish` through `cargo xtask release publish-maven`: it rebuilds both from the same signed
   # natives and publishes only if they are byte for byte the verified release assets. A version that is
@@ -957,6 +994,119 @@ jobs:
           done
           cargo xtask release publish-maven "$RUNNER_TEMP/release" --natives "$RUNNER_TEMP/natives" \
             --jni-libs "$RUNNER_TEMP/jniLibs" "${args[@]}"
+
+  # The same jar and AAR to Maven Central. `publish-maven --to central` rebuilds them, checks they are
+  # the verified release assets byte for byte, and writes a local Maven repository with the POMs,
+  # Gradle module metadata, sources and javadoc jars and checksums. Every file there gets a GPG
+  # signature by the release key (Central checks it against the public key on keyserver.ubuntu.com /
+  # keys.openpgp.org), then the bundle goes to the Central Portal, which validates and publishes it
+  # (`publishingType=AUTOMATIC`). Central never replaces a version, so a published one is skipped.
+  maven-central:
+    needs: [version, verify]
+    if: (github.event_name == 'push' || inputs.publish) && vars.MAVEN_CENTRAL_PUBLISH == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: signing
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: natives-ready-*
+          path: ${{ runner.temp }}/natives
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-jnilibs
+          path: ${{ runner.temp }}/jniLibs
+      - name: Skip what Central already has
+        id: skip
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          args=()
+          for a in jvm android; do
+            pom="com/openvireo/openvireo-core-$a/$VERSION/openvireo-core-$a-$VERSION.pom"
+            if curl -fsSL -o /dev/null "https://repo1.maven.org/maven2/$pom"; then
+              echo "com.openvireo:openvireo-core-$a:$VERSION is already on Maven Central"
+              args+=(--skip "$a")
+            fi
+          done
+          echo "args=${args[*]}" >> "$GITHUB_OUTPUT"
+          if [ "${#args[@]}" -eq 4 ]; then echo "done=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Build the staging repository
+        if: steps.skip.outputs.done != 'true'
+        env:
+          SKIP: ${{ steps.skip.outputs.args }}
+        run: |
+          # shellcheck disable=SC2086 # SKIP is a list of arguments
+          cargo xtask release publish-maven "$RUNNER_TEMP/release" --natives "$RUNNER_TEMP/natives" \
+            --jni-libs "$RUNNER_TEMP/jniLibs" --to central $SKIP
+      - name: Sign every file and zip the bundle
+        if: steps.skip.outputs.done != 'true'
+        working-directory: bindings/kotlin/build/central-staging
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          RELEASE_KEY: FE2778BF074705E0994BBAF9FEBA35562DE104CB
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then echo "::error::GPG_PRIVATE_KEY is not set in the signing environment"; exit 1; fi
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          # maven-metadata.xml is the repository's, not the component's: Central builds its own
+          find . -name 'maven-metadata.xml*' -delete
+          find . -type f ! -name '*.md5' ! -name '*.sha1' ! -name '*.sha256' ! -name '*.sha512' | sort | while read -r f; do
+            gpg --batch --armor --detach-sign --output "$f.asc" "$f"
+            primary=$(gpg --batch --status-fd 1 --verify "$f.asc" "$f" 2>/dev/null | awk '$2 == "VALIDSIG" { print $NF }')
+            [ "$primary" = "$RELEASE_KEY" ] || { echo "::error::$f.asc is not by the release key"; exit 1; }
+          done
+          zip -qr "$RUNNER_TEMP/central-bundle.zip" com
+          unzip -l "$RUNNER_TEMP/central-bundle.zip"
+      - name: Upload to the Central Portal and wait for it to publish
+        if: steps.skip.outputs.done != 'true'
+        env:
+          CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if [ -z "$CENTRAL_USERNAME" ] || [ -z "$CENTRAL_PASSWORD" ]; then
+            echo "::error::MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD (a Central Portal user token) are not set in the signing environment"
+            exit 1
+          fi
+          auth="Authorization: Bearer $(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)"
+          api=https://central.sonatype.com/api/v1/publisher
+          id=$(curl -fsS -X POST -H "$auth" \
+            --form "bundle=@$RUNNER_TEMP/central-bundle.zip" \
+            --form-string "name=openvireo-core $VERSION" \
+            "$api/upload?publishingType=AUTOMATIC")
+          echo "deployment $id"
+          # VALIDATING -> VALIDATED -> PUBLISHING -> PUBLISHED, or FAILED (with the reasons)
+          for _ in $(seq 1 90); do
+            status=$(curl -fsS -X POST -H "$auth" "$api/status?id=$id")
+            state=$(echo "$status" | jq -r .deploymentState)
+            echo "$state"
+            case "$state" in
+              PUBLISHING | PUBLISHED) echo "$status" | jq .; exit 0 ;;
+              FAILED) echo "$status" | jq .; echo "::error::Central rejected deployment $id"; exit 1 ;;
+            esac
+            sleep 20
+          done
+          echo "::error::deployment $id is still $state after 30 minutes; see https://central.sonatype.com/publishing/deployments"
+          exit 1
 
   # ghcr.io/openvireo/openvireo-connect (deploy/connect/Dockerfile): the verified static Linux `ov` binaries
   # (`ov-ready-linux-*`, the same files `pack` archived) on distroless, for linux/amd64 and linux/arm64,
@@ -1089,6 +1239,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
+          NPMJS_PUBLISH: ${{ vars.NPMJS_PUBLISH }}
+          PYPI_PUBLISH: ${{ vars.PYPI_PUBLISH }}
+          MAVEN_CENTRAL_PUBLISH: ${{ vars.MAVEN_CENTRAL_PUBLISH }}
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --clobber
@@ -1098,6 +1251,17 @@ jobs:
           if [[ "$VERSION" == *-* ]]; then args+=(--prerelease); fi
           checksum="$(cat release/OpenVireoCore.xcframework.zip.checksum)"
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          if [ "$PYPI_PUBLISH" = true ]; then
+            pip_install="pip install openvireo==$(echo "$VERSION" | sed -E 's/-alpha\.?/a/; s/-beta\.?/b/; s/-rc\.?/rc/')"
+          else
+            pip_install="pip install openvireo --find-links https://github.com/$GITHUB_REPOSITORY/releases/expanded_assets/$GITHUB_REF_NAME"
+          fi
+          if [ "$MAVEN_CENTRAL_PUBLISH" = true ]; then
+            maven_where="on Maven Central (and GitHub Packages)"
+          else
+            maven_where="on GitHub Packages (\`https://maven.pkg.github.com/$GITHUB_REPOSITORY\`, a token with \`read:packages\` is needed)"
+          fi
+          if [ "$NPMJS_PUBLISH" = true ]; then npm_where="npmjs.com and GitHub Packages"; else npm_where="GitHub Packages"; fi
           cat > notes.md <<EOF
           openvireo-core $VERSION, the shared Rust core of OpenVireo. \`SHA256SUMS.asc\` is a GPG signature of
           \`SHA256SUMS\` by the [OpenVireo release key](https://openvireo.com/verifying-signatures)
@@ -1121,7 +1285,7 @@ jobs:
             \`\`\`sh
             docker run --rm ghcr.io/openvireo/openvireo-connect:$VERSION connect token --name app
             \`\`\`
-          - **WebAssembly**: \`@openvireo/core-wasm\` $VERSION on GitHub Packages (full and lite modules), also
+          - **WebAssembly**: \`@openvireo/core-wasm\` $VERSION on $npm_where (full and lite modules), also
             attached as \`openvireo-core-wasm-$VERSION.tgz\`.
           - **Swift**: \`OpenVireoCore.xcframework.zip\` (iOS, iOS simulator, macOS) with the Swift source
             \`OpenVireoRustCore.swift\` (the UniFFI bindings plus the \`OvError\` field extension):
@@ -1137,11 +1301,10 @@ jobs:
             wheels is signed like \`ov\`; each wheel, the sdist, the jar and the AAR also has a \`.asc\` signature.
 
             \`\`\`sh
-            pip install openvireo --find-links https://github.com/$GITHUB_REPOSITORY/releases/expanded_assets/$GITHUB_REF_NAME
+            $pip_install
             \`\`\`
           - **Kotlin / Java**: \`com.openvireo:openvireo-core-jvm:$VERSION\` (macOS, Linux, Windows; Java 11+) and
-            \`com.openvireo:openvireo-core-android:$VERSION\` (Android 8.0+) on GitHub Packages
-            (\`https://maven.pkg.github.com/$GITHUB_REPOSITORY\`, a token with \`read:packages\` is needed), also
+            \`com.openvireo:openvireo-core-android:$VERSION\` (Android 8.0+) $maven_where, also
             attached as \`openvireo-core-jvm-$VERSION.jar\` and \`openvireo-core-android-$VERSION.aar\`.
           EOF
           gh release create "$GITHUB_REF_NAME" "${args[@]}" --notes-file notes.md release/*

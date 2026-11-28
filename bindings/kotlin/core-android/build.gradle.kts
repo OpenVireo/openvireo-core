@@ -140,11 +140,18 @@ tasks.matching { it.name.endsWith("SourcesJar") || it.name.startsWith("source") 
     dependsOn(":generateBindings")
 }
 
+// Maven Central wants a javadoc jar next to every AAR; like the JVM jar's, it's empty (no Dokka yet).
+val emptyJavadocJar = tasks.register<Jar>("emptyJavadocJar") {
+    archiveBaseName.set("openvireo-core-android")
+    archiveClassifier.set("javadoc")
+}
+
 publishing {
     publications {
         register<MavenPublication>("release") {
             artifactId = "openvireo-core-android"
             afterEvaluate { from(components["release"]) }
+            artifact(emptyJavadocJar)
             pom {
                 name.set("openvireo-core-android")
                 description.set("OpenVireo core for Android: accounts, vaults, sync and share links (UniFFI + JNA)")
@@ -155,13 +162,29 @@ publishing {
                         url.set("https://github.com/openvireo/openvireo-core#license")
                     }
                 }
+                developers {
+                    developer {
+                        id.set("openvireo")
+                        name.set("OpenVireo")
+                        email.set("admin@openvireo.com")
+                        url.set("https://openvireo.com")
+                    }
+                }
                 scm {
                     url.set("https://github.com/openvireo/openvireo-core")
+                    connection.set("scm:git:https://github.com/openvireo/openvireo-core.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/openvireo/openvireo-core.git")
                 }
             }
         }
     }
     repositories {
+        // A local repository for Maven Central (`cargo xtask release publish-maven --to central`): the
+        // release workflow signs every file in it and uploads the bundle to the Central Portal.
+        maven {
+            name = "CentralStaging"
+            url = uri(rootProject.layout.buildDirectory.dir("central-staging"))
+        }
         maven {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/openvireo/openvireo-core")

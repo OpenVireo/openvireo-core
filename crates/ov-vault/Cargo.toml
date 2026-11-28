@@ -1,18 +1,21 @@
 [package]
-name = "ov-vault"
+name = "openvireo-vault"
 description = "Keyring, vault keys, key rotation, sharing and secret references"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-publish = false
+publish = true
+
+[lib]
+name = "ov_vault"
 
 [dependencies]
-ov-error = { path = "../ov-error" }
-ov-crypto = { path = "../ov-crypto" }
-ov-kdbx = { path = "../ov-kdbx" }
-ov-protocol = { path = "../ov-protocol" }
+ov-error.workspace = true
+ov-crypto.workspace = true
+ov-kdbx.workspace = true
+ov-protocol.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
 

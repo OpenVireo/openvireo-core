@@ -14,48 +14,67 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/openvireo/openvireo-core"
 publish = false
 
-# The dependency allow-list (rust-core-tasks.md §2.6), pinned exactly. Crates use
-# `name.workspace = true` (adding features locally as needed). Adding a crate here
-# needs an OWNER-REQUEST to the lead.
+# The dependency allow-list (rust-core-tasks.md §2.6). Crates use `name.workspace = true` (adding
+# features locally as needed). Adding a crate here needs an OWNER-REQUEST to the lead.
+# Versions are minimums, so the published crates resolve alongside a user's other crates; Cargo.lock
+# pins the exact versions we build and `cargo deny` checks it. opaque-ke and the binding and test tools
+# (never published) stay pinned exactly.
 [workspace.dependencies]
+# The workspace's own crates, published to crates.io as openvireo-* (their library names stay ov_*,
+# so code says `use ov_core`). Members depend on them with `ov-x.workspace = true`. The version is
+# always "=" the workspace version: a release bumps it here too (the release `version` job checks).
+# ov-testkit is never published (dev-dependencies only, by path).
+ov-error = { package = "openvireo-error", path = "crates/ov-error", version = "=1.2.1" }
+ov-http = { package = "openvireo-http", path = "crates/ov-http", version = "=1.2.1" }
+ov-host = { package = "openvireo-host", path = "crates/ov-host", version = "=1.2.1" }
+ov-crypto = { package = "openvireo-crypto", path = "crates/ov-crypto", version = "=1.2.1" }
+ov-opaque = { package = "openvireo-opaque", path = "crates/ov-opaque", version = "=1.2.1", default-features = false }
+ov-protocol = { package = "openvireo-protocol", path = "crates/ov-protocol", version = "=1.2.1" }
+ov-share = { package = "openvireo-share", path = "crates/ov-share", version = "=1.2.1" }
+ov-kdbx = { package = "openvireo-kdbx", path = "crates/ov-kdbx", version = "=1.2.1" }
+ov-merge = { package = "openvireo-merge", path = "crates/ov-merge", version = "=1.2.1" }
+ov-sync = { package = "openvireo-sync", path = "crates/ov-sync", version = "=1.2.1" }
+ov-vault = { package = "openvireo-vault", path = "crates/ov-vault", version = "=1.2.1" }
+ov-core = { package = "openvireo-core", path = "crates/ov-core", version = "=1.2.1" }
+
 # Crypto. Versions stay on the RustCrypto generation opaque-ke 4.0.1 uses (digest 0.10).
 opaque-ke = { version = "=4.0.1", default-features = false, features = ["argon2", "ristretto255"] }
 # `zeroize`: the work area (up to 64 MiB of password-derived blocks) is wiped after each hash.
-argon2 = { version = "=0.5.3", default-features = false, features = ["alloc", "zeroize"] }
-sha2 = { version = "=0.10.9", default-features = false }
-hmac = { version = "=0.12.1", default-features = false }
-hkdf = { version = "=0.12.4", default-features = false }
-chacha20poly1305 = { version = "=0.10.1", default-features = false, features = ["alloc"] }
-chacha20 = { version = "=0.9.1", default-features = false }
-aes = { version = "=0.8.4", default-features = false }
-cbc = { version = "=0.1.2", default-features = false, features = ["alloc"] }
-x25519-dalek = { version = "=2.0.1", default-features = false, features = ["static_secrets", "zeroize"] }
-ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["zeroize"] }
-curve25519-dalek = { version = "=4.1.3", default-features = false, features = ["zeroize"] }
-blake2 = { version = "=0.10.6", default-features = false }
+argon2 = { version = "0.5.3", default-features = false, features = ["alloc", "zeroize"] }
+sha2 = { version = "0.10.9", default-features = false }
+hmac = { version = "0.12.1", default-features = false }
+hkdf = { version = "0.12.4", default-features = false }
+chacha20poly1305 = { version = "0.10.1", default-features = false, features = ["alloc"] }
+chacha20 = { version = "0.9.1", default-features = false }
+aes = { version = "0.8.4", default-features = false }
+cbc = { version = "0.1.2", default-features = false, features = ["alloc"] }
+x25519-dalek = { version = "2.0.1", default-features = false, features = ["static_secrets", "zeroize"] }
+ed25519-dalek = { version = "2.2.0", default-features = false, features = ["zeroize"] }
+curve25519-dalek = { version = "4.1.3", default-features = false, features = ["zeroize"] }
+blake2 = { version = "0.10.6", default-features = false }
 # Added 2026-11-15 (contract-v1.3, user-approved): KDBX 3.1 inner stream (W1-K1) and TOTP HMAC-SHA1 (W1-S).
-salsa20 = { version = "=0.10.2", default-features = false }
-sha1 = { version = "=0.10.6", default-features = false }
-rand_core = { version = "=0.6.4", default-features = false }
-rand_chacha = { version = "=0.3.1", default-features = false }
-getrandom = { version = "=0.2.17", default-features = false }
-zeroize = { version = "=1.9.1", default-features = false, features = ["alloc", "zeroize_derive"] }
-secrecy = { version = "=0.10.3", default-features = false }
-subtle = { version = "=2.6.1", default-features = false }
+salsa20 = { version = "0.10.2", default-features = false }
+sha1 = { version = "0.10.6", default-features = false }
+rand_core = { version = "0.6.4", default-features = false }
+rand_chacha = { version = "0.3.1", default-features = false }
+getrandom = { version = "0.2.17", default-features = false }
+zeroize = { version = "1.9.1", default-features = false, features = ["alloc", "zeroize_derive"] }
+secrecy = { version = "0.10.3", default-features = false }
+subtle = { version = "2.6.1", default-features = false }
 
 # Data
-serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.154"
-base64 = "=0.22.1"
-hex = "=0.4.3"
-uuid = { version = "=1.29.2", default-features = false }
-thiserror = "=2.0.21"
-async-trait = "=0.1.92"
-futures = { version = "=0.3.34", default-features = false, features = ["std"] }
-quick-xml = "=0.42.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+base64 = "0.22.1"
+hex = "0.4.3"
+uuid = { version = "1.29.2", default-features = false }
+thiserror = "2.0.21"
+async-trait = "0.1.92"
+futures = { version = "0.3.34", default-features = false, features = ["std"] }
+quick-xml = "0.42.0"
 # NFKC for passwords and passcodes (SPEC §3, §8, §22). Added 2026-11-15 (W1-C1 OWNER-REQUEST, user-approved).
-unicode-normalization = { version = "=0.1.26", default-features = false }
-flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
+unicode-normalization = { version = "0.1.26", default-features = false }
+flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
 
 # Bindings
 uniffi = "=0.32.2"
@@ -68,20 +87,20 @@ cxx-build = "=1.0.205"
 
 # bins/ov, tests and tools only
 # libc: bins/ov only (no-echo prompt, signals to ov run children). Added 2026-11-15 (contract-v1.4, user-approved).
-libc = { version = "=0.2.191", default-features = false }
+libc = { version = "0.2.191", default-features = false }
 # windows-sys: bins/ov only (no-echo prompt on the Windows console). Added 2026-11-19 (W3-A3, user-approved);
 # the version already in the lock (via tokio and others).
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_System_Console"] }
-clap = { version = "=4.6.7", features = ["derive"] }
-reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls-native-roots", "json"] }  # OS trust store; webpki-roots is CDLA (W1-L)
-tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Console"] }
+clap = { version = "4.6.7", features = ["derive"] }
+reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls-native-roots", "json"] }  # OS trust store; webpki-roots is CDLA (W1-L)
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros"] }
 # The `ov connect` REST server: bins/ov only. All already in the lock through reqwest (same versions,
 # rustls on ring). Added 2026-11-24 (contract-v1.10, user-approved; plans/connect-rust.md D3).
-hyper = { version = "=1.12.0", default-features = false, features = ["server", "http1"] }
-hyper-util = { version = "=0.1.21", default-features = false, features = ["server", "http1", "tokio"] }
-http-body-util = { version = "=0.1.5", default-features = false }
-tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring"] }
-rustls-pki-types = { version = "=1.16.0", default-features = false, features = ["std"] }
+hyper = { version = "1.12.0", default-features = false, features = ["server", "http1"] }
+hyper-util = { version = "0.1.21", default-features = false, features = ["server", "http1", "tokio"] }
+http-body-util = { version = "0.1.5", default-features = false }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring"] }
+rustls-pki-types = { version = "1.16.0", default-features = false, features = ["std"] }
 proptest = "=1.12.0"
 insta = "=1.49.0"
 libfuzzer-sys = "=0.4.13"

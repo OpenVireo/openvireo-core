@@ -251,7 +251,9 @@ const UNLINKED_CRATES: [(&str, &str); 1] = [
 ];
 
 /// Portable cdylibs (plus bindings/ov-wasm): what ships as wasm.
-fn wasm_cdylibs() -> Result<Vec<String>> {
+/// The packages with a cdylib target, each with its library name (the .wasm file stem): the published
+/// crates are called openvireo-* but keep their ov_* library names.
+fn wasm_cdylibs() -> Result<Vec<(String, String)>> {
     let meta = metadata()?;
     let mut wanted = portable_packages()?;
     wanted.push("ov-wasm".into());
@@ -261,14 +263,14 @@ fn wasm_cdylibs() -> Result<Vec<String>> {
         .into_iter()
         .flatten()
         .filter(|p| wanted.iter().any(|w| p["name"] == w.as_str()))
-        .filter(|p| {
-            p["targets"]
+        .filter_map(|p| {
+            let lib = p["targets"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .any(|t| t["crate_types"].as_array().into_iter().flatten().any(|c| c == "cdylib"))
+                .find(|t| t["crate_types"].as_array().into_iter().flatten().any(|c| c == "cdylib"))?;
+            Some((p["name"].as_str()?.to_string(), lib["name"].as_str()?.replace('-', "_")))
         })
-        .filter_map(|p| p["name"].as_str().map(str::to_string))
         .collect())
 }
 
@@ -306,14 +308,15 @@ fn unlinked() -> Result {
     }
     let target_dir = target_root().join("symbols");
     let target_dir = target_dir.to_str().ok_or("non-UTF-8 target dir")?;
+    let packages: Vec<String> = cdylibs.iter().map(|(p, _)| p.clone()).collect();
     wasm_release_build(
         "unlinked: release wasm32 build with symbols",
-        &cdylibs,
+        &packages,
         &["--config", "profile.release.strip=false", "--target-dir", target_dir],
     )?;
     let out_dir = Path::new(target_dir).join(WASM_TARGET).join("release");
-    for name in &cdylibs {
-        let file = out_dir.join(format!("{}.wasm", name.replace('-', "_")));
+    for (_, name) in &cdylibs {
+        let file = out_dir.join(format!("{name}.wasm"));
         let bytes = fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
         // Guard against a silent pass if the name section ever goes missing.
         if !contains(&bytes, b"core") {
@@ -401,12 +404,13 @@ fn size() -> Result {
         println!("\n==> size: no wasm cdylibs");
         return Ok(());
     }
-    wasm_release_build("size: release wasm32 build", &cdylibs, &[])?;
+    let packages: Vec<String> = cdylibs.iter().map(|(p, _)| p.clone()).collect();
+    wasm_release_build("size: release wasm32 build", &packages, &[])?;
 
     let out_dir = target_root().join(WASM_TARGET).join("release");
     println!("\n{:<32} {:>12} {:>12}", "wasm size report", "raw bytes", "gzip -9");
-    for name in &cdylibs {
-        let file = out_dir.join(format!("{}.wasm", name.replace('-', "_")));
+    for (_, name) in &cdylibs {
+        let file = out_dir.join(format!("{name}.wasm"));
         let bytes = fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
         gz.write_all(&bytes).map_err(|e| e.to_string())?;

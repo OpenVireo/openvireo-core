@@ -14,15 +14,15 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ov-core = { path = "../../crates/ov-core" }
-ov-crypto = { path = "../../crates/ov-crypto" }
-ov-error = { path = "../../crates/ov-error" }
-ov-kdbx = { path = "../../crates/ov-kdbx" }
-ov-merge = { path = "../../crates/ov-merge" }
+ov-core.workspace = true
+ov-crypto.workspace = true
+ov-error.workspace = true
+ov-kdbx.workspace = true
+ov-merge.workspace = true
 # The opaque-ke test server backs the SDK's public `opaqueServerForTests`. No default features: the
 # default `legacy-c-abi` would add the old `ov_*` C exports to this module.
-ov-opaque = { path = "../../crates/ov-opaque", default-features = false, features = ["test-server"] }
-ov-share = { path = "../../crates/ov-share" }
+ov-opaque = { workspace = true, default-features = false, features = ["test-server"] }
+ov-share.workspace = true
 async-trait.workspace = true
 js-sys.workspace = true
 rand_chacha.workspace = true

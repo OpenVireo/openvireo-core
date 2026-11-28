@@ -16,7 +16,7 @@
 //! that install them). Every file and its result is printed; run with `--nocapture` to see the table:
 //!
 //! ```text
-//! cargo test -p ov-kdbx --test corpus -- --nocapture
+//! cargo test -p openvireo-kdbx --test corpus -- --nocapture
 //! ```
 //!
 //! Rewrites are kept in `$CARGO_TARGET_TMPDIR/corpus/` for inspection.

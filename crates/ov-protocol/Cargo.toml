@@ -1,16 +1,19 @@
 [package]
-name = "ov-protocol"
+name = "openvireo-protocol"
 description = "Wire types, request builders and response parsers for the OpenVireo auth and sync APIs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-publish = false
+publish = true
+
+[lib]
+name = "ov_protocol"
 
 [dependencies]
-ov-error = { path = "../ov-error" }
-ov-http = { path = "../ov-http" }
+ov-error.workspace = true
+ov-http.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

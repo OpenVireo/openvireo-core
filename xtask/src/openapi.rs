@@ -64,7 +64,7 @@ pub fn run(args: &[String]) -> Result {
         fs::write(&out, text).map_err(|e| format!("{}: {e}", out.display()))?;
         println!("wrote {} ({keys} keys, from {})", rel(&out), rel(&dir));
     }
-    run_step("openapi round-trip", cargo().args(["test", "--locked", "-p", "ov-protocol", "--test", "openapi"]))
+    run_step("openapi round-trip", cargo().args(["test", "--locked", "-p", "openvireo-protocol", "--test", "openapi"]))
 }
 
 /// The frozen contract copies (SOURCE.md there has their checksums).

@@ -1,16 +1,19 @@
 [package]
-name = "ov-merge"
+name = "openvireo-merge"
 description = "Three-way KDBX merge on the ov-kdbx model"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-publish = false
+publish = true
+
+[lib]
+name = "ov_merge"
 
 [dependencies]
-ov-error = { path = "../ov-error" }
-ov-kdbx = { path = "../ov-kdbx" }
+ov-error.workspace = true
+ov-kdbx.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]

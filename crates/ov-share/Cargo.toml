@@ -1,16 +1,19 @@
 [package]
-name = "ov-share"
+name = "openvireo-share"
 description = "Share links (SPEC section 22)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-publish = false
+publish = true
+
+[lib]
+name = "ov_share"
 
 [dependencies]
-ov-error = { path = "../ov-error" }
-ov-crypto = { path = "../ov-crypto" }
+ov-error.workspace = true
+ov-crypto.workspace = true
 base64.workspace = true
 hmac.workspace = true
 serde.workspace = true

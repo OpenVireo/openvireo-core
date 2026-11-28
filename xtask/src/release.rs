@@ -529,7 +529,7 @@ fn ov(out: &Path) -> Result {
     for target in ov_targets()? {
         let platform = platform(&target)?;
         let mut cmd = cargo();
-        cmd.args(["build", "--locked", "--release", "-p", "ov", "--bin", "ov", "--target", &target]);
+        cmd.args(["build", "--locked", "--release", "-p", "openvireo-cli", "--bin", "ov", "--target", &target]);
         if target.ends_with("-apple-darwin") && env::var_os("MACOSX_DEPLOYMENT_TARGET").is_none() {
             cmd.env("MACOSX_DEPLOYMENT_TARGET", MACOS_DEPLOYMENT_TARGET);
         }

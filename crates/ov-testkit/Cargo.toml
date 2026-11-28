@@ -13,13 +13,13 @@ publish = false
 native-only = true
 
 [dependencies]
-ov-host = { path = "../ov-host" }
-ov-error = { path = "../ov-error" }
-ov-protocol = { path = "../ov-protocol" }
-ov-crypto = { path = "../ov-crypto" }
-ov-share = { path = "../ov-share" }
+ov-host.workspace = true
+ov-error.workspace = true
+ov-protocol.workspace = true
+ov-crypto.workspace = true
+ov-share.workspace = true
 # opaque-ke's server side for the in-memory auth server (servers/).
-ov-opaque = { path = "../ov-opaque", default-features = false, features = ["test-server"] }
+ov-opaque = { workspace = true, default-features = false, features = ["test-server"] }
 async-trait.workspace = true
 zeroize.workspace = true
 sha2.workspace = true

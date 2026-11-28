@@ -42,8 +42,8 @@ slow-runner timing failures before.
 | OPAQUE transcripts: the TS SDK's opaque-ke and libopaque, including opaque-ke signing in to a libopaque-registered account | `vectors/opaque-transcripts.json` | `cargo test -p ov-opaque --test transcripts` |
 | Merge fixtures recorded from the desktop's sync merge (14 cases) | `vectors/merge-fixtures/` | `cargo test -p ov-merge --test merge_fixtures` |
 | OpenAPI copies of the auth and sync servers | `vectors/openapi/` | `cargo xtask openapi --check`, `cargo test -p ov-protocol` |
-| `.kdbx` files from the contract and the desktop | `vectors/vault-fixture.kdbx`, `vectors/kdbx/` | `cargo test -p ov-kdbx` |
-| `.kdbx` files written by other apps (kdbxweb, KeePassXC, iOS) | `corpus/kdbx/` (`manifest.tsv`) | `cargo test -p ov-kdbx --test corpus -- --nocapture` |
+| `.kdbx` files from the contract and the desktop | `vectors/vault-fixture.kdbx`, `vectors/kdbx/` | `cargo test -p openvireo-kdbx` |
+| `.kdbx` files written by other apps (kdbxweb, KeePassXC, iOS) | `corpus/kdbx/` (`manifest.tsv`) | `cargo test -p openvireo-kdbx --test corpus -- --nocapture` |
 
 `ov-testkit` loads all of these as typed data. The corpus harness opens each file, saves it, reopens it
 and requires an equal model; with `OV_KEEPASSXC_CLI` and `OV_SDK` set it also checks that KeePassXC's CLI

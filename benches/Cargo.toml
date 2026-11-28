@@ -15,13 +15,13 @@ license.workspace = true
 publish = false
 
 [dependencies]
-ov-kdbx = { path = "../crates/ov-kdbx" }
+ov-kdbx.workspace = true
 
 [dev-dependencies]
-ov-crypto = { path = "../crates/ov-crypto" }
-ov-merge = { path = "../crates/ov-merge" }
-ov-protocol = { path = "../crates/ov-protocol" }
-ov-sync = { path = "../crates/ov-sync" }
+ov-crypto.workspace = true
+ov-merge.workspace = true
+ov-protocol.workspace = true
+ov-sync.workspace = true
 ov-testkit = { path = "../crates/ov-testkit" }
 futures = { workspace = true, features = ["executor"] }
 # Benches only (W4-F, lead-approved). No plots, no rayon.

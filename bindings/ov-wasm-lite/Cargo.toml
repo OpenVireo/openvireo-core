@@ -13,9 +13,9 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ov-crypto = { path = "../../crates/ov-crypto" }
-ov-error = { path = "../../crates/ov-error" }
-ov-share = { path = "../../crates/ov-share" }
+ov-crypto.workspace = true
+ov-error.workspace = true
+ov-share.workspace = true
 js-sys.workspace = true
 wasm-bindgen.workspace = true
 zeroize.workspace = true

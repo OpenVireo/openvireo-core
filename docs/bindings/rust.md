@@ -16,18 +16,25 @@ The API reference is at [developer.openvireo.com/reference/rust](https://develop
 
 ## Install
 
-The crates aren't on crates.io. Depend on a release tag of this repository:
+The core is on crates.io as `openvireo-core` (the library is `ov_core`):
 
 ```toml
 [dependencies]
-ov-core = { git = "https://github.com/openvireo/openvireo-core", tag = "vX.Y.Z" }
+openvireo-core = "1"
 ```
 
-Cargo finds the crate inside the workspace and resolves its dependencies from the workspace's pinned
-versions. `Cargo.lock` then records the commit, so every build uses the same code. Add `ov-share` the
-same way if you need `parse_share_link` or the share-link primitives; the other domain crates
-(`ov-crypto`, `ov-kdbx`, `ov-merge`, ...) are there too, but only `ov-core` keeps a stable API between
-minor releases.
+Add `openvireo-share` the same way if you need `parse_share_link` or the share-link primitives. The
+other domain crates (`openvireo-crypto`, `openvireo-kdbx`, `openvireo-merge`, ...) are published too, but
+only `openvireo-core` keeps a stable API between minor releases. Each crate keeps its `ov_*` library
+name, so code says `use ov_core::...` whatever the package is called.
+
+Releases up to 1.2.1 aren't on crates.io; their packages were still called `ov-core`, `ov-share`, ...
+Depend on a release tag of this repository for one of those:
+
+```toml
+[dependencies]
+ov-core = { git = "https://github.com/openvireo/openvireo-core", tag = "v1.2.1" }
+```
 
 Check the install:
 

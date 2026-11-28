@@ -37,6 +37,8 @@
 # - MAVEN_CENTRAL_PUBLISH=true: the jar and the AAR to Maven Central through the Central Portal, every
 #   file signed with the release key (MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD, a Portal user
 #   token, in the `signing` environment).
+# - CRATES_IO_PUBLISH=true: the 13 published crates (openvireo-core, its domain crates and openvireo-cli)
+#   to crates.io by trusted publishing (environment `crates-io`);
 # - SWIFT_PUBLISH=true: the Swift package github.com/openvireo/openvireo-swift, updated and tagged after
 #   the GitHub release (SWIFT_DEPLOY_KEY, a write deploy key of that repository, in `signing`).
 #
@@ -104,6 +106,16 @@ jobs:
         run: |
           if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
             echo "::error::the workspace version is $VERSION but the tag is $GITHUB_REF_NAME"; exit 1
+          fi
+      - name: Check the internal crates are pinned to the workspace version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # [workspace.dependencies] pins each openvireo-* crate to "=<workspace version>" (what crates.io
+          # records as the dependency), so a release bumps them together with [workspace.package] version
+          bad=$(grep -E '^ov-[a-z]+ = \{ package = "openvireo-' Cargo.toml | grep -vF "version = \"=$VERSION\"" || true)
+          if [ -n "$bad" ]; then
+            echo "::error::[workspace.dependencies] must pin the internal crates to =$VERSION:"; echo "$bad"; exit 1
           fi
       - name: Check publishing has a tag
         if: (github.event_name == 'push' || inputs.publish) && !startsWith(github.ref, 'refs/tags/v')
@@ -942,6 +954,53 @@ jobs:
         with:
           packages-dir: dist
           skip-existing: true
+
+  # The published crates (every package without `publish = false`: openvireo-core, its domain crates and
+  # openvireo-cli) to crates.io by trusted publishing: crates.io trusts this repository's release.yml in
+  # the `crates-io` environment, so there's no long-lived token. Versions already on crates.io are
+  # skipped, so a run can be re-run; `cargo publish` uploads the rest in dependency order.
+  crates-io:
+    needs: [version, verify]
+    if: (github.event_name == 'push' || inputs.publish) && vars.CRATES_IO_PUBLISH == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/openvireo-core
+    permissions:
+      contents: read
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Pick the crates crates.io doesn't have yet
+        id: pick
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # `publish` is null for a publishable package, [] for `publish = false`
+          args=()
+          for p in $(cargo metadata --locked --format-version 1 --no-deps | jq -r '.packages[] | select(.publish == null) | .name'); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -A "openvireo-core release (github.com/openvireo/openvireo-core)" \
+              "https://crates.io/api/v1/crates/$p/$VERSION")
+            if [ "$code" = 200 ]; then echo "$p $VERSION is already on crates.io"; else args+=(-p "$p"); fi
+          done
+          echo "args=${args[*]}" >> "$GITHUB_OUTPUT"
+          echo "to publish: ${args[*]:-nothing}"
+      - uses: rust-lang/crates-io-auth-action@v1
+        if: steps.pick.outputs.args != ''
+        id: auth
+      - name: Publish
+        if: steps.pick.outputs.args != ''
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          ARGS: ${{ steps.pick.outputs.args }}
+        run: |
+          # shellcheck disable=SC2086 # ARGS is "-p a -p b ..."
+          cargo publish --locked $ARGS
 
   # com.openvireo:openvireo-core-jvm and openvireo-core-android to GitHub Packages (Maven), with
   # `./gradlew publish` through `cargo xtask release publish-maven`: it rebuilds both from the same signed

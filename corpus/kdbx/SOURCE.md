@@ -7,7 +7,7 @@ kdbxweb open the rewrite and see what they saw in the original. See the top of `
 environment variables (`OV_KEEPASSXC_CLI`, `OV_SDK`, `OV_KEEPASSXC_SRC`, `OV_CORPUS_REQUIRE_TOOLS`).
 
 ```
-cargo test -p ov-kdbx --test corpus -- --nocapture
+cargo test -p openvireo-kdbx --test corpus -- --nocapture
 ```
 
 The files contain only made-up test data. Every password and key file is listed in `manifest.tsv`.

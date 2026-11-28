@@ -172,4 +172,18 @@ One-time setup on GitHub, before the first release that publishes the image:
   label, so this is normally already set). A private package makes `docker pull` and the Helm chart need
   an `imagePullSecret`.
 
-The crates set `publish = false`; nothing goes to crates.io.
+### crates.io
+
+`openvireo-core`, its domain crates (`openvireo-error`, `-http`, `-host`, `-crypto`, `-opaque`,
+`-protocol`, `-share`, `-kdbx`, `-merge`, `-sync`, `-vault`) and `openvireo-cli` (the `ov` binary,
+`cargo install openvireo-cli`) are published to crates.io by the release's `crates-io` job when
+`CRATES_IO_PUBLISH` is `true`. The directories and library names stay `ov-*` / `ov_*`; members depend on
+each other through `[workspace.dependencies]`, which pins each to `=` the workspace version, so a release
+bumps those lines together with `[workspace.package] version` (the `version` job fails otherwise).
+The bindings, `ov-testkit`, `ov-benches` and `xtask` keep `publish = false`.
+
+Check that everything packages and builds from the packaged sources:
+
+```sh
+cargo publish --workspace --dry-run
+```

@@ -160,10 +160,10 @@ fn core_version() -> Result<String> {
         .as_array()
         .into_iter()
         .flatten()
-        .find(|p| p["name"] == "ov-core")
+        .find(|p| p["name"] == "openvireo-core")
         .and_then(|p| p["version"].as_str())
         .map(str::to_string)
-        .ok_or_else(|| "cargo metadata has no ov-core".into())
+        .ok_or_else(|| "cargo metadata has no openvireo-core".into())
 }
 
 /// Builds the static library for one triple, exporting the headers to `include`. Returns the

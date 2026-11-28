@@ -434,8 +434,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
-name = "ov-crypto"
-version = "0.0.0"
+name = "openvireo-crypto"
+version = "1.2.1"
 dependencies = [
  "argon2",
  "base64",
@@ -444,7 +444,7 @@ dependencies = [
  "getrandom 0.2.17",
  "hex",
  "hkdf",
- "ov-error",
+ "openvireo-error",
  "serde",
  "serde_json",
  "sha2",
@@ -455,8 +455,96 @@ dependencies = [
 ]
 
 [[package]]
-name = "ov-error"
-version = "0.0.0"
+name = "openvireo-error"
+version = "1.2.1"
+
+[[package]]
+name = "openvireo-host"
+version = "1.2.1"
+dependencies = [
+ "async-trait",
+ "openvireo-error",
+ "openvireo-http",
+ "zeroize",
+]
+
+[[package]]
+name = "openvireo-http"
+version = "1.2.1"
+
+[[package]]
+name = "openvireo-kdbx"
+version = "1.2.1"
+dependencies = [
+ "aes",
+ "argon2",
+ "base64",
+ "cbc",
+ "chacha20",
+ "flate2",
+ "hmac",
+ "openvireo-crypto",
+ "openvireo-error",
+ "quick-xml",
+ "salsa20",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "openvireo-merge"
+version = "1.2.1"
+dependencies = [
+ "openvireo-error",
+ "openvireo-kdbx",
+ "zeroize",
+]
+
+[[package]]
+name = "openvireo-protocol"
+version = "1.2.1"
+dependencies = [
+ "hex",
+ "openvireo-error",
+ "openvireo-http",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "openvireo-share"
+version = "1.2.1"
+dependencies = [
+ "base64",
+ "hmac",
+ "openvireo-crypto",
+ "openvireo-error",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "zeroize",
+]
+
+[[package]]
+name = "openvireo-sync"
+version = "1.2.1"
+dependencies = [
+ "async-trait",
+ "base64",
+ "openvireo-crypto",
+ "openvireo-error",
+ "openvireo-host",
+ "openvireo-kdbx",
+ "openvireo-merge",
+ "openvireo-protocol",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "ov-fuzz"
@@ -468,103 +556,15 @@ dependencies = [
  "flate2",
  "hmac",
  "libfuzzer-sys",
- "ov-crypto",
- "ov-kdbx",
- "ov-merge",
- "ov-protocol",
- "ov-share",
- "ov-sync",
+ "openvireo-crypto",
+ "openvireo-kdbx",
+ "openvireo-merge",
+ "openvireo-protocol",
+ "openvireo-share",
+ "openvireo-sync",
  "serde",
  "serde_json",
  "sha2",
-]
-
-[[package]]
-name = "ov-host"
-version = "0.0.0"
-dependencies = [
- "async-trait",
- "ov-error",
- "ov-http",
- "zeroize",
-]
-
-[[package]]
-name = "ov-http"
-version = "0.0.0"
-
-[[package]]
-name = "ov-kdbx"
-version = "0.0.0"
-dependencies = [
- "aes",
- "argon2",
- "base64",
- "cbc",
- "chacha20",
- "flate2",
- "hmac",
- "ov-crypto",
- "ov-error",
- "quick-xml",
- "salsa20",
- "serde_json",
- "sha2",
- "subtle",
- "uuid",
- "zeroize",
-]
-
-[[package]]
-name = "ov-merge"
-version = "0.0.0"
-dependencies = [
- "ov-error",
- "ov-kdbx",
- "zeroize",
-]
-
-[[package]]
-name = "ov-protocol"
-version = "0.0.0"
-dependencies = [
- "hex",
- "ov-error",
- "ov-http",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
-name = "ov-share"
-version = "0.0.0"
-dependencies = [
- "base64",
- "hmac",
- "ov-crypto",
- "ov-error",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "zeroize",
-]
-
-[[package]]
-name = "ov-sync"
-version = "0.0.0"
-dependencies = [
- "async-trait",
- "base64",
- "ov-crypto",
- "ov-error",
- "ov-host",
- "ov-kdbx",
- "ov-merge",
- "ov-protocol",
- "serde",
- "serde_json",
 ]
 
 [[package]]

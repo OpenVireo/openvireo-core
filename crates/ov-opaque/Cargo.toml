@@ -1,14 +1,15 @@
 [package]
-name = "ov-opaque"
-version = "0.1.0"
+name = "openvireo-opaque"
+version.workspace = true
 description = "OPAQUE (RFC 9807, SPEC §8) for openvireo-core over opaque-ke, plus the legacy dependency-free WASM C ABI"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+publish = true
 
 [lib]
+name = "ov_opaque"
 # rlib: the safe Rust API for the rest of the core. cdylib: the legacy wasm module the TS SDK loads
 # (built by build.sh with the `legacy-c-abi` feature).
 crate-type = ["rlib", "cdylib"]
@@ -27,7 +28,7 @@ test-server = []
 interop = []
 
 [dependencies]
-ov-error = { path = "../ov-error" }
+ov-error.workspace = true
 opaque-ke.workspace = true
 argon2.workspace = true
 sha2.workspace = true

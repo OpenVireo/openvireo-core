@@ -26,12 +26,12 @@ members = ["."]
 
 [dependencies]
 libfuzzer-sys = "=0.4.13"
-ov-crypto = { path = "../crates/ov-crypto" }
-ov-kdbx = { path = "../crates/ov-kdbx" }
-ov-merge = { path = "../crates/ov-merge" }
-ov-protocol = { path = "../crates/ov-protocol" }
-ov-share = { path = "../crates/ov-share" }
-ov-sync = { path = "../crates/ov-sync" }
+ov-crypto = { package = "openvireo-crypto", path = "../crates/ov-crypto" }
+ov-kdbx = { package = "openvireo-kdbx", path = "../crates/ov-kdbx" }
+ov-merge = { package = "openvireo-merge", path = "../crates/ov-merge" }
+ov-protocol = { package = "openvireo-protocol", path = "../crates/ov-protocol" }
+ov-share = { package = "openvireo-share", path = "../crates/ov-share" }
+ov-sync = { package = "openvireo-sync", path = "../crates/ov-sync" }
 # The KDBX envelope builders (src/lib.rs): the same pinned versions as the workspace.
 aes = { version = "=0.8.4", default-features = false }
 cbc = { version = "=0.1.2", default-features = false, features = ["alloc", "block-padding"] }

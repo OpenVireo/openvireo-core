@@ -1,20 +1,23 @@
 [package]
-name = "ov-sync"
+name = "openvireo-sync"
 description = "Vault sync state machine, deletions and clock-skew check"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-publish = false
+publish = true
+
+[lib]
+name = "ov_sync"
 
 [dependencies]
-ov-crypto = { path = "../ov-crypto" }
-ov-error = { path = "../ov-error" }
-ov-host = { path = "../ov-host" }
-ov-kdbx = { path = "../ov-kdbx" }
-ov-merge = { path = "../ov-merge" }
-ov-protocol = { path = "../ov-protocol" }
+ov-crypto.workspace = true
+ov-error.workspace = true
+ov-host.workspace = true
+ov-kdbx.workspace = true
+ov-merge.workspace = true
+ov-protocol.workspace = true
 async-trait.workspace = true
 base64.workspace = true
 serde.workspace = true

@@ -7,7 +7,7 @@ members = ["crates/*", "bindings/*", "bins/*", "xtask", "benches"]
 exclude = ["fuzz", "bindings/python", "bindings/kotlin"]
 
 [workspace.package]
-version = "1.2.1"
+version = "1.2.2"
 edition = "2021"
 rust-version = "1.98.1"
 license = "MIT OR Apache-2.0"
@@ -24,18 +24,18 @@ publish = false
 # so code says `use ov_core`). Members depend on them with `ov-x.workspace = true`. The version is
 # always "=" the workspace version: a release bumps it here too (the release `version` job checks).
 # ov-testkit is never published (dev-dependencies only, by path).
-ov-error = { package = "openvireo-error", path = "crates/ov-error", version = "=1.2.1" }
-ov-http = { package = "openvireo-http", path = "crates/ov-http", version = "=1.2.1" }
-ov-host = { package = "openvireo-host", path = "crates/ov-host", version = "=1.2.1" }
-ov-crypto = { package = "openvireo-crypto", path = "crates/ov-crypto", version = "=1.2.1" }
-ov-opaque = { package = "openvireo-opaque", path = "crates/ov-opaque", version = "=1.2.1", default-features = false }
-ov-protocol = { package = "openvireo-protocol", path = "crates/ov-protocol", version = "=1.2.1" }
-ov-share = { package = "openvireo-share", path = "crates/ov-share", version = "=1.2.1" }
-ov-kdbx = { package = "openvireo-kdbx", path = "crates/ov-kdbx", version = "=1.2.1" }
-ov-merge = { package = "openvireo-merge", path = "crates/ov-merge", version = "=1.2.1" }
-ov-sync = { package = "openvireo-sync", path = "crates/ov-sync", version = "=1.2.1" }
-ov-vault = { package = "openvireo-vault", path = "crates/ov-vault", version = "=1.2.1" }
-ov-core = { package = "openvireo-core", path = "crates/ov-core", version = "=1.2.1" }
+ov-error = { package = "openvireo-error", path = "crates/ov-error", version = "=1.2.2" }
+ov-http = { package = "openvireo-http", path = "crates/ov-http", version = "=1.2.2" }
+ov-host = { package = "openvireo-host", path = "crates/ov-host", version = "=1.2.2" }
+ov-crypto = { package = "openvireo-crypto", path = "crates/ov-crypto", version = "=1.2.2" }
+ov-opaque = { package = "openvireo-opaque", path = "crates/ov-opaque", version = "=1.2.2", default-features = false }
+ov-protocol = { package = "openvireo-protocol", path = "crates/ov-protocol", version = "=1.2.2" }
+ov-share = { package = "openvireo-share", path = "crates/ov-share", version = "=1.2.2" }
+ov-kdbx = { package = "openvireo-kdbx", path = "crates/ov-kdbx", version = "=1.2.2" }
+ov-merge = { package = "openvireo-merge", path = "crates/ov-merge", version = "=1.2.2" }
+ov-sync = { package = "openvireo-sync", path = "crates/ov-sync", version = "=1.2.2" }
+ov-vault = { package = "openvireo-vault", path = "crates/ov-vault", version = "=1.2.2" }
+ov-core = { package = "openvireo-core", path = "crates/ov-core", version = "=1.2.2" }
 
 # Crypto. Versions stay on the RustCrypto generation opaque-ke 4.0.1 uses (digest 0.10).
 opaque-ke = { version = "=4.0.1", default-features = false, features = ["argon2", "ristretto255"] }

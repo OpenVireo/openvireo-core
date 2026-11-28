@@ -32,7 +32,7 @@
 #
 # Public registries, each switched on by a repository variable once its one-time setup is done
 # (05-release-and-ops/releases.md in openvireo-dev-guide):
-# - NPMJS_PUBLISH=true: `@openvireo/core-wasm` to npmjs.com (NPM_TOKEN first, then trusted publishing);
+# - NPMJS_PUBLISH=true: `@openvireo/core-wasm` to npmjs.com by trusted publishing (no token);
 # - PYPI_PUBLISH=true: the `openvireo` wheels and sdist to PyPI by trusted publishing (environment `pypi`);
 # - MAVEN_CENTRAL_PUBLISH=true: the jar and the AAR to Maven Central through the Central Portal, every
 #   file signed with the release key (MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD, a Portal user
@@ -916,7 +916,6 @@ jobs:
       - run: npm install -g npm@latest # trusted publishing needs npm 11.5.1 or later
       - name: Publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           if npm view "@openvireo/core-wasm@$VERSION" version >/dev/null 2>&1; then

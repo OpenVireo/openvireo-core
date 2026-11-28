@@ -1,6 +1,6 @@
 # Language bindings
 
-The core is Rust, and Rust programs use it directly. Each binding exposes the same facade (`ov-core`): `OvClient`, `Account`, `Vault`,
+The core is Rust, and Rust programs use it directly. Each binding exposes the same facade (`ov_core`): `OvClient`, `Account`, `Vault`,
 `ServiceAccount`, `SelfHosted`, the records, `OvError` with the same codes, and the crypto, share-link
 and TOTP functions. None of them reimplements OPAQUE, keysets or the KDBX merge. A program on any
 binding interoperates with the apps.

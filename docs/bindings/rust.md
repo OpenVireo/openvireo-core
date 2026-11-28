@@ -1,7 +1,7 @@
 # Rust
 
 The core is a Rust crate, so a Rust program calls it directly: no binding layer, no generated code.
-`ov-core` is the same facade the other languages wrap (`OvClient`, `Account`, `Vault`,
+`ov_core` is the same facade the other languages wrap (`OvClient`, `Account`, `Vault`,
 `ServiceAccount`, `SelfHosted`, the records and `OvError`), running on the same code as the iOS,
 desktop and web apps and the `ov` CLI.
 

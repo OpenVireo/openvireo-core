@@ -922,7 +922,8 @@ jobs:
           if npm view "@openvireo/core-wasm@$VERSION" version >/dev/null 2>&1; then
             echo "@openvireo/core-wasm@$VERSION is already on npmjs.com"; exit 0
           fi
-          args=(--provenance --access public)
+          # --loglevel verbose: npm logs why a trusted-publishing token exchange failed only at verbose
+          args=(--provenance --access public --loglevel verbose)
           if [[ "$VERSION" == *-* ]]; then args+=(--tag next); fi
           npm publish "./release/openvireo-core-wasm-$VERSION.tgz" "${args[@]}"
 

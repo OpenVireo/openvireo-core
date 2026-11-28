@@ -1500,7 +1500,7 @@ checksum = "7e036b411754132fd6b74e94b74e9a13c5cf606fa93d1885c35860d3060820b1"
 
 [[package]]
 name = "openvireo-cli"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1526,7 +1526,7 @@ dependencies = [
 
 [[package]]
 name = "openvireo-core"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1552,7 +1552,7 @@ dependencies = [
 
 [[package]]
 name = "openvireo-crypto"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -1575,11 +1575,11 @@ dependencies = [
 
 [[package]]
 name = "openvireo-error"
-version = "1.2.1"
+version = "1.2.2"
 
 [[package]]
 name = "openvireo-host"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "async-trait",
  "openvireo-error",
@@ -1589,11 +1589,11 @@ dependencies = [
 
 [[package]]
 name = "openvireo-http"
-version = "1.2.1"
+version = "1.2.2"
 
 [[package]]
 name = "openvireo-kdbx"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "aes",
  "argon2",
@@ -1616,7 +1616,7 @@ dependencies = [
 
 [[package]]
 name = "openvireo-merge"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "base64 0.22.1",
  "openvireo-error",
@@ -1628,7 +1628,7 @@ dependencies = [
 
 [[package]]
 name = "openvireo-opaque"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "argon2",
  "hex",
@@ -1645,7 +1645,7 @@ dependencies = [
 
 [[package]]
 name = "openvireo-protocol"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "hex",
  "openvireo-error",
@@ -1657,7 +1657,7 @@ dependencies = [
 
 [[package]]
 name = "openvireo-share"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "base64 0.22.1",
  "hex",
@@ -1675,7 +1675,7 @@ dependencies = [
 
 [[package]]
 name = "openvireo-sync"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1694,7 +1694,7 @@ dependencies = [
 
 [[package]]
 name = "openvireo-vault"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "openvireo-crypto",
  "openvireo-error",
@@ -1707,7 +1707,7 @@ dependencies = [
 
 [[package]]
 name = "ov-benches"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "criterion",
  "futures",
@@ -1721,7 +1721,7 @@ dependencies = [
 
 [[package]]
 name = "ov-ffi"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "async-trait",
  "futures",
@@ -1741,7 +1741,7 @@ dependencies = [
 
 [[package]]
 name = "ov-ffi-cpp"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1765,7 +1765,7 @@ dependencies = [
 
 [[package]]
 name = "ov-testkit"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1786,7 +1786,7 @@ dependencies = [
 
 [[package]]
 name = "ov-wasm"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "async-trait",
  "js-sys",
@@ -1808,7 +1808,7 @@ dependencies = [
 
 [[package]]
 name = "ov-wasm-lite"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "js-sys",
  "openvireo-crypto",
@@ -3309,7 +3309,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "flate2",
  "hex",

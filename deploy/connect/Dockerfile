@@ -6,7 +6,7 @@
 # .github/workflows/release.yml (job `container`), or your own for a local build:
 #
 #   docker buildx build -f deploy/connect/Dockerfile --platform linux/amd64,linux/arm64 \
-#     --build-arg VERSION=1.2.0 -t openvireo-connect:dev <context dir>
+#     --build-arg VERSION=1.2.1 -t openvireo-connect:dev <context dir>
 #
 # distroless/static has CA certificates (/etc/ssl/certs) for the auth and sync servers, and no shell.
 FROM gcr.io/distroless/static-debian12:nonroot
